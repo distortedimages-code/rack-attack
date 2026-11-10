@@ -1,0 +1,31 @@
+# Builds and tests RackAttack Labo on GitHub's Macs: no Mac tools needed locally.
+# The app is in the "Artifacts" of each run (Actions tab).
+name: labo
+
+on:
+  push:
+    branches: [ "**" ]
+    paths-ignore: [ "docs/**", "**.md" ]
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release -j 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Package
+        run: |
+          mkdir -p out
+          APP="build/RackAttackLabo_artefacts/Release/RackAttack Labo.app"
+          codesign --force --deep --sign - "$APP"
+          ditto -c -k --keepParent "$APP" out/RackAttack-Labo-mac.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RackAttack-Labo-mac
+          path: out/RackAttack-Labo-mac.zip

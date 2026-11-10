@@ -1,6 +1,6 @@
-# Publishes a version: push a tag such as v0.2.0. The Mac app of the latest
-# successful "app" build of the branch is attached to a pre-release, so it can
-# be downloaded without a GitHub account.
+# Publishes a version: create a release (or push a tag) such as v0.2.0 on the
+# branch labo. The Mac app of the latest successful "app" build of the branch is
+# attached to it, so it can be downloaded without a GitHub account.
 name: release
 
 on:
@@ -38,6 +38,11 @@ jobs:
 
           L'appli ne sauvegarde rien dans la mémoire du RackAttack : pour garder un changement, **Shift + Store** sur la machine.
           NOTES
-          gh release create "$GITHUB_REF_NAME" out/RackAttack-Editor-mac.zip \
-            --title "RackAttack Editor ${GITHUB_REF_NAME#v} (test)" \
-            --notes-file notes.md --prerelease --target "$GITHUB_SHA"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # release made on the website: just attach the app
+            gh release upload "$GITHUB_REF_NAME" out/RackAttack-Editor-mac.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" out/RackAttack-Editor-mac.zip \
+              --title "RackAttack Editor ${GITHUB_REF_NAME#v} (test)" \
+              --notes-file notes.md --prerelease --target "$GITHUB_SHA"
+          fi

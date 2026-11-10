@@ -343,8 +343,8 @@ namespace
 }
 
 //==============================================================================
-ToolsPage::ToolsPage (Engine& e, Session& s, std::function<void()> changed)
-    : engine (e), session (s), settingsChanged (std::move (changed))
+ToolsPage::ToolsPage (Engine& e, Session&, std::function<void()> changed)
+    : engine (e), settingsChanged (std::move (changed))
 {
     intro.setText ("Outils de test. Tu n'en as pas besoin pour jouer : ils servent à compléter la carte du protocole."_fr,
                    juce::dontSendNotification);

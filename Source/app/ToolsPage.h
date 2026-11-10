@@ -28,7 +28,6 @@ private:
     void timerCallback() override;
 
     Engine& engine;
-    Session& session;
     std::function<void()> settingsChanged;
 
     juce::Label idLabel, channelLabel, baseLabel, baseName, intro;

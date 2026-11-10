@@ -1,0 +1,43 @@
+# Publishes a version: push a tag such as v0.2.0. The Mac app of the latest
+# successful "app" build of the branch is attached to a pre-release, so it can
+# be downloaded without a GitHub account.
+name: release
+
+on:
+  push:
+    tags: [ "v*" ]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mac app of the latest successful build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          RUN=$(gh run list --workflow app.yml --branch labo --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          echo "build used: $RUN"
+          gh run download "$RUN" --name RackAttack-Editor-mac --dir out
+          ls -la out
+      - name: Pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cat > notes.md <<'NOTES'
+          Version de test de **RackAttack Editor** pour Mac (Apple Silicon et Intel, macOS 11 ou plus récent).
+
+          1. Télécharge `RackAttack-Editor-mac.zip` ci-dessous et double-clique dessus.
+          2. Glisse **RackAttack Editor** dans *Applications*.
+          3. Premier lancement : clic droit → *Ouvrir*. Si macOS refuse : *Réglages Système* → *Confidentialité et sécurité* → *Ouvrir quand même*.
+
+          L'appli ne sauvegarde rien dans la mémoire du RackAttack : pour garder un changement, **Shift + Store** sur la machine.
+          NOTES
+          gh release create "$GITHUB_REF_NAME" out/RackAttack-Editor-mac.zip \
+            --title "RackAttack Editor ${GITHUB_REF_NAME#v} (test)" \
+            --notes-file notes.md --prerelease --target "$GITHUB_SHA"

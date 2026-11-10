@@ -1,4 +1,4 @@
-// One Labo session on disk: Documents/RackAttack Labo/session-<date>/
+// One session on disk: Documents/RackAttack/Journal/session-<date>/
 //   journal.txt     everything sent and received, with times and descriptions
 //   recus/*.syx     every RackAttack dump received, one file each
 //   tout-recu.syx   the same dumps, end to end (re-sendable later)

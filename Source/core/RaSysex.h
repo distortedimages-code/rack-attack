@@ -87,6 +87,7 @@ int dumpDataSize (std::uint8_t command);
 // Parameter names (front panel spelling) and value texts, from docs/SYSEX.md.
 const char* parameterName (Object object, int address);           // nullptr if unknown
 std::string valueText (Object object, int address, int value);    // enum text, else the number
+std::vector<std::string> valueNames (Object object, int address); // the choices of an enum, empty if a number
 
 // A parameter change (xxxP) taken apart. Works on unknown formats too: the last
 // three payload bytes are taken as PAH PAL VALUE, everything before as location.

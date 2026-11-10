@@ -1,14 +1,13 @@
-// RackAttack Labo: a small app to record how a Waldorf RackAttack answers, so
-// that the unknown parts of its SysEx protocol can be filled in (docs/SYSEX.md).
+// RackAttack Editor: front panel, kit and library for the Waldorf RackAttack.
 
 #include <JuceHeader.h>
 
-#include "LaboComponent.h"
+#include "MainComponent.h"
 
-class LaboApplication : public juce::JUCEApplication
+class RackAttackApplication : public juce::JUCEApplication
 {
 public:
-    const juce::String getApplicationName() override       { return "RackAttack Labo"; }
+    const juce::String getApplicationName() override       { return "RackAttack Editor"; }
     const juce::String getApplicationVersion() override    { return RA_VERSION; }
     bool moreThanOneInstanceAllowed() override             { return false; }
 
@@ -17,19 +16,19 @@ public:
         window = std::make_unique<MainWindow> (getApplicationName());
     }
 
-    void shutdown() override   { window.reset(); }
+    void shutdown() override              { window.reset(); }
     void systemRequestedQuit() override   { quit(); }
 
 private:
     struct MainWindow : public juce::DocumentWindow
     {
         explicit MainWindow (const juce::String& name)
-            : DocumentWindow (name, juce::Colour (0xff1c1f1d), DocumentWindow::allButtons)
+            : DocumentWindow (name, juce::Colour (0xff1b1e1c), DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
-            setContentOwned (new LaboComponent(), true);
+            setContentOwned (new MainComponent(), true);
             setResizable (true, true);
-            setResizeLimits (1100, 640, 4000, 3000);
+            setResizeLimits (1180, 740, 4000, 3000);
             centreWithSize (getWidth(), getHeight());
             setVisible (true);
         }
@@ -40,4 +39,4 @@ private:
     std::unique_ptr<MainWindow> window;
 };
 
-START_JUCE_APPLICATION (LaboApplication)
+START_JUCE_APPLICATION (RackAttackApplication)

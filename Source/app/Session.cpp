@@ -2,7 +2,7 @@
 
 Session::Session()
 {
-    auto root = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("RackAttack Labo");
+    auto root = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("RackAttack").getChildFile ("Journal");
     auto name = "session-" + juce::Time::getCurrentTime().formatted ("%Y-%m-%d_%H-%M-%S");
     folder = root.getNonexistentChildFile (name, {}, false);
     dumps = folder.getChildFile ("recus");

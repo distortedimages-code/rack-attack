@@ -315,6 +315,15 @@ const char* parameterName (Object object, int address)
     return p != nullptr ? p->name : nullptr;
 }
 
+std::vector<std::string> valueNames (Object object, int address)
+{
+    std::vector<std::string> names;
+    if (auto* p = findParam (object, address))
+        if (p->values != nullptr)
+            names.assign (p->values, p->values + p->numValues);
+    return names;
+}
+
 std::string valueText (Object object, int address, int value)
 {
     if (auto* p = findParam (object, address))

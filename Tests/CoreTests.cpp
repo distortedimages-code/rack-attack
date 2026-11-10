@@ -1,5 +1,6 @@
 // Tests of the SysEx core, against messages known to work with a real RackAttack.
 
+#include "../Source/core/RaKit.h"
 #include "../Source/core/RaSysex.h"
 
 #include <cstdio>
@@ -108,6 +109,68 @@ int main()
     CHECK_EQ (hex (*parseHex ("072000")), "07 20 00");
     CHECK_EQ (hex (*parseHex ("7 4 20")), "07 04 20");
     CHECK (! parseHex ("07 zz").has_value());
+
+    // Value lists for the interface
+    CHECK (valueNames (Object::sound, 0x01).size() == 12);
+    CHECK (valueNames (Object::sound, 0x27).empty());
+
+    // Kit model: dumps and parameter changes of the edit buffer
+    {
+        Kit kit;
+        CHECK (kit.blocksRead() == 0 && kit.name().empty());
+
+        Bytes sound { cmd::SNDD, kEditBuffer, 0x05 };
+        for (int i = 0; i < kSoundDataSize; ++i) sound.push_back ((std::uint8_t) i);
+        auto c = kit.apply (parse (build (0, sound)));
+        CHECK (c.what == Kit::Change::What::sound && c.index == 5 && c.address == -1);
+        CHECK (kit.soundValue (5, 0x27) == 0x27 && kit.hasSound (5));
+
+        c = kit.apply (parse (soundParameter (0, 5, 0x27, 99)));
+        CHECK (c.what == Kit::Change::What::sound && c.address == 0x27);
+        CHECK (kit.soundValue (5, 0x27) == 99);
+
+        // another location (not the edit buffer): ignored
+        CHECK (kit.apply (parse (soundParameter (0, 5, 0x27, 1, 0x00))).what == Kit::Change::What::nothing);
+        // wrong size: ignored
+        sound.pop_back();
+        CHECK (kit.apply (parse (build (0, sound))).what == Kit::Change::What::nothing);
+
+        Bytes prog { cmd::PRGD, 0x00, 0x20 };
+        for (int i = 0; i < kProgramDataSize; ++i) prog.push_back (0);
+        const char* name = "Kick Mafia";
+        for (int i = 0; i < 16; ++i) prog[(size_t) (3 + 1 + i)] = (std::uint8_t) (i < 10 ? name[i] : ' ');
+        CHECK (kit.apply (parse (build (0, prog))).what == Kit::Change::What::program);
+        CHECK_EQ (kit.name(), "Kick Mafia");
+        CHECK (kit.apply (parse (build (0, { cmd::PRGP, 0x20, 0x00, 0x01, 'Q' }))).address == 1);
+        CHECK_EQ (kit.name(), "Qick Mafia");
+        kit.setName ("Zap");
+        CHECK_EQ (kit.name(), "Zap");
+
+        CHECK (kit.apply (parse (build (0, { cmd::EFXP, 0x20, 0x02, 0x00, 0x00, 7 }))).what == Kit::Change::What::effect);
+        CHECK (kit.effectValue (2, 0) == 7);
+
+        // Dumps to send back: same formats as received
+        auto dump5 = kit.soundDump (0, 5);
+        CHECK_EQ (hex (Bytes (dump5.begin(), dump5.begin() + 7)), "F0 3E 11 00 10 20 05");
+        CHECK (dump5.size() == 118);
+        CHECK (kit.programDump (0).size() == 4 + 3 + 40 + 2);
+        CHECK (kit.allDumps (0).size() == 29);
+
+        // Files: round trip
+        auto file = kit.toSyx();
+        CHECK (splitSysex (file).size() == 29);
+        auto back = Kit::fromSyx (file);
+        CHECK (back.has_value() && back->isComplete());
+        CHECK (back->differences (kit).empty());
+        back->setSoundValue (3, 0x27, 1);
+        auto diff = back->differences (kit);
+        CHECK (diff.size() == 1 && diff[0] == "son 04");
+        CHECK (! Kit::fromSyx ({ 0x01, 0x02 }).has_value());
+
+        auto soundFile = Kit::soundToSyx (kit.soundData (5));
+        auto soundBack = Kit::soundFromSyx (soundFile);
+        CHECK (soundBack.has_value() && *soundBack == kit.soundData (5));
+    }
 
     if (failures == 0)
         std::printf ("CoreTests: all passed\n");

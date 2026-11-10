@@ -1,0 +1,921 @@
+#include "Pages.h"
+
+namespace
+{
+    constexpr int cellW = 80, cellH = 86;
+
+    struct Def { int address; const char* label; bool choice; };
+    struct SectionDef { const char* title; std::vector<std::vector<Def>> rows; };
+
+    // The sound, section by section as on the front panel (addresses: docs/SYSEX.md)
+    const std::vector<SectionDef>& soundSections()
+    {
+        static const std::vector<SectionDef> sections {
+            { "Oscillateur 1", { { { 0x01, "Shape", true }, { 0x02, "Pitch", false }, { 0x03, "Detune", false }, { 0x04, "Start", true }, { 0x09, "FM", false } },
+                                 { { 0x05, "Pitch Mod", false }, { 0x07, "Mod Src", true }, { 0x06, "Pitch Ctrl", false }, { 0x08, "Ctrl Src", true } },
+                                 { { 0x0A, "FM Mod", false }, { 0x0C, "Mod Src", true }, { 0x0B, "FM Ctrl", false }, { 0x0D, "Ctrl Src", true } } } },
+            { "Oscillateur 2", { { { 0x10, "Shape", true }, { 0x11, "Pitch", false }, { 0x12, "Detune", false }, { 0x13, "Start", true } },
+                                 { { 0x14, "Pitch Mod", false }, { 0x16, "Mod Src", true }, { 0x15, "Pitch Ctrl", false }, { 0x17, "Ctrl Src", true } } } },
+            { "Mix / Crack",   { { { 0x1A, "Osc 1", false }, { 0x1B, "Osc 2", false }, { 0x1C, "Ringmod", false }, { 0x1D, "Crack", false },
+                                   { 0x24, "Crack Speed", false }, { 0x25, "Crack Length", false } },
+                                 { { 0x1E, "Osc 2 Mod", false }, { 0x20, "Mod Src", true }, { 0x1F, "Osc 2 Ctrl", false }, { 0x21, "Ctrl Src", true } } } },
+            { "Filtre",        { { { 0x26, "Type", true }, { 0x27, "Cutoff", false }, { 0x28, "Resonance", false }, { 0x29, "Drive", false }, { 0x2A, "Keytrack", false } },
+                                 { { 0x2B, "Mod 1", false }, { 0x2D, "Mod Src", true }, { 0x2C, "Ctrl 1", false }, { 0x2E, "Ctrl Src", true } },
+                                 { { 0x2F, "Mod 2", false }, { 0x31, "Mod Src", true }, { 0x30, "Ctrl 2", false }, { 0x32, "Ctrl Src", true } } } },
+            { "Ampli",         { { { 0x35, "Volume", false }, { 0x3A, "Pan", false }, { 0x6C, "Pattern", true } },
+                                 { { 0x36, "Vol Mod", false }, { 0x38, "Mod Src", true }, { 0x37, "Vol Ctrl", false }, { 0x39, "Ctrl Src", true } },
+                                 { { 0x3B, "Pan Mod", false }, { 0x3D, "Mod Src", true }, { 0x3C, "Pan Ctrl", false }, { 0x3E, "Ctrl Src", true } } } },
+            { "Enveloppe 1",   { { { 0x3F, "Attack", false }, { 0x40, "Decay", false }, { 0x41, "Sustain", false }, { 0x42, "Release", false }, { 0x43, "Shape", false } } } },
+            { "Enveloppe 2",   { { { 0x45, "Attack", false }, { 0x46, "Decay", false }, { 0x47, "Sustain", false }, { 0x48, "Release", false }, { 0x49, "Shape", false } } } },
+            { "LFO 1",         { { { 0x4B, "Speed", false }, { 0x4C, "Shape", true }, { 0x4D, "Sync", true }, { 0x4E, "One Shot", true } } } },
+            { "LFO 2",         { { { 0x4F, "Speed", false }, { 0x50, "Shape", true }, { 0x51, "Sync", true }, { 0x52, "Mod", false }, { 0x53, "Mod Src", false } } } },
+            { "Sortie",        { { { 0x55, "Dry Out", true }, { 0x56, "FX", true }, { 0x57, "FX Send", false }, { 0x5E, "XOR", true } },
+                                 { { 0x58, "Tuned Chn", true }, { 0x59, "Transpose", false }, { 0x5A, "Low Key", false }, { 0x5B, "High Key", false } } } },
+        };
+        return sections;
+    }
+
+    // Names of the 11 effect parameters, per effect type (docs/SYSEX.md)
+    const char* fxParamName (int type, int index)
+    {
+        static const char* names[9][11] = {
+            { },
+            { "Speed", "Depth", nullptr, "Delay" },
+            { "Speed", "Depth", nullptr, nullptr, "Feedback", nullptr, nullptr, nullptr, "Polarity" },
+            { "Speed", "Depth", nullptr, nullptr, "Feedback", "Center", "Spacing", nullptr, "Polarity" },
+            { nullptr, "Drive", "Post Gain", nullptr, nullptr, "Cutoff" },
+            { nullptr, nullptr, nullptr, "Length", "Feedback", "Cutoff", nullptr, nullptr, "Polarity", "Auto Pan", "Sync" },
+            { "Speed", "Depth", "Sync", "Length", "Feedback", "Lo Cut", "Hi Cut", "Spread" },
+            { "Size", "Shape", "Decay", "Predelay", nullptr, "Lo Cut", "Hi Cut", nullptr, "Diffusion", "Damping" },
+            { nullptr, nullptr, nullptr, nullptr, "S&H Rate", "Drive", "Gain" },
+        };
+        return type >= 0 && type < 9 && index >= 0 && index < 11 ? names[type][index] : nullptr;
+    }
+
+    std::vector<std::string> soundNames()
+    {
+        std::vector<std::string> n;
+        for (int i = 1; i <= 24; ++i)
+            n.push_back ("Son " + ui::twoDigits (i).toStdString());
+        return n;
+    }
+
+    juce::String shortShape (int value)
+    {
+        auto names = ra::valueNames (ra::Object::sound, 0x01);
+        return value >= 0 && value < (int) names.size() ? juce::String (names[(size_t) value]) : juce::String (value);
+    }
+}
+
+//==============================================================================
+// SON
+
+int SoundPage::Content::layout (int width)
+{
+    int x = 0, y = 0, rowHeight = 0;
+    const int gap = 10;
+
+    for (int c = 0; c < cards.size(); ++c)
+    {
+        auto* card = cards[c];
+        auto& rows = cells[(size_t) c];
+        auto* def = &soundSections()[(size_t) c];
+
+        int maxCols = 0;
+        for (auto& r : def->rows) maxCols = std::max (maxCols, (int) r.size());
+        int w = maxCols * cellW + 16;
+        int h = card->titleHeight() + (int) def->rows.size() * cellH + 8;
+
+        if (x > 0 && x + w > width)
+        {
+            x = 0;
+            y += rowHeight + gap;
+            rowHeight = 0;
+        }
+        card->setBounds (x, y, w, h);
+
+        size_t n = 0;
+        for (size_t r = 0; r < def->rows.size(); ++r)
+            for (size_t i = 0; i < def->rows[r].size(); ++i)
+                if (n < rows.size())
+                    rows[n++]->setBounds (8 + (int) i * cellW, card->titleHeight() + (int) r * cellH, cellW, cellH);
+
+        x += w + gap;
+        rowHeight = std::max (rowHeight, h);
+    }
+    return y + rowHeight + 4;
+}
+
+SoundPage::SoundPage (Engine& e, Library& l) : engine (e), library (l)
+{
+    for (int i = 0; i < 24; ++i)
+    {
+        auto* b = soundButtons.add (new juce::TextButton (ui::twoDigits (i + 1)));
+        b->setClickingTogglesState (true);
+        b->setRadioGroupId (1001);
+        b->setColour (juce::TextButton::buttonOnColourId, ui::accent.darker (0.3f));
+        b->onClick = [this, i] { selectSound (i); };
+        addAndMakeVisible (b);
+    }
+
+    title.setFont (ui::font (20.0f, true));
+    addAndMakeVisible (title);
+
+    for (auto* b : { &play, &save, &load, &copy, &paste, &saveOk, &saveCancel })
+        addAndMakeVisible (b);
+    ui::styleBig (play, true);
+    play.onClick = [this] { engine.playSound (sound); };
+    copy.onClick = [this]
+    {
+        clipboard = engine.getKit().soundData (sound);
+        status.show ("Son "_fr + ui::twoDigits (sound + 1) + " copié. Choisis un autre son, puis « Coller »."_fr);
+    };
+    paste.onClick = [this]
+    {
+        if (clipboard.empty())
+            status.show ("Rien à coller : copie d'abord un son."_fr, ui::warning);
+        else
+        {
+            status.show ("Envoi…"_fr, ui::dim);
+            engine.sendSound (clipboard, sound);
+        }
+    };
+    load.onClick = [this] { showLoadMenu(); };
+
+    saveName.setFont (ui::font (15.0f));
+    addChildComponent (saveName);
+    saveOk.setVisible (false);
+    saveCancel.setVisible (false);
+    auto showSave = [this] (bool show)
+    {
+        saveName.setVisible (show);
+        saveOk.setVisible (show);
+        saveCancel.setVisible (show);
+        save.setVisible (! show);
+        resized();
+        if (show) saveName.grabKeyboardFocus();
+    };
+    save.onClick = [this, showSave]
+    {
+        saveName.setText (juce::String (engine.getKit().name()).trim() + " - son " + ui::twoDigits (sound + 1));
+        showSave (true);
+    };
+    saveCancel.onClick = [showSave] { showSave (false); };
+    saveOk.onClick = [this, showSave]
+    {
+        auto file = library.saveSound (engine.getKit().soundData (sound), saveName.getText());
+        showSave (false);
+        if (file.existsAsFile())
+            status.show ("Enregistré dans Mes sons : "_fr + file.getFileNameWithoutExtension(), ui::accent);
+        else
+            status.show ("Le son n'a pas pu être enregistré."_fr, ui::bad);
+    };
+    saveName.onReturnKey = [this] { saveOk.triggerClick(); };
+
+    addAndMakeVisible (status);
+
+    // the controls, built from the section table
+    for (auto& section : soundSections())
+    {
+        auto* card = content.cards.add (new ui::Card (juce::String::fromUTF8 (section.title)));
+        content.addAndMakeVisible (card);
+        content.cells.emplace_back();
+
+        for (auto& row : section.rows)
+            for (auto& d : row)
+            {
+                Param p { d.address };
+                juce::Component* c = nullptr;
+                if (d.choice)
+                {
+                    auto* ch = new ui::Choice (d.label, ra::valueNames (ra::Object::sound, d.address));
+                    ch->onChange = [this, a = d.address] (int v) { engine.setSoundParameter (sound, a, v); };
+                    p.choice = ch;
+                    c = ch;
+                }
+                else
+                {
+                    auto* k = new ui::Knob (d.label);
+                    k->onChange = [this, a = d.address] (int v) { engine.setSoundParameter (sound, a, v); };
+                    p.knob = k;
+                    c = k;
+                }
+                controls.add (c);
+                card->addAndMakeVisible (c);
+                content.cells.back().push_back (c);
+                params.push_back (p);
+            }
+    }
+
+    viewport.setViewedComponent (&content, false);
+    viewport.setScrollBarsShown (true, false);
+    addAndMakeVisible (viewport);
+
+    engine.addListener (this);
+    selectSound (0);
+}
+
+SoundPage::~SoundPage()   { engine.removeListener (this); }
+
+void SoundPage::selectSound (int s)
+{
+    sound = juce::jlimit (0, 23, s);
+    soundButtons[sound]->setToggleState (true, juce::dontSendNotification);
+    status.show ({});
+    refresh();
+}
+
+void SoundPage::refresh()
+{
+    const auto& kit = engine.getKit();
+    title.setText ("Son "_fr + ui::twoDigits (sound + 1) + "   " + shortShape (kit.soundValue (sound, 0x01))
+                   + " / " + shortShape (kit.soundValue (sound, 0x10)), juce::dontSendNotification);
+    for (auto& p : params)
+    {
+        int v = kit.soundValue (sound, p.address);
+        if (p.knob != nullptr)   p.knob->setValue (v);
+        if (p.choice != nullptr) p.choice->setValue (v);
+    }
+}
+
+void SoundPage::kitChanged (const ra::Kit::Change& c)
+{
+    using W = ra::Kit::Change::What;
+    if (c.what == W::whole || (c.what == W::sound && c.index == sound))
+        refresh();
+}
+
+void SoundPage::taskFinished (const juce::String& task, bool, const juce::String&)
+{
+    if (task == "sendSound")
+        status.show ({});   // the result is in the status bar
+}
+
+void SoundPage::showLoadMenu()
+{
+    auto sounds = library.sounds();
+    if (sounds.isEmpty())
+    {
+        status.show ("Pas encore de son enregistré : utilise « Enregistrer ce son »."_fr, ui::warning);
+        return;
+    }
+    juce::PopupMenu menu;
+    for (int i = 0; i < sounds.size(); ++i)
+        menu.addItem (i + 1, sounds[i].title);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&load), [this, sounds] (int r)
+    {
+        if (r <= 0) return;
+        if (auto data = Library::loadSound (sounds[r - 1].file))
+        {
+            status.show ("Envoi de « "_fr + sounds[r - 1].title + " » dans le son "_fr + ui::twoDigits (sound + 1) + "…"_fr, ui::dim);
+            engine.sendSound (*data, sound);
+        }
+        else
+            status.show ("Ce fichier ne contient pas de son lisible."_fr, ui::bad);
+    });
+}
+
+void SoundPage::paint (juce::Graphics& g)   { g.fillAll (ui::background); }
+
+void SoundPage::resized()
+{
+    auto r = getLocalBounds().reduced (12);
+    auto top = r.removeFromTop (64);
+    auto grid = top.removeFromLeft (12 * 36);
+    for (int i = 0; i < 24; ++i)
+        soundButtons[i]->setBounds (grid.getX() + (i % 12) * 36, grid.getY() + (i / 12) * 32, 34, 30);
+    top.removeFromLeft (16);
+    title.setBounds (top.removeFromTop (30));
+    auto buttons = top.removeFromTop (30);
+    play.setBounds (buttons.removeFromLeft (120)); buttons.removeFromLeft (8);
+    if (save.isVisible())
+    {
+        save.setBounds (buttons.removeFromLeft (170)); buttons.removeFromLeft (8);
+    }
+    else
+    {
+        saveName.setBounds (buttons.removeFromLeft (220)); buttons.removeFromLeft (4);
+        saveOk.setBounds (buttons.removeFromLeft (44)); buttons.removeFromLeft (4);
+        saveCancel.setBounds (buttons.removeFromLeft (80)); buttons.removeFromLeft (8);
+    }
+    load.setBounds (buttons.removeFromLeft (140)); buttons.removeFromLeft (8);
+    copy.setBounds (buttons.removeFromLeft (80)); buttons.removeFromLeft (4);
+    paste.setBounds (buttons.removeFromLeft (80));
+
+    r.removeFromTop (6);
+    status.setBounds (r.removeFromTop (24));
+    r.removeFromTop (6);
+    viewport.setBounds (r);
+    int w = r.getWidth() - viewport.getScrollBarThickness() - 2;
+    content.setSize (w, content.layout (w));
+}
+
+//==============================================================================
+// KIT
+
+KitPage::Pad::Pad (KitPage& o, int i) : ui::Card(), owner (o), index (i)
+{
+    number.setText (ui::twoDigits (i + 1), juce::dontSendNotification);
+    number.setFont (ui::font (20.0f, true));
+    addAndMakeVisible (number);
+    number.setInterceptsMouseClicks (false, false);
+    shapes.setInterceptsMouseClicks (false, false);
+    shapes.setFont (ui::font (12.0f));
+    shapes.setColour (juce::Label::textColourId, ui::dim);
+    shapes.setMinimumHorizontalScale (0.6f);
+    addAndMakeVisible (shapes);
+
+    play.setButtonText (juce::String::fromUTF8 ("\xe2\x96\xb6"));
+    ui::styleBig (play, true);
+    play.onClick = [this] { owner.selectPad (index); owner.engine.playSound (index); };
+    edit.setButtonText ("Éditer"_fr);
+    edit.onClick = [this] { if (owner.onEditSound) owner.onEditSound (index); };
+    addAndMakeVisible (play);
+    addAndMakeVisible (edit);
+
+    volume.onChange = [this] (int v) { owner.engine.setSoundParameter (index, 0x35, v); };
+    pan.onChange = [this] (int v) { owner.engine.setSoundParameter (index, 0x3A, v); };
+    addAndMakeVisible (volume);
+    addAndMakeVisible (pan);
+
+    out = std::make_unique<ui::Choice> ("Sortie", ra::valueNames (ra::Object::sound, 0x55));
+    out->onChange = [this] (int v) { owner.engine.setSoundParameter (index, 0x55, v); };
+    addAndMakeVisible (*out);
+}
+
+void KitPage::Pad::resized()
+{
+    auto r = getLocalBounds().reduced (8, 6);
+    auto top = r.removeFromTop (26);
+    number.setBounds (top.removeFromLeft (40));
+    play.setBounds (top.removeFromRight (34));
+    top.removeFromRight (4);
+    edit.setBounds (top.removeFromRight (58));
+    shapes.setBounds (r.removeFromTop (16));
+    auto knobs = r.removeFromTop (juce::jmax (60, r.getHeight() - 46));
+    volume.setBounds (knobs.removeFromLeft (knobs.getWidth() / 2));
+    pan.setBounds (knobs);
+    out->setBounds (r.removeFromTop (44));
+}
+
+void KitPage::Pad::mouseUp (const juce::MouseEvent&)
+{
+    owner.selectPad (index);
+    owner.engine.playSound (index);
+}
+
+void KitPage::Pad::paintOverChildren (juce::Graphics& g)
+{
+    if (selected)
+    {
+        g.setColour (ui::accent);
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), 8.0f, 2.0f);
+    }
+}
+
+KitPage::KitPage (Engine& e) : engine (e)
+{
+    addAndMakeVisible (programCard);
+    programCard.addAndMakeVisible (programBox);
+    programBox.onChange = [this]
+    {
+        if (programBox.getSelectedId() > 0)
+            engine.selectProgram (programBox.getSelectedId() - 1);
+    };
+    programCard.addAndMakeVisible (reread);
+    reread.onClick = [this] { engine.readKit(); };
+
+    nameLabel.setText ("Nom", juce::dontSendNotification);
+    nameLabel.setColour (juce::Label::textColourId, ui::dim);
+    programCard.addAndMakeVisible (nameLabel);
+    name.setFont (ui::font (16.0f));
+    name.setInputRestrictions (16);
+    name.onReturnKey = [this] { engine.setKitName (name.getText()); };
+    name.onFocusLost = [this] { if (name.getText() != juce::String (engine.getKit().name())) engine.setKitName (name.getText()); };
+    programCard.addAndMakeVisible (name);
+
+    midiMode = std::make_unique<ui::Choice> ("Mode MIDI", ra::valueNames (ra::Object::program, 0x11));
+    midiMode->onChange = [this] (int v) { engine.setProgramParameter (0x11, v); };
+    programCard.addAndMakeVisible (*midiMode);
+
+    const char* triggerNames[3] = { "Trigger A", "Trigger B", "Trigger C" };
+    for (int t = 0; t < 3; ++t)
+    {
+        triggerSound[(size_t) t] = std::make_unique<ui::Choice> (triggerNames[t], soundNames());
+        triggerSound[(size_t) t]->onChange = [this, t] (int v) { engine.setProgramParameter (0x14 + 2 * t, v); };
+        programCard.addAndMakeVisible (*triggerSound[(size_t) t]);
+        triggerVelocity[(size_t) t] = std::make_unique<ui::Knob> ("Vélocité"_fr);
+        triggerVelocity[(size_t) t]->onChange = [this, t] (int v) { engine.setProgramParameter (0x15 + 2 * t, v); };
+        programCard.addAndMakeVisible (*triggerVelocity[(size_t) t]);
+    }
+
+    hint.setText ("Les changements partent tout de suite vers le RackAttack, sans être sauvegardés.\n"_fr
+                  "Pour les garder : Shift + Store sur la machine. Pour revenir en arrière : Shift + Recall."_fr,
+                  juce::dontSendNotification);
+    hint.setFont (ui::font (13.0f));
+    hint.setColour (juce::Label::textColourId, ui::dim);
+    hint.setJustificationType (juce::Justification::topLeft);
+    programCard.addAndMakeVisible (hint);
+
+    for (int i = 0; i < 24; ++i)
+        addAndMakeVisible (pads.add (new Pad (*this, i)));
+
+    fillPrograms();
+    engine.addListener (this);
+    refresh();
+    selectPad (0);
+}
+
+KitPage::~KitPage()   { engine.removeListener (this); }
+
+void KitPage::selectPad (int i)
+{
+    selectedPad = i;
+    for (auto* p : pads)
+    {
+        p->selected = p->index == i;
+        p->repaint();
+    }
+}
+
+void KitPage::fillPrograms()
+{
+    programBox.clear (juce::dontSendNotification);
+    const auto& names = engine.getProgramNames();
+    for (int p = 0; p < 50; ++p)
+        programBox.addItem ("P" + ui::twoDigits (p + 1) + (names[p].isNotEmpty() ? "   " + names[p] : juce::String()), p + 1);
+    if (engine.getCurrentProgram() >= 0)
+        programBox.setSelectedId (engine.getCurrentProgram() + 1, juce::dontSendNotification);
+    else
+        programBox.setText ("Programme ?", juce::dontSendNotification);
+}
+
+void KitPage::refreshPad (int i)
+{
+    const auto& kit = engine.getKit();
+    auto* p = pads[i];
+    p->shapes.setText (shortShape (kit.soundValue (i, 0x01)) + " / " + shortShape (kit.soundValue (i, 0x10)), juce::dontSendNotification);
+    p->volume.setValue (kit.soundValue (i, 0x35));
+    p->pan.setValue (kit.soundValue (i, 0x3A));
+    p->out->setValue (kit.soundValue (i, 0x55));
+}
+
+void KitPage::refresh()
+{
+    const auto& kit = engine.getKit();
+    if (! name.hasKeyboardFocus (true))
+        name.setText (juce::String (kit.name()), juce::dontSendNotification);
+    midiMode->setValue (kit.programValue (0x11));
+    for (int t = 0; t < 3; ++t)
+    {
+        triggerSound[(size_t) t]->setValue (kit.programValue (0x14 + 2 * t));
+        triggerVelocity[(size_t) t]->setValue (kit.programValue (0x15 + 2 * t));
+    }
+    for (int i = 0; i < 24; ++i)
+        refreshPad (i);
+}
+
+void KitPage::kitChanged (const ra::Kit::Change& c)
+{
+    using W = ra::Kit::Change::What;
+    if (c.what == W::sound)
+        refreshPad (c.index);
+    else if (c.what == W::program || c.what == W::whole)
+        refresh();
+}
+
+void KitPage::taskFinished (const juce::String& task, bool, const juce::String&)
+{
+    if (task == "kit" || task == "connect" || task == "names" || task == "backup" || task == "sendKit")
+    {
+        fillPrograms();
+        refresh();
+    }
+}
+
+void KitPage::resized()
+{
+    auto r = getLocalBounds().reduced (12);
+    auto left = r.removeFromLeft (300);
+    r.removeFromLeft (12);
+    programCard.setBounds (left);
+
+    auto c = programCard.getLocalBounds().reduced (12);
+    c.removeFromTop (programCard.titleHeight() - 4);
+    auto row = c.removeFromTop (30);
+    reread.setBounds (row.removeFromRight (70));
+    row.removeFromRight (6);
+    programBox.setBounds (row);
+    c.removeFromTop (12);
+    nameLabel.setBounds (c.removeFromTop (18));
+    name.setBounds (c.removeFromTop (30));
+    c.removeFromTop (10);
+    midiMode->setBounds (c.removeFromTop (48));
+    c.removeFromTop (10);
+    for (int t = 0; t < 3; ++t)
+    {
+        auto tr = c.removeFromTop (cellH);
+        triggerSound[(size_t) t]->setBounds (tr.removeFromLeft (170).withSizeKeepingCentre (170, 48));
+        triggerVelocity[(size_t) t]->setBounds (tr.removeFromLeft (cellW));
+    }
+    c.removeFromTop (10);
+    hint.setBounds (c);
+
+    const int cols = 6, rows = 4, gap = 8;
+    int pw = (r.getWidth() - gap * (cols - 1)) / cols;
+    int ph = (r.getHeight() - gap * (rows - 1)) / rows;
+    for (int i = 0; i < 24; ++i)
+        pads[i]->setBounds (r.getX() + (i % cols) * (pw + gap), r.getY() + (i / cols) * (ph + gap), pw, ph);
+}
+
+//==============================================================================
+// EFFETS
+
+EffectsPage::Column::Column (EffectsPage& o, int i) : ui::Card ("FX" + juce::String (i + 1)), owner (o), index (i)
+{
+    type = std::make_unique<ui::Choice> ("Type", ra::valueNames (ra::Object::effect, 0x00));
+    type->onChange = [this] (int v) { owner.engine.setEffectParameter (index, 0x00, v); refresh(); };
+    addAndMakeVisible (*type);
+    out = std::make_unique<ui::Choice> ("Sortie", ra::valueNames (ra::Object::effect, 0x01));
+    out->onChange = [this] (int v) { owner.engine.setEffectParameter (index, 0x01, v); };
+    addAndMakeVisible (*out);
+    for (int k = 0; k < 11; ++k)
+    {
+        auto* knob = knobs.add (new ui::Knob ({}));
+        knob->onChange = [this, k] (int v) { owner.engine.setEffectParameter (index, 0x02 + k, v); };
+        addChildComponent (knob);
+    }
+}
+
+void EffectsPage::Column::refresh()
+{
+    const auto& kit = owner.engine.getKit();
+    int t = kit.effectValue (index, 0x00);
+    type->setValue (t);
+    out->setValue (kit.effectValue (index, 0x01));
+    for (int k = 0; k < 11; ++k)
+    {
+        auto* n = fxParamName (t, k);
+        knobs[k]->setVisible (n != nullptr);
+        if (n != nullptr)
+        {
+            knobs[k]->label.setText (n, juce::dontSendNotification);
+            knobs[k]->setValue (kit.effectValue (index, 0x02 + k));
+        }
+    }
+    resized();
+}
+
+void EffectsPage::Column::resized()
+{
+    auto r = getLocalBounds().reduced (10);
+    r.removeFromTop (titleHeight() - 6);
+    type->setBounds (r.removeFromTop (48));
+    out->setBounds (r.removeFromTop (48));
+    r.removeFromTop (8);
+    int x = 0, y = 0;
+    int cols = juce::jmax (1, r.getWidth() / cellW);
+    for (auto* k : knobs)
+        if (k->isVisible())
+        {
+            k->setBounds (r.getX() + x * cellW, r.getY() + y * cellH, cellW, cellH);
+            if (++x >= cols) { x = 0; ++y; }
+        }
+}
+
+EffectsPage::EffectsPage (Engine& e) : engine (e)
+{
+    for (int i = 0; i < 4; ++i)
+        addAndMakeVisible (columns.add (new Column (*this, i)));
+    hint.setText ("Delay, ModDelay et Reverb ne marchent que sur FX1 et FX2. Les sons choisissent leur effet dans Son > Sortie."_fr,
+                  juce::dontSendNotification);
+    hint.setColour (juce::Label::textColourId, ui::dim);
+    addAndMakeVisible (hint);
+    engine.addListener (this);
+    for (auto* c : columns) c->refresh();
+}
+
+EffectsPage::~EffectsPage()   { engine.removeListener (this); }
+
+void EffectsPage::kitChanged (const ra::Kit::Change& c)
+{
+    using W = ra::Kit::Change::What;
+    if (c.what == W::effect && c.index >= 0 && c.index < 4)
+        columns[c.index]->refresh();
+    else if (c.what == W::whole)
+        for (auto* col : columns) col->refresh();
+}
+
+void EffectsPage::resized()
+{
+    auto r = getLocalBounds().reduced (12);
+    hint.setBounds (r.removeFromBottom (24));
+    r.removeFromBottom (8);
+    int w = (r.getWidth() - 3 * 10) / 4;
+    for (int i = 0; i < 4; ++i)
+        columns[i]->setBounds (r.getX() + i * (w + 10), r.getY(), w, r.getHeight());
+}
+
+//==============================================================================
+// BIBLIOTHÈQUE
+
+void LibraryPage::ProgramList::paintListBoxItem (int row, juce::Graphics& g, int w, int h, bool selected)
+{
+    if (selected)
+        g.fillAll (ui::accent.withAlpha (0.25f));
+    bool current = row == owner.engine.getCurrentProgram();
+    g.setColour (current ? ui::accent : ui::text);
+    g.setFont (ui::font (15.0f, current));
+    auto name = owner.engine.getProgramNames()[row];
+    g.drawText ("P" + ui::twoDigits (row + 1) + "    " + (name.isNotEmpty() ? name : juce::String (juce::CharPointer_UTF8 ("\xe2\x80\x94"))),
+                10, 0, w - 20, h, juce::Justification::centredLeft);
+}
+
+void LibraryPage::ProgramList::listBoxItemDoubleClicked (int row, const juce::MouseEvent&)
+{
+    owner.status.show ("Le RackAttack passe sur le programme P"_fr + ui::twoDigits (row + 1) + "…"_fr, ui::dim);
+    owner.engine.selectProgram (row);
+}
+
+void LibraryPage::FileList::paintListBoxItem (int row, juce::Graphics& g, int w, int h, bool selected)
+{
+    if (row < 0 || row >= owner.items.size())
+        return;
+    if (selected)
+        g.fillAll (ui::accent.withAlpha (0.25f));
+    auto& item = owner.items.getReference (row);
+    g.setColour (ui::text);
+    g.setFont (ui::font (15.0f));
+    g.drawText (item.title, 10, 0, w - 200, h, juce::Justification::centredLeft);
+    g.setColour (ui::dim);
+    g.setFont (ui::font (12.0f));
+    g.drawText (item.group, w - 190, 0, 180, h, juce::Justification::centredRight);
+}
+
+LibraryPage::LibraryPage (Engine& e, Library& l, std::function<int()> sel)
+    : engine (e), library (l), selectedSound (std::move (sel))
+{
+    addAndMakeVisible (machineCard);
+    addAndMakeVisible (computerCard);
+
+    for (auto* b : { &readNames, &backup })
+        machineCard.addAndMakeVisible (b);
+    ui::styleBig (backup, true);
+    readNames.onClick = [this]
+    {
+        askFirst ("Pour lire les noms, le RackAttack passe par ses 50 programmes (environ 30 secondes)."_fr,
+                  [this] { engine.readProgramNames(); });
+    };
+    backup.onClick = [this]
+    {
+        askFirst ("Le RackAttack va passer par ses 50 programmes pour tout copier sur l'ordinateur (2 à 3 minutes)."_fr,
+                  [this]
+        {
+            auto folder = library.newBackupFolder();
+            engine.backupAllPrograms (folder);
+        });
+    };
+    machineHint.setText ("Double-clic sur un programme : le RackAttack passe dessus."_fr, juce::dontSendNotification);
+    machineHint.setColour (juce::Label::textColourId, ui::dim);
+    machineCard.addAndMakeVisible (machineHint);
+    programs.setRowHeight (26);
+    programs.setColour (juce::ListBox::backgroundColourId, ui::panelLight);
+    machineCard.addAndMakeVisible (programs);
+
+    confirmText.setFont (ui::font (14.0f));
+    confirmText.setColour (juce::Label::textColourId, ui::warning);
+    confirmText.setJustificationType (juce::Justification::topLeft);
+    machineCard.addChildComponent (confirmText);
+    machineCard.addChildComponent (confirmYes);
+    machineCard.addChildComponent (confirmNo);
+    ui::styleBig (confirmYes, true);
+    confirmYes.onClick = [this]
+    {
+        for (auto* c : std::initializer_list<juce::Component*> { &confirmText, &confirmYes, &confirmNo }) c->setVisible (false);
+        resized();
+        if (confirmed) confirmed();
+        confirmed = nullptr;
+    };
+    confirmNo.onClick = [this]
+    {
+        for (auto* c : std::initializer_list<juce::Component*> { &confirmText, &confirmYes, &confirmNo }) c->setVisible (false);
+        resized();
+        confirmed = nullptr;
+    };
+
+    for (auto* b : { &showKits, &showSounds })
+    {
+        b->setClickingTogglesState (true);
+        b->setRadioGroupId (2001);
+        b->setColour (juce::TextButton::buttonOnColourId, ui::accent.darker (0.3f));
+        b->onClick = [this] { refreshFiles(); };
+        computerCard.addAndMakeVisible (b);
+    }
+    showKits.setToggleState (true, juce::dontSendNotification);
+
+    files.setRowHeight (26);
+    files.setColour (juce::ListBox::backgroundColourId, ui::panelLight);
+    computerCard.addAndMakeVisible (files);
+    emptyHint.setColour (juce::Label::textColourId, ui::dim);
+    emptyHint.setJustificationType (juce::Justification::centred);
+    emptyHint.setInterceptsMouseClicks (false, false);
+    computerCard.addAndMakeVisible (emptyHint);
+
+    for (auto* b : { &saveKit, &sendButton, &openFolder, &saveOk, &saveCancel })
+        computerCard.addAndMakeVisible (b);
+    ui::styleBig (sendButton, true);
+    saveName.setFont (ui::font (15.0f));
+    computerCard.addChildComponent (saveName);
+    saveOk.setVisible (false);
+    saveCancel.setVisible (false);
+
+    auto showSave = [this] (bool show)
+    {
+        saveName.setVisible (show);
+        saveOk.setVisible (show);
+        saveCancel.setVisible (show);
+        saveKit.setVisible (! show);
+        resized();
+        if (show) saveName.grabKeyboardFocus();
+    };
+    saveKit.onClick = [this, showSave]
+    {
+        if (! engine.getKit().isComplete())
+        {
+            status.show ("Le kit n'est pas encore lu en entier : branche le RackAttack ou « Relire » dans Kit."_fr, ui::warning);
+            return;
+        }
+        saveName.setText (juce::String (engine.getKit().name()).trim());
+        showSave (true);
+    };
+    saveCancel.onClick = [showSave] { showSave (false); };
+    saveOk.onClick = [this, showSave]
+    {
+        auto file = library.saveKit (engine.getKit(), saveName.getText());
+        showSave (false);
+        showKits.setToggleState (true, juce::dontSendNotification);
+        refreshFiles();
+        if (file.existsAsFile())
+            status.show ("Enregistré dans Mes kits : "_fr + file.getFileNameWithoutExtension(), ui::accent);
+        else
+            status.show ("Le kit n'a pas pu être enregistré."_fr, ui::bad);
+    };
+    saveName.onReturnKey = [this] { saveOk.triggerClick(); };
+
+    sendButton.onClick = [this] { sendSelected (files.getSelectedRow()); };
+    openFolder.onClick = [this] { library.getRoot().createDirectory(); library.getRoot().startAsProcess(); };
+
+    addAndMakeVisible (status);
+    engine.addListener (this);
+    refreshFiles();
+}
+
+LibraryPage::~LibraryPage()   { engine.removeListener (this); }
+
+void LibraryPage::askFirst (const juce::String& question, std::function<void()> then)
+{
+    if (engine.isBusy())
+    {
+        status.show ("Attends la fin de ce qui est en cours."_fr, ui::warning);
+        return;
+    }
+    confirmText.setText (question + "\nSi tu as modifié le kit en cours sans le sauvegarder, fais d'abord Shift + Store sur la machine."_fr,
+                         juce::dontSendNotification);
+    confirmed = std::move (then);
+    for (auto* c : std::initializer_list<juce::Component*> { &confirmText, &confirmYes, &confirmNo }) c->setVisible (true);
+    resized();
+}
+
+void LibraryPage::refreshFiles()
+{
+    bool kits = showKits.getToggleState();
+    items = kits ? library.kits() : library.sounds();
+    files.updateContent();
+    files.repaint();
+    emptyHint.setText (items.isEmpty() ? (kits ? "Aucun kit sur l'ordinateur pour l'instant. « Enregistrer le kit en cours » ou « Tout sauvegarder »."_fr
+                                              : "Aucun son enregistré pour l'instant. Page Son : « Enregistrer ce son »."_fr)
+                                       : juce::String(), juce::dontSendNotification);
+    sendButton.setButtonText (kits ? juce::String ("Envoyer au RackAttack")
+                                   : "Envoyer dans le son "_fr + ui::twoDigits (selectedSound() + 1));
+}
+
+void LibraryPage::sendSelected (int row)
+{
+    if (row < 0 || row >= items.size())
+    {
+        status.show ("Choisis d'abord un kit ou un son dans la liste."_fr, ui::warning);
+        return;
+    }
+    if (engine.isBusy())
+    {
+        status.show ("Attends la fin de ce qui est en cours."_fr, ui::warning);
+        return;
+    }
+    auto& item = items.getReference (row);
+    if (item.isSound)
+    {
+        if (auto data = Library::loadSound (item.file))
+        {
+            status.show ("Envoi de « "_fr + item.title + " »…"_fr, ui::dim);
+            engine.sendSound (*data, selectedSound());
+        }
+        else
+            status.show ("Ce fichier ne contient pas de son lisible."_fr, ui::bad);
+    }
+    else
+    {
+        if (auto kit = Library::loadKit (item.file))
+        {
+            status.show ("Envoi du kit « "_fr + item.title + " »…"_fr, ui::dim);
+            engine.sendKit (*kit);
+        }
+        else
+            status.show ("Ce fichier ne contient pas de kit lisible."_fr, ui::bad);
+    }
+}
+
+void LibraryPage::taskFinished (const juce::String& task, bool ok, const juce::String& message)
+{
+    if (task == "connect")
+    {
+        programs.updateContent();
+        programs.repaint();
+    }
+    juce::ignoreUnused (ok, message);
+    if (task == "names" || task == "backup" || task == "sendKit" || task == "sendSound" || task == "kit")
+    {
+        status.show ({});
+        programs.updateContent();
+        programs.repaint();
+        if (task == "backup")
+            refreshFiles();
+    }
+}
+
+void LibraryPage::progressChanged (int done, int total, const juce::String& what)
+{
+    juce::ignoreUnused (what);
+    if (total == 50)
+    {
+        programs.updateContent();   // the names appear as they are read
+        programs.repaint();
+        juce::ignoreUnused (done);
+    }
+}
+
+void LibraryPage::resized()
+{
+    auto r = getLocalBounds().reduced (12);
+    status.setBounds (r.removeFromBottom (28));
+    r.removeFromBottom (8);
+    auto left = r.removeFromLeft (r.getWidth() / 2 - 6);
+    r.removeFromLeft (12);
+    machineCard.setBounds (left);
+    computerCard.setBounds (r);
+
+    auto m = machineCard.getLocalBounds().reduced (12);
+    m.removeFromTop (machineCard.titleHeight() - 4);
+    auto row = m.removeFromTop (34);
+    readNames.setBounds (row.removeFromLeft (160));
+    row.removeFromLeft (8);
+    backup.setBounds (row.removeFromLeft (180));
+    if (confirmText.isVisible())
+    {
+        m.removeFromTop (8);
+        confirmText.setBounds (m.removeFromTop (60));
+        auto cr = m.removeFromTop (32);
+        confirmYes.setBounds (cr.removeFromLeft (130));
+        cr.removeFromLeft (8);
+        confirmNo.setBounds (cr.removeFromLeft (100));
+    }
+    m.removeFromTop (8);
+    machineHint.setBounds (m.removeFromBottom (22));
+    programs.setBounds (m);
+
+    auto c = computerCard.getLocalBounds().reduced (12);
+    c.removeFromTop (computerCard.titleHeight() - 4);
+    auto tabs = c.removeFromTop (32);
+    showKits.setBounds (tabs.removeFromLeft (100));
+    tabs.removeFromLeft (4);
+    showSounds.setBounds (tabs.removeFromLeft (100));
+    c.removeFromTop (8);
+    auto bottom = c.removeFromBottom (34);
+    if (saveKit.isVisible())
+    {
+        saveKit.setBounds (bottom.removeFromLeft (220));
+    }
+    else
+    {
+        saveName.setBounds (bottom.removeFromLeft (200));
+        bottom.removeFromLeft (4);
+        saveOk.setBounds (bottom.removeFromLeft (44));
+        bottom.removeFromLeft (4);
+        saveCancel.setBounds (bottom.removeFromLeft (80));
+    }
+    openFolder.setBounds (bottom.removeFromRight (150));
+    c.removeFromBottom (8);
+    sendButton.setBounds (c.removeFromBottom (34).removeFromLeft (260));
+    c.removeFromBottom (8);
+    files.setBounds (c);
+    emptyHint.setBounds (c.reduced (20));
+}

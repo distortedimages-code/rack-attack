@@ -1,6 +1,6 @@
-# Builds and tests RackAttack Labo on GitHub's Macs: no Mac tools needed locally.
+# Builds and tests RackAttack Editor on GitHub's Macs: no Mac tools needed locally.
 # The app is in the "Artifacts" of each run (Actions tab).
-name: labo
+name: app
 
 on:
   push:
@@ -22,10 +22,10 @@ jobs:
       - name: Package
         run: |
           mkdir -p out
-          APP="build/RackAttackLabo_artefacts/Release/RackAttack Labo.app"
+          APP="build/RackAttackEditor_artefacts/Release/RackAttack Editor.app"
           codesign --force --deep --sign - "$APP"
-          ditto -c -k --keepParent "$APP" out/RackAttack-Labo-mac.zip
+          ditto -c -k --keepParent "$APP" out/RackAttack-Editor-mac.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: RackAttack-Labo-mac
-          path: out/RackAttack-Labo-mac.zip
+          name: RackAttack-Editor-mac
+          path: out/RackAttack-Editor-mac.zip

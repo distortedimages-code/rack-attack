@@ -507,17 +507,13 @@ function fit (stage, w, h) {
   const readouts = [['25 CL', '1 CAFÉ', '440 HZ'], ['TAILLE 43', '1 SUR 2', 'ODEUR 7/10'], ['1 BANANE', '120 BPM', 'COURBE 31'], ['7 H 00', '60 BPM', 'EN RETARD'],
     ['SOIF 80 %', '3 FEUILLES', '50 HZ'], ['COIN 1,2 KHZ', '100 % CANARD', 'FLOTTE'], ['FACE A', '90 MIN', '-40 DB'], ['MIDRONOME ?!', 'MIDRONOME ?!', 'MIDRONOME ?!']];
   const stamps = ['OK', 'VU', 'OK !', 'BON'];
-  const phrases = ['Va te faire un café.', "T'as pas envie d'une bière ?", 'Il faut que tu ailles me chercher du poulet.', "Est-ce que t'as vu dehors ?",
-    "T'as pas vu ton midronome ?", "T'es sûr que le midronome n'est pas sous le carton ?", 'Je mesure, je mesure... Toi, tu bouges pas.',
-    "C'est le moment d'arroser les plantes.", "Si ça siffle, c'est normal. Enfin, je crois.", 'Une petite pause pipi ? Je garde la machine.', "J'en suis à trois bananes et demie.",
-    'Je crois que je vois un bout du midronome dépasser derrière toi.', 'Et si tu rangeais les câbles ? Le midronome est peut-être dessous.',
-    'Même Aphex Twin trouve ça inquiétant.', 'Elle te manque pas trop ta SidStation ?', 'Tu connais Yoann ? Il est génial !',
-    "C'est Yoann qui m'a créé !", 'Sommes-nous réellement libres de nos choix ?', 'Que devient la conscience après la mort ?',
-    'Le temps existe-t-il indépendamment de nous ?', 'La réalité existe-t-elle sans observateur ?', 'Pourquoi les neutrinos possèdent-ils une masse ?',
-    'La turbulence possède-t-elle une description mathématique universelle ?', "Le temps émerge-t-il de l'intrication quantique ?", 'Les constantes fondamentales peuvent-elles varier dans le temps ?',
-    "Pourquoi l'entropie initiale de l'univers était-elle si faible ?", 'La conscience nécessite-t-elle des phénomènes quantiques ?', 'Existe-t-il une limite fondamentale à la divisibilité spatiale ?',
-    "Les trous noirs conservent-ils toute l'information quantique ?", "Notre univers est-il une phase d'un système plus fondamental ?", 'Ça sent pas le cramé ?',
-    'Tu penses que je pourrais conclure ?'];
+  const phrases = ['Va te faire un café.', "T'as pas envie d'une bière ?", 'Il faut que tu ailles me chercher du poulet.',
+    "Est-ce que t'as vu dehors ?", "T'as pas vu ton midronome ?", "T'es sûr que le midronome n'est pas sous le carton ?",
+    'Je mesure, je mesure... Toi, tu bouges pas.', "C'est le moment d'arroser les plantes.", "Si ça siffle, c'est normal. Enfin, je crois.",
+    'Une petite pause pipi ? Je garde la machine.', "J'en suis à trois bananes et demie.", 'Je crois que je vois un bout du midronome dépasser derrière toi.',
+    'Et si tu rangeais les câbles ? Le midronome est peut-être dessous.', 'Même Aphex Twin trouve ça inquiétant.', 'Elle te manque pas trop ta SidStation ?',
+    'Tu connais Yoann ? Il est génial !', "C'est Yoann qui m'a créé !", 'Sommes-nous réellement libres de nos choix ?',
+    'Que devient la conscience après la mort ?', 'Le temps existe-t-il indépendamment de nous ?', 'Ça sent pas le cramé ?'];
   const kindOf = i => (i % 9 === 5 ? 7 : (i * 5 + 2) % 7);
   const SP = 36 * p, beltY = 236, ghostX = 300;
   let belt = W - 420, last = 0, t = 0, inspecting = -1, inspectT = 0, done = new Set(), phrase = 0, phraseT = 0, raf = 0;

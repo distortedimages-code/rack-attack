@@ -120,18 +120,7 @@ GhostShow::GhostShow()
     phrases.add ("Sommes-nous réellement libres de nos choix ?"_fr);
     phrases.add ("Que devient la conscience après la mort ?"_fr);
     phrases.add ("Le temps existe-t-il indépendamment de nous ?"_fr);
-    phrases.add ("La réalité existe-t-elle sans observateur ?"_fr);
-    phrases.add ("Pourquoi les neutrinos possèdent-ils une masse ?"_fr);
-    phrases.add ("La turbulence possède-t-elle une description mathématique universelle ?"_fr);
-    phrases.add ("Le temps émerge-t-il de l'intrication quantique ?"_fr);
-    phrases.add ("Les constantes fondamentales peuvent-elles varier dans le temps ?"_fr);
-    phrases.add ("Pourquoi l'entropie initiale de l'univers était-elle si faible ?"_fr);
-    phrases.add ("La conscience nécessite-t-elle des phénomènes quantiques ?"_fr);
-    phrases.add ("Existe-t-il une limite fondamentale à la divisibilité spatiale ?"_fr);
-    phrases.add ("Les trous noirs conservent-ils toute l'information quantique ?"_fr);
-    phrases.add ("Notre univers est-il une phase d'un système plus fondamental ?"_fr);
     phrases.add ("Ça sent pas le cramé ?"_fr);
-    phrases.add ("Tu penses que je pourrais conclure ?"_fr);
     setOpaque (true);
     reset();
 }

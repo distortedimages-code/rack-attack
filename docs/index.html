@@ -30,7 +30,7 @@
 <body>
 <main>
   <h1>RackAttack Editor</h1>
-  <p class="lead">Séquenceur, éditeur et bibliothèque pour le Waldorf RackAttack. Plug-in AU et VST3, et appli, pour Mac.</p>
+  <p class="lead">Séquenceur, éditeur, bibliothèque et simulateur pour le Waldorf RackAttack. Plug-in AU et VST3, et appli, pour Mac.</p>
 
   <a class="download" href="https://github.com/distortedimages-code/rack-attack/releases/latest/download/RackAttack-Editor-mac.dmg">Télécharger pour Mac</a>
   <p class="small">Toujours la dernière version · Mac Apple Silicon et Intel, macOS 11 ou plus récent ·
@@ -56,6 +56,16 @@
   <div class="card">
     L'appli ne sauvegarde jamais rien dans la mémoire du RackAttack. Pour garder un changement : <kbd>Shift</kbd> + <kbd>Store</kbd> sur la machine.
     Pour l'annuler : <kbd>Shift</kbd> + <kbd>Recall</kbd>.
+  </div>
+
+  <h2>Sans machine : le simulateur</h2>
+  <div class="card">
+    Pas de RackAttack sous la main ? <i>Outils → Mode simulation</i> (ou le bouton du branchement guidé) : le plug-in joue un RackAttack en logiciel, par sa sortie audio.
+  </div>
+  <div class="card">
+    Pour qu'il sonne comme une vraie machine : quelqu'un qui a le RackAttack lance <i>Outils → Mesurer mon RackAttack…</i>
+    (sorties Out 1/2 sur la carte son, environ 5 minutes, le plug-in guide tout), puis t'envoie le fichier <code>.ramesure</code>.
+    Tu le charges avec <i>Outils → Charger des mesures…</i>
   </div>
 
   <h2>Mises à jour</h2>

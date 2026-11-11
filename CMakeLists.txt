@@ -5,7 +5,7 @@ if(APPLE)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 endif()
 
-project(RackAttack VERSION 0.4.0 LANGUAGES C CXX)
+project(RackAttack VERSION 0.5.0 LANGUAGES C CXX)
 
 # GitHub repository whose releases the plug-in checks for updates (public releases).
 set(RA_UPDATE_REPO "distortedimages-code/rack-attack" CACHE STRING "owner/repo checked for updates (empty = no update check)")

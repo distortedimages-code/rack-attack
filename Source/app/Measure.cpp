@@ -1776,7 +1776,7 @@ namespace
 juce::File defaultFolder()
 {
     return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-        .getChildFile ("RackAttack Editor").getChildFile ("Mesures");
+        .getChildFile ("RackAttack").getChildFile ("Mesures");
 }
 
 juce::File save (const Result& r, const juce::File& folder, const juce::String& prefix)

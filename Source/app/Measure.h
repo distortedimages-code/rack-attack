@@ -243,7 +243,7 @@ private:
 
 //==============================================================================
 // The measurement file
-juce::File defaultFolder();                                   // Documents/RackAttack Editor/Mesures
+juce::File defaultFolder();                                   // Documents/RackAttack/Mesures
 juce::File save (const Result&, const juce::File& folder,     // returns the file written (or {})
                  const juce::String& prefix = "RackAttack-mesures-");
 bool load (const juce::File&, ra::synth::Calibration&, juce::String& error);

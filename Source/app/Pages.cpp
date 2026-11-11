@@ -58,22 +58,22 @@ namespace
     const std::vector<std::vector<Box>>& soundColumns()
     {
         static const std::vector<std::vector<Box>> columns {
-            { { "Oscillateur 1", { { { 0x01, "Shape", -1 }, { 0x02, "Pitch", -1 }, { 0x03, "Detune", -1 }, { 0x04, "Start", -1 }, { 0x09, "FM", -1 } },
-                                   { { 0x05, "Pitch Mod", 0x07 }, { 0x06, "Pitch Ctrl", 0x08 }, { 0x0A, "FM Mod", 0x0C }, { 0x0B, "FM Ctrl", 0x0D } } } },
-              { "Filtre",        { { { 0x26, "Type", -1 }, { 0x27, "Cutoff", -1 }, { 0x28, "Resonance", -1 }, { 0x29, "Drive", -1 }, { 0x2A, "Keytrack", -1 } },
-                                   { { 0x2B, "Mod 1", 0x2D }, { 0x2C, "Ctrl 1", 0x2E }, { 0x2F, "Mod 2", 0x31 }, { 0x30, "Ctrl 2", 0x32 } } } } },
-            { { "Oscillateur 2", { { { 0x10, "Shape", -1 }, { 0x11, "Pitch", -1 }, { 0x12, "Detune", -1 }, { 0x13, "Start", -1 } },
-                                   { { 0x14, "Pitch Mod", 0x16 }, { 0x15, "Pitch Ctrl", 0x17 } } } },
-              { "Mix / Crack",   { { { 0x1A, "Osc 1", -1 }, { 0x1B, "Osc 2", -1 }, { 0x1C, "Ringmod", -1 }, { 0x1D, "Crack", -1 } },
-                                   { { 0x24, "Crack Spd", -1 }, { 0x25, "Crack Len", -1 }, { 0x1E, "Osc 2 Mod", 0x20 }, { 0x1F, "Osc 2 Ctrl", 0x21 } } } } },
-            { { "Ampli",         { { { 0x35, "Volume", -1 }, { 0x3A, "Pan", -1 }, { 0x6C, "Pattern", -1 } },
-                                   { { 0x36, "Vol Mod", 0x38 }, { 0x37, "Vol Ctrl", 0x39 }, { 0x3B, "Pan Mod", 0x3D }, { 0x3C, "Pan Ctrl", 0x3E } } } },
-              { "Sortie",        { { { 0x55, "Dry Out", -1 }, { 0x56, "FX", -1 }, { 0x57, "FX Send", -1 }, { 0x5E, "XOR", -1 } },
-                                   { { 0x58, "Tuned Chn", -1 }, { 0x59, "Transpose", -1 }, { 0x5A, "Low Key", -1 }, { 0x5B, "High Key", -1 } } } } },
-            { { "Enveloppe 1",   { { { 0x3F, "Attack", -1 }, { 0x40, "Decay", -1 }, { 0x41, "Sustain", -1 }, { 0x42, "Release", -1 }, { 0x43, "Shape", -1 } } } },
-              { "Enveloppe 2",   { { { 0x45, "Attack", -1 }, { 0x46, "Decay", -1 }, { 0x47, "Sustain", -1 }, { 0x48, "Release", -1 }, { 0x49, "Shape", -1 } } } },
-              { "LFO 1",         { { { 0x4B, "Speed", -1 }, { 0x4C, "Shape", -1 }, { 0x4D, "Sync", -1 }, { 0x4E, "One Shot", -1 } } } },
-              { "LFO 2",         { { { 0x4F, "Speed", -1 }, { 0x50, "Shape", -1 }, { 0x51, "Sync", -1 }, { 0x52, "Mod", -1 }, { 0x53, "Mod Src", -1 } } } } },
+            { { "Oscillateur 1", { { { 0x01, "SHAPE", -1 }, { 0x02, "PITCH", -1 }, { 0x03, "DETUNE", -1 }, { 0x04, "START", -1 }, { 0x09, "FM", -1 } },
+                                   { { 0x05, "P.MOD", 0x07 }, { 0x06, "P.CTRL", 0x08 }, { 0x0A, "FM MOD", 0x0C }, { 0x0B, "FM CTL", 0x0D } } } },
+              { "Filtre",        { { { 0x26, "TYPE", -1 }, { 0x27, "CUTOFF", -1 }, { 0x28, "RESO", -1 }, { 0x29, "DRIVE", -1 }, { 0x2A, "KEYTRK", -1 } },
+                                   { { 0x2B, "MOD 1", 0x2D }, { 0x2C, "CTL 1", 0x2E }, { 0x2F, "MOD 2", 0x31 }, { 0x30, "CTL 2", 0x32 } } } } },
+            { { "Oscillateur 2", { { { 0x10, "SHAPE", -1 }, { 0x11, "PITCH", -1 }, { 0x12, "DETUNE", -1 }, { 0x13, "START", -1 } },
+                                   { { 0x14, "P.MOD", 0x16 }, { 0x15, "P.CTRL", 0x17 } } } },
+              { "Mix / Crack",   { { { 0x1A, "OSC 1", -1 }, { 0x1B, "OSC 2", -1 }, { 0x1C, "RING", -1 }, { 0x1D, "CRACK", -1 } },
+                                   { { 0x24, "C.SPEED", -1 }, { 0x25, "C.LEN", -1 }, { 0x1E, "O2 MOD", 0x20 }, { 0x1F, "O2 CTL", 0x21 } } } } },
+            { { "Ampli",         { { { 0x35, "VOLUME", -1 }, { 0x3A, "PAN", -1 }, { 0x6C, "PATTERN", -1 } },
+                                   { { 0x36, "V.MOD", 0x38 }, { 0x37, "V.CTRL", 0x39 }, { 0x3B, "PAN MOD", 0x3D }, { 0x3C, "PAN CTL", 0x3E } } } },
+              { "Sortie",        { { { 0x55, "OUT", -1 }, { 0x56, "FX", -1 }, { 0x57, "SEND", -1 }, { 0x5E, "XOR", -1 } },
+                                   { { 0x58, "TUNED", -1 }, { 0x59, "TRANSP", -1 }, { 0x5A, "LO KEY", -1 }, { 0x5B, "HI KEY", -1 } } } } },
+            { { "Enveloppe 1",   { { { 0x3F, "ATTACK", -1 }, { 0x40, "DECAY", -1 }, { 0x41, "SUSTAIN", -1 }, { 0x42, "RELEASE", -1 }, { 0x43, "SHAPE", -1 } } } },
+              { "Enveloppe 2",   { { { 0x45, "ATTACK", -1 }, { 0x46, "DECAY", -1 }, { 0x47, "SUSTAIN", -1 }, { 0x48, "RELEASE", -1 }, { 0x49, "SHAPE", -1 } } } },
+              { "LFO 1",         { { { 0x4B, "SPEED", -1 }, { 0x4C, "SHAPE", -1 }, { 0x4D, "SYNC", -1 }, { 0x4E, "1-SHOT", -1 } } } },
+              { "LFO 2",         { { { 0x4F, "SPEED", -1 }, { 0x50, "SHAPE", -1 }, { 0x51, "SYNC", -1 }, { 0x52, "MOD", -1 }, { 0x53, "MOD SRC", -1 } } } } },
         };
         return columns;
     }
@@ -88,7 +88,7 @@ namespace
         return ! ra::valueNames (ra::Object::sound, address).empty();
     }
 
-    constexpr int spotW = 68, knobRowH = 100, sourceRowH = 128, boxTitleH = 24, boxPad = 8;
+    constexpr int spotW = 68, knobRowH = 100, sourceRowH = 128, boxPad = 8;
 }
 
 void SoundPage::Content::layout (int width)
@@ -114,7 +114,7 @@ void SoundPage::Content::layout (int width)
         for (auto& box : columns[c])
         {
             auto& rows = cells[(size_t) card];
-            int h = boxTitleH;
+            int h = cards[card]->titleHeight();
             for (size_t r = 0; r < box.rows.size(); ++r)
             {
                 bool sources = false;
@@ -207,7 +207,7 @@ SoundPage::SoundPage (Engine& e, Library& l) : engine (e), library (l)
     for (auto& column : soundColumns())
         for (auto& box : column)
         {
-            auto* card = content.cards.add (new ui::Card (juce::String::fromUTF8 (box.title)));
+            auto* card = content.cards.add (new ui::Card (juce::String::fromUTF8 (box.title), true));
             content.addAndMakeVisible (card);
             content.cells.emplace_back();
             for (auto& row : box.rows)

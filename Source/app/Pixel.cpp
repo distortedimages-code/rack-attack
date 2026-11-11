@@ -134,16 +134,15 @@ void bar (juce::Graphics& g, juce::Rectangle<int> r, int blocks, int filled, juc
     }
 }
 
-void knob (juce::Graphics& g, juce::Rectangle<int> area, float pos, juce::Colour on, int p, float marker, juce::Colour body)
+void knob (juce::Graphics& g, juce::Rectangle<int> area, float pos, juce::Colour on, int p, float marker, juce::Colour)
 {
     const int size = juce::jmin (area.getWidth(), area.getHeight());
     if (size < 12)
         return;
     pos = juce::jlimit (0.0f, 1.0f, pos);
-    // a grid of p-sized squares centred on the knob
+    // one ring of p-sized squares, open at the bottom, lit up to the value
     const auto c = area.getCentre();
-    const float rArc = (float) size * 0.5f - (float) p * 0.5f;
-    const float rBody = rArc - 2.4f * (float) p;
+    const float r = (float) size * 0.5f - (float) p * 0.5f;
     const float a0 = -0.75f * juce::MathConstants<float>::pi, a1 = 0.75f * juce::MathConstants<float>::pi;
 
     std::set<std::pair<int, int>> done;
@@ -156,33 +155,25 @@ void knob (juce::Graphics& g, juce::Rectangle<int> area, float pos, juce::Colour
         g.fillRect (c.x + gx * p - p / 2, c.y + gy * p - p / 2, p, p);
     };
 
-    // value arc: lit up to the value, dark after
-    const int steps = juce::jmax (16, juce::roundToInt (rArc * 1.5f * juce::MathConstants<float>::pi / (float) p * 1.3f));
+    const int steps = juce::jmax (16, juce::roundToInt (r * 1.5f * juce::MathConstants<float>::pi / (float) p * 1.3f));
     for (int i = 0; i <= steps; ++i)
     {
         const float t = (float) i / (float) steps;
         const float a = a0 + (a1 - a0) * t;
-        put (rArc * std::sin (a), -rArc * std::cos (a), t <= pos + 1e-4f ? on : frame);
+        put (r * std::sin (a), -r * std::cos (a), t <= pos + 1e-4f ? on : faint);
     }
+
+    // where it stands: one square just inside the ring
+    const float av = a0 + (a1 - a0) * pos;
+    const float ri = r - 2.0f * (float) p;
+    put (ri * std::sin (av), -ri * std::cos (av), on, true);
+
+    // the sound's own value under a lock: a square just outside
     if (marker >= 0.0f)
     {
         const float a = a0 + (a1 - a0) * juce::jlimit (0.0f, 1.0f, marker);
-        put (rArc * std::sin (a), -rArc * std::cos (a), white, true);
-        put ((rArc + (float) p) * std::sin (a), -(rArc + (float) p) * std::cos (a), white, true);
+        put ((r + (float) p) * std::sin (a), -(r + (float) p) * std::cos (a), white, true);
     }
-
-    // the knob's circle
-    const int ring = juce::jmax (12, juce::roundToInt (rBody * 2.0f * juce::MathConstants<float>::pi / (float) p * 1.3f));
-    for (int i = 0; i < ring; ++i)
-    {
-        const float a = juce::MathConstants<float>::twoPi * (float) i / (float) ring;
-        put (rBody * std::sin (a), -rBody * std::cos (a), body);
-    }
-
-    // the pointer, from near the centre to the circle
-    const float av = a0 + (a1 - a0) * pos;
-    for (float r = rBody * 0.2f; r <= rBody - (float) p * 0.6f; r += (float) p * 0.5f)
-        put (r * std::sin (av), -r * std::cos (av), on, true);
 }
 
 void mascot (juce::Graphics& g, juce::Point<int> p, int s, bool blink)

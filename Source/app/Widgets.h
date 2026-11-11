@@ -43,19 +43,29 @@ namespace ui
     struct Card : public juce::Component
     {
         juce::String title;
-        explicit Card (juce::String t = {}) : title (std::move (t)) {}
+        bool inverted = false;            // the title on a white band (the Son page)
+        explicit Card (juce::String t = {}, bool white = false) : title (std::move (t)), inverted (white) {}
 
         void paint (juce::Graphics& g) override
         {
             g.setColour (panel);
             g.fillRect (getLocalBounds());
-            px::frameRect (g, getLocalBounds(), px::frame, 2);
-            if (title.isNotEmpty())
-                px::drawText (g, title.toUpperCase(), { 12, 6, getWidth() - 24, 20 }, juce::Justification::centredLeft,
-                              px::label (10.0f), px::grey);
+            px::frameRect (g, getLocalBounds(), inverted ? px::grey : px::frame, 2);
+            if (title.isEmpty())
+                return;
+            if (inverted)
+            {
+                auto band = getLocalBounds().removeFromTop (26);
+                g.setColour (px::white);
+                g.fillRect (band);
+                px::drawText (g, upper (title), band.reduced (10, 0), juce::Justification::centredLeft, px::label (12.0f, true), px::black);
+                return;
+            }
+            px::drawText (g, title.toUpperCase(), { 12, 6, getWidth() - 24, 20 }, juce::Justification::centredLeft,
+                          px::label (10.0f), px::grey);
         }
 
-        int titleHeight() const   { return title.isNotEmpty() ? 28 : 8; }
+        int titleHeight() const   { return title.isEmpty() ? 8 : inverted ? 32 : 28; }
     };
 
     // A 0..127 knob with its name above and its value below.
@@ -211,9 +221,10 @@ namespace ui
         {
             auto r = getLocalBounds().reduced (2);
             const bool hot = isMouseOver (true) || dragging;
-            const auto nameFont = px::text (15.0f);
-            px::drawText (g, fitName (name, nameFont, r.getWidth()), r.removeFromTop (14), juce::Justification::centred,
+            const auto nameFont = px::text (20.0f);
+            px::drawText (g, fitName (name, nameFont, r.getWidth()), r.removeFromTop (18), juce::Justification::centred,
                           nameFont, hot ? px::white : px::grey);
+            r.removeFromTop (4);
             if (hasSource)
             {
                 sourceBox = r.removeFromBottom (20);
@@ -226,10 +237,11 @@ namespace ui
                 drawBox (g, listBox, choices[value].isNotEmpty() ? choices[value] : juce::String (value), false);
                 return;
             }
-            const auto valueFont = px::text (22.0f);
-            auto valueRow = r.removeFromBottom (18);
-            auto knobArea = r.withSizeKeepingCentre (juce::jmin (r.getWidth(), r.getHeight()), juce::jmin (r.getWidth(), r.getHeight()));
-            px::knob (g, knobArea, (float) value / 127.0f, hot ? px::white : juce::Colour (0xffd8d8d8), knobArea.getWidth() >= 44 ? 3 : 2);
+            const auto valueFont = px::text (24.0f);
+            auto valueRow = r.removeFromBottom (20);
+            const int k = juce::jmin (36, r.getWidth() - 8, r.getHeight() - 4);
+            auto knobArea = r.withSizeKeepingCentre (k, k);
+            px::knob (g, knobArea, (float) value / 127.0f, hot ? px::white : juce::Colour (0xffe0e0e0), 3);
             px::drawText (g, juce::String (value), valueRow, juce::Justification::centred, valueFont, px::white);
         }
 
@@ -297,12 +309,12 @@ namespace ui
             g.setColour (px::cell);
             g.fillRect (b);
             px::frameRect (g, b, px::frame, 2);
-            const auto f = px::text (small ? 16.0f : 18.0f);
-            auto t = b.reduced (5, 0);
+            const auto f = px::text (small ? 18.0f : 20.0f);
+            auto t = b.reduced (4, 0);
             g.setColour (px::dim);
             g.fillRect (t.getRight() - 6, t.getCentreY() - 1, 6, 2);
             g.fillRect (t.getRight() - 4, t.getCentreY() + 1, 2, 2);
-            t.removeFromRight (8);
+            t.removeFromRight (7);
             px::drawText (g, fitName (shown, f, t.getWidth()), t, juce::Justification::centredLeft, f, px::white);
         }
 

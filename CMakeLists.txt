@@ -5,7 +5,7 @@ if(APPLE)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 endif()
 
-project(RackAttack VERSION 0.3.0 LANGUAGES C CXX)
+project(RackAttack VERSION 0.4.0 LANGUAGES C CXX)
 
 # GitHub repository whose releases the plug-in checks for updates (public releases).
 set(RA_UPDATE_REPO "distortedimages-code/rack-attack" CACHE STRING "owner/repo checked for updates (empty = no update check)")
@@ -27,7 +27,7 @@ endif()
 
 #==============================================================================
 # SysEx core, no JUCE inside: shared by the Labo, the future plugin and the tests.
-add_library(ra_core STATIC Source/core/RaSysex.cpp Source/core/RaKit.cpp)
+add_library(ra_core STATIC Source/core/RaSysex.cpp Source/core/RaKit.cpp Source/core/RaSeq.cpp)
 target_compile_features(ra_core PUBLIC cxx_std_17)
 set_target_properties(ra_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -61,7 +61,18 @@ set(RA_APP_SOURCES
     Source/app/ToolsPage.cpp
     Source/app/Engine.cpp
     Source/app/Library.cpp
-    Source/app/Session.cpp)
+    Source/app/Session.cpp
+    Source/app/Sequencer.cpp
+    Source/app/SeqPage.cpp
+    Source/app/SoundViz.cpp
+    Source/app/Pixel.cpp)
+
+# Pixel fonts (SIL Open Font License, see Resources/fonts)
+juce_add_binary_data(RaFonts SOURCES
+    Resources/fonts/Silkscreen-Regular.ttf
+    Resources/fonts/Silkscreen-Bold.ttf
+    Resources/fonts/VT323-Regular.ttf)
+set_target_properties(RaFonts PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 set(RA_DEFINITIONS
     RA_VERSION="${PROJECT_VERSION}"
@@ -79,6 +90,7 @@ target_compile_definitions(RackAttackEditor PUBLIC
 target_link_libraries(RackAttackEditor
     PRIVATE
         ra_core
+        RaFonts
         juce::juce_audio_utils
         juce::juce_audio_devices
         juce::juce_cryptography
@@ -96,10 +108,15 @@ if(RA_BUILD_TESTS)
     target_link_libraries(CoreTests PRIVATE ra_core)
     add_test(NAME CoreTests COMMAND CoreTests)
 
+    add_executable(SeqTests Tests/SeqTests.cpp)
+    target_link_libraries(SeqTests PRIVATE ra_core)
+    add_test(NAME SeqTests COMMAND SeqTests)
+
     # The Labo engine end to end, against a fake RackAttack (temporary HOME)
     juce_add_console_app(EngineTests PRODUCT_NAME "EngineTests")
     juce_generate_juce_header(EngineTests)
-    target_sources(EngineTests PRIVATE Tests/EngineTests.cpp Source/app/Engine.cpp Source/app/Session.cpp Source/app/Library.cpp)
+    target_sources(EngineTests PRIVATE Tests/EngineTests.cpp Source/app/Engine.cpp Source/app/Session.cpp Source/app/Library.cpp
+        Source/app/Sequencer.cpp)
     target_compile_definitions(EngineTests PRIVATE
         JUCE_MODAL_LOOPS_PERMITTED=1
         JUCE_WEB_BROWSER=0

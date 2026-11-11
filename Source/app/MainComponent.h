@@ -9,6 +9,8 @@
 #include "AppContext.h"
 #include "ConnectWizard.h"
 #include "Pages.h"
+#include "Pixel.h"
+#include "SeqPage.h"
 #include "ToolsPage.h"
 
 class MainComponent : public juce::Component,
@@ -48,7 +50,12 @@ private:
     void wizardFinished (bool connected) override;
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override   { refreshUpdate(); }
-    void timerCallback() override   { flushJournal(); }
+    void timerCallback() override
+    {
+        flushJournal();
+        if (light.state == Engine::Connection::searching)
+            light.repaint();
+    }
 
     void showPage (int index);
     void showWizard();
@@ -61,14 +68,16 @@ private:
     Engine& engine;
     Library& library;
 
-    juce::LookAndFeel_V4 lookAndFeel;
+    px::Look lookAndFeel;
 
+    SeqPage seqPage { engine, ctx.sequencer };
     KitPage kitPage { engine };
     SoundPage soundPage { engine, library };
     EffectsPage effectsPage { engine };
     LibraryPage libraryPage { engine, library, [this] { return soundPage.getSelectedSound(); } };
     ToolsPage toolsPage { engine, ctx.updater, [this] { ctx.saveSettings(); } };
-    std::array<juce::Component*, 5> pages {};
+    static constexpr int numPages = 6;
+    std::array<juce::Component*, numPages> pages {};
     juce::OwnedArray<juce::TextButton> pageButtons;
     int page = 0;
 

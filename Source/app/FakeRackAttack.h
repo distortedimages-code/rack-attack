@@ -37,6 +37,20 @@ struct FakeRackAttack
                 d[1] = (std::uint8_t) (s % 12);      // shape
                 d[0x27] = (std::uint8_t) p;          // cutoff = program number
                 d[0x35] = (std::uint8_t) (100 + s % 20);
+                // a few varied values, so the screens have something to show
+                auto put = [&d] (int a, int v) { d[(size_t) a] = (std::uint8_t) juce::jlimit (0, 127, v); };
+                put (0x02, 30 + s * 3);      put (0x03, (s * 7) % 40);   put (0x09, (s * 11) % 60);
+                put (0x11, 50 + s);          put (0x12, (s * 5) % 30);
+                put (0x1A, 110);             put (0x1B, 40 + s * 2);     put (0x1C, (s * 9) % 70);
+                put (0x1D, (s % 3) * 45);    put (0x24, 50 + s * 2);     put (0x25, 30 + s * 3);
+                put (0x26, 1 + s % 4);       put (0x28, 30 + s * 3);     put (0x29, s * 4);
+                put (0x3A, 64 + (s % 5 - 2) * 20);
+                put (0x3F, (s % 3) * 12);    put (0x40, 30 + s * 3);     put (0x41, 40 + (s % 4) * 15);
+                put (0x42, 30 + s * 2);      put (0x43, 40 + s * 3);
+                put (0x45, 5);               put (0x46, 60);             put (0x47, 30);  put (0x48, 50);  put (0x49, 64);
+                put (0x4B, 30 + s * 3);      put (0x4C, s % 6);          put (0x4F, 20 + s);  put (0x50, (s + 2) % 6);
+                put (0x52, (s * 13) % 100);  put (0x57, (s * 6) % 90);   put (0x56, s % 4);   put (0x55, s % 9);
+                put (0x58, s >= 20 ? 2 : 0); put (0x59, 64);             put (0x5A, 36);      put (0x5B, 72);
                 k.setSoundData (s, d);
             }
             for (int e = 0; e < ra::Kit::numEffects; ++e)

@@ -1,5 +1,6 @@
 // Everything one instance of the plug-in (or the app) keeps while its window is closed:
-// the session journal, the link to the RackAttack, the library, the settings, the updater.
+// the session journal, the link to the RackAttack, the sequencer, the library, the settings,
+// the updater.
 // The window (MainComponent) only shows it.
 
 #pragma once
@@ -10,6 +11,7 @@
 #include "Engine.h"
 #include "FakeRackAttack.h"
 #include "Library.h"
+#include "Sequencer.h"
 #include "Session.h"
 
 class AppContext
@@ -39,6 +41,7 @@ public:
     std::unique_ptr<juce::PropertiesFile> settingsFile;
     Session session;
     Engine engine { session };
+    Sequencer sequencer { engine };
     Library library;
     Updater updater { [this]() -> juce::PropertiesFile& { return *settingsFile; } };
 

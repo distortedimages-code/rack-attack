@@ -197,17 +197,16 @@ void ConnectWizard::taskFinished (const juce::String& task, bool ok, const juce:
 
 void ConnectWizard::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colours::black.withAlpha (0.7f));
+    g.fillAll (juce::Colours::black.withAlpha (0.85f));
     g.setColour (ui::panel);
-    g.fillRoundedRectangle (cardArea.toFloat(), 12.0f);
-    g.setColour (ui::accent.withAlpha (0.6f));
-    g.drawRoundedRectangle (cardArea.toFloat(), 12.0f, 1.5f);
+    g.fillRect (cardArea);
+    px::frameRect (g, cardArea, px::white, 3);
 
     // three dots
     for (int i = 0; i < 3; ++i)
     {
         g.setColour (i <= step ? ui::accent : ui::panelLight);
-        g.fillEllipse ((float) (cardArea.getRight() - 90 + i * 22), (float) cardArea.getY() + 30.0f, 12.0f, 12.0f);
+        g.fillRect (cardArea.getRight() - 90 + i * 22, cardArea.getY() + 30, 12, 12);
     }
 }
 

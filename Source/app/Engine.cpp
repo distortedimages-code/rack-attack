@@ -100,6 +100,7 @@ juce::String Engine::openOutput (const juce::String& identifier)
         if (out == nullptr)
             return "Impossible d'ouvrir la sortie MIDI."_fr;
         log ("Sortie MIDI : " + out->getName());
+        out->startBackgroundThread();      // for the sequencer's timed messages
         const juce::ScopedLock sl (outLock);
         output = std::move (out);
     }
@@ -121,6 +122,25 @@ void Engine::sendNow (const juce::MidiMessage& m)
         testOutput (m);
     else if (output != nullptr)
         output->sendMessageNow (m);
+}
+
+void Engine::sendTimed (const juce::MidiBuffer& buffer, double startMs, double samplesPerSecond)
+{
+    const juce::ScopedLock sl (outLock);
+    if (testOutput != nullptr)
+    {
+        for (const auto meta : buffer)
+            testOutput (meta.getMessage());
+    }
+    else if (output != nullptr)
+        output->sendBlockOfMessages (buffer, startMs, samplesPerSecond);
+}
+
+void Engine::clearTimed()
+{
+    const juce::ScopedLock sl (outLock);
+    if (output != nullptr)
+        output->clearAllPendingMessages();
 }
 
 void Engine::setTestOutput (std::function<void (const juce::MidiMessage&)> sink)
@@ -777,6 +797,8 @@ void Engine::handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessag
         return;
     if (raw[0] == 0xF8) { ++clockCount; return; }
     if (raw[0] == 0xFE) { ++sensingCount; return; }
+    if (m.isNoteOnOrOff() && onIncomingNote != nullptr)
+        onIncomingNote (m);
 
     {
         const juce::ScopedLock sl (inLock);
@@ -802,7 +824,7 @@ void Engine::process (const ra::Bytes& raw)
     if (raw.front() != ra::kSox)
     {
         auto m = juce::MidiMessage (raw.data(), (int) raw.size());
-        log ("← "_fr + m.getDescription() + "   (" + juce::String (ra::hex (raw)) + ")");
+        log ("← "_fr + m.getDescription() + "   (" + juce::String (ra::hex (raw)) + ")", ! m.isNoteOnOrOff());
         return;
     }
 

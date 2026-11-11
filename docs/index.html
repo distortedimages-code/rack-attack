@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RackAttack Editor</title>
 <style>
-  :root { --bg: #1b1e1c; --panel: #252a26; --text: #e9ede7; --dim: #97a197; --accent: #8cc63f; }
+  :root { --bg: #000; --panel: #111; --text: #fff; --dim: #9a9a9a; --accent: #fff; --red: #ff3b2f; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.55 -apple-system, "Helvetica Neue", Arial, sans-serif; }
   main { max-width: 760px; margin: 0 auto; padding: 48px 22px 64px; }
@@ -13,21 +13,24 @@
   h2 { font-size: 22px; margin: 44px 0 12px; }
   .lead { color: var(--dim); font-size: 19px; margin: 0 0 28px; }
   .download { display: inline-block; background: var(--accent); color: #111; font-weight: 700; text-decoration: none;
-              padding: 15px 26px; border-radius: 10px; font-size: 18px; }
+              padding: 15px 26px; font-size: 18px; }
   .download:hover { filter: brightness(1.08); }
   .small { color: var(--dim); font-size: 14px; margin-top: 10px; }
   ol { padding-left: 22px; }
   li { margin: 8px 0; }
-  .card { background: var(--panel); border-radius: 12px; padding: 18px 22px; margin: 14px 0; }
+  .card { background: var(--panel); border: 2px solid #2a2a2a; padding: 18px 22px; margin: 14px 0; }
   code, kbd { background: #121412; border-radius: 5px; padding: 1px 6px; font-size: 15px; }
-  a { color: var(--accent); }
+  a { color: var(--red); }
+  pre { background: #111; border: 2px solid #2a2a2a; padding: 12px 14px; white-space: pre-wrap; word-break: break-all;
+        font: 14px/1.5 ui-monospace, Menlo, monospace; margin: 10px 0 6px; }
+  .copy { background: #fff; color: #000; border: 0; padding: 7px 14px; font-weight: 700; cursor: pointer; }
   footer { color: var(--dim); font-size: 14px; margin-top: 56px; }
 </style>
 </head>
 <body>
 <main>
   <h1>RackAttack Editor</h1>
-  <p class="lead">Éditeur et bibliothèque pour le Waldorf RackAttack. Plug-in AU et VST3, et appli, pour Mac.</p>
+  <p class="lead">Séquenceur, éditeur et bibliothèque pour le Waldorf RackAttack. Plug-in AU et VST3, et appli, pour Mac.</p>
 
   <a class="download" href="https://github.com/distortedimages-code/rack-attack/releases/latest/download/RackAttack-Editor-mac.dmg">Télécharger pour Mac</a>
   <p class="small">Toujours la dernière version · Mac Apple Silicon et Intel, macOS 11 ou plus récent ·
@@ -37,7 +40,10 @@
   <ol>
     <li>Ouvre <code>RackAttack-Editor-mac.dmg</code>.</li>
     <li>Glisse chaque élément sur le dossier à côté de lui : le <b>.component</b> sur <i>Components (AU)</i>, le <b>.vst3</b> sur <i>VST3</i>, l'<b>appli</b> sur <i>Applications</i>. macOS demande ton mot de passe.</li>
-    <li>Premier lancement de l'appli : <b>clic droit → Ouvrir</b>. Si macOS refuse : <i>Réglages Système → Confidentialité et sécurité → Ouvrir quand même</i>.</li>
+    <li>Ouvre le <b>Terminal</b> (<kbd>⌘</kbd> + <kbd>Espace</kbd>, tape « Terminal », <kbd>Entrée</kbd>), colle cette commande, <kbd>Entrée</kbd>, puis ton mot de passe (rien ne s'affiche quand tu le tapes, c'est normal). Elle débloque le plug-in et l'appli et vérifie que l'AU marche :
+      <pre id="cmd">sudo xattr -dr com.apple.quarantine "/Library/Audio/Plug-Ins/Components/RackAttack Editor.component" "/Library/Audio/Plug-Ins/VST3/RackAttack Editor.vst3" "/Applications/RackAttack Editor.app"; killall -9 AudioComponentRegistrar 2&gt;/dev/null; auval -v aumu Ratk Dimg | tail -1</pre>
+      <button class="copy" onclick="navigator.clipboard.writeText(document.getElementById('cmd').innerText); this.textContent='Copié';">Copier la commande</button>
+      <div class="small">La dernière ligne doit dire <code>AU VALIDATION SUCCEEDED</code>.</div></li>
     <li>Dans ton logiciel (Live, Logic…), relance-le ou rescanne les plug-ins : <i>RackAttack Editor</i> se trouve dans les instruments.</li>
   </ol>
 

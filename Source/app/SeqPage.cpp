@@ -1,0 +1,1621 @@
+#include "SeqPage.h"
+#include "Text.h"
+
+using namespace ra::seq;
+
+namespace
+{
+    const char* trigNames[7] = { "Vélo", "Durée", "Micro", "Proba", "Cond.", "Retrig", "Note" };
+    const char* modeNames[2] = { "Pas", "Notes" };
+
+    juce::String fr (const char* s)   { return juce::String::fromUTF8 (s); }
+    double nowMs()                    { return juce::Time::getMillisecondCounterHiRes(); }
+
+    // progress 0..1 of an animation, in a few hard steps (pixel style)
+    float stepped (double t, int steps)
+    {
+        return (float) std::floor (juce::jlimit (0.0, 1.0, t) * steps) / (float) steps;
+    }
+
+    // The A:B conditions in order: always, then 1:2, 2:2, 1:3...
+    std::vector<std::pair<int, int>> conditions()
+    {
+        std::vector<std::pair<int, int>> c { { 0, 0 } };
+        for (int b = 2; b <= 8; ++b)
+            for (int a = 1; a <= b; ++a)
+                c.emplace_back (a, b);
+        return c;
+    }
+
+    juce::String trackName (const Track& t, int index)
+    {
+        if (! t.name.empty())
+            return juce::String::fromUTF8 (t.name.c_str());
+        return "SON " + juce::String (index + 1).paddedLeft ('0', 2);
+    }
+
+    juce::String noteName (int n)   { return juce::MidiMessage::getMidiNoteName (n, true, true, 3); }
+
+    // the value as shown: a choice by its name, a number as it is
+    juce::String valueText (int address, int value)
+    {
+        auto names = ra::valueNames (ra::Object::sound, address);
+        if (value >= 0 && value < (int) names.size())
+            return juce::String::fromUTF8 (names[(size_t) value].c_str());
+        return juce::String (value);
+    }
+
+    // a little play / stop icon in pixels
+    void playIcon (juce::Graphics& g, juce::Rectangle<int> r, bool playing, juce::Colour c)
+    {
+        g.setColour (c);
+        const int s = 3;
+        auto o = r.getCentre().translated (-8, -9);
+        if (playing)
+            g.fillRect (o.x, o.y + 2, 16, 16);
+        else
+            for (int i = 0; i < 6; ++i)
+                g.fillRect (o.x + i * s, o.y + i * s / 2 + 1, s, 18 - i * s);
+    }
+
+    int textWidth (const juce::Font& f, const juce::String& t)
+    {
+        return juce::roundToInt (juce::GlyphArrangement::getStringWidth (f, t));
+    }
+}
+
+//==============================================================================
+SeqPage::SeqPage (Engine& e, Sequencer& s) : engine (e), seq (s)
+{
+    // each section's parameters in one line, in the front panel's order
+    for (auto& sec : ui::soundSections())
+    {
+        std::vector<ui::ParamDef> flat;
+        for (auto& row : sec.rows)
+            for (auto& d : row)
+                flat.push_back (d);
+        sectionParams.push_back (std::move (flat));
+    }
+
+    setWantsKeyboardFocus (true);
+    setOpaque (true);
+    startTimerHz (40);
+}
+
+SeqPage::~SeqPage()
+{
+    stopTimer();
+}
+
+void SeqPage::selectTrack (int t)
+{
+    t = juce::jlimit (0, numTracks - 1, t);
+    if (t != track)
+    {
+        pointerFromX = voices[(size_t) track].getCentreX();
+        pointerStart = nowMs();
+        startWipe();
+    }
+    track = t;
+    selection.clear();
+    page = 0;
+    repaint();
+}
+
+void SeqPage::timerCallback()
+{
+    if (! isShowing())
+        return;
+    const bool playing = seq.playheadPpq() >= 0.0;
+    if (wasPlaying && ! playing)
+        stopWaveStart = nowMs();          // a wave runs over the steps when it stops
+    if (! wasPlaying && playing)
+        excitedUntil = nowMs() + 400.0;
+    wasPlaying = playing;
+    repaint();
+}
+
+bool SeqPage::isSelected (int step) const
+{
+    return std::find (selection.begin(), selection.end(), step) != selection.end();
+}
+
+void SeqPage::toggleSelection (int step)
+{
+    auto it = std::find (selection.begin(), selection.end(), step);
+    if (it != selection.end())
+        selection.erase (it);
+    else
+        selection.push_back (step);
+}
+
+int SeqPage::playingStep (Division d, int len, double ppq)
+{
+    if (ppq < 0.0 || len <= 0)
+        return -1;
+    const auto n = (std::int64_t) std::floor (ppq * stepsPerBeat (d) + 1e-9);
+    return (int) (((n % len) + len) % len);
+}
+
+//==============================================================================
+// Layout
+
+void SeqPage::resized()
+{
+    laidOutSection = -1;
+    layout();
+}
+
+void SeqPage::layout()
+{
+    if (laidOutSection == section && ! header.isEmpty())
+        return;
+    laidOutSection = section;
+
+    auto r = getLocalBounds().reduced (14, 10);
+
+    // clock
+    header = r.removeFromTop (46);
+    {
+        auto h = header;
+        mascotArea = h.removeFromLeft (44);
+        h.removeFromLeft (10);
+        kitBox = h.removeFromLeft (juce::jmin (420, h.getWidth() / 3));
+        loadBox = h.removeFromRight (150);
+        h.removeFromRight (14);
+        swingBox = h.removeFromRight (150);
+        h.removeFromRight (10);
+        tempoBox = h.removeFromRight (170);
+        h.removeFromRight (10);
+        playBox = h.removeFromRight (130);
+    }
+    r.removeFromTop (10);
+
+    // the voices: two rows of twelve
+    {
+        const int cellH = 54, gap = 6;
+        auto area = r.removeFromTop (cellH * 2 + gap);
+        const float w = (float) (area.getWidth() + gap) / 12.0f;
+        for (int i = 0; i < numTracks; ++i)
+        {
+            const int col = i % 12, row = i / 12;
+            const int x0 = area.getX() + juce::roundToInt ((float) col * w);
+            const int x1 = area.getX() + juce::roundToInt ((float) (col + 1) * w) - gap;
+            voices[(size_t) i] = { x0, area.getY() + row * (cellH + gap), x1 - x0, cellH };
+        }
+    }
+    r.removeFromTop (16);
+
+    // the sequencer at the bottom, the sound above it
+    const int fixed = 24 + 40 + 6 + 10 + 10 + 16 + 8 + 28 + 6 + 40;    // everything but the steps
+    const int stepsH = juce::jlimit (48, 110, r.getHeight() - 12 - fixed - 220);
+    seqPanel = r.removeFromBottom (fixed + stepsH);
+    r.removeFromBottom (0);
+    soundPanel = r;
+
+    // sound: section tabs, listen, then the knobs of the section in one line
+    {
+        auto in = soundPanel.reduced (16, 12);
+        soundTitle = in.removeFromTop (32);
+        auto t = soundTitle;
+        listenBox = t.removeFromRight (150);
+        t.removeFromRight (16);
+        const int n = (int) sectionParams.size();
+        const int tw = juce::jmin (112, (t.getWidth() - (n - 1) * 4) / n);
+        sectionTabs.clear();
+        for (int i = 0; i < n; ++i)
+        {
+            sectionTabs.push_back (t.removeFromLeft (tw));
+            t.removeFromLeft (4);
+        }
+        in.removeFromTop (10);
+
+        // the picture on the left, the settings on the right in the front panel's rows
+        vizBox = in.removeFromLeft (juce::jlimit (260, 560, in.getWidth() * 2 / 5));
+        in.removeFromLeft (16);
+        const auto& sec = ui::soundSections()[(size_t) section];
+        const int rows = (int) sec.rows.size();
+        int cols = 1;
+        for (auto& row : sec.rows)
+            cols = juce::jmax (cols, (int) row.size());
+        const int gap = 8;
+        const int cellW = juce::jmin (190, (in.getWidth() - (cols - 1) * gap) / cols);
+        const int cellH = juce::jmin (70, (in.getHeight() - (rows - 1) * gap) / rows);
+        const int y0 = in.getY() + (in.getHeight() - (rows * cellH + (rows - 1) * gap)) / 2;
+        paramBoxes.clear();
+        for (int rw = 0; rw < rows; ++rw)
+            for (int c = 0; c < (int) sec.rows[(size_t) rw].size(); ++c)
+                paramBoxes.push_back ({ in.getX() + c * (cellW + gap), y0 + rw * (cellH + gap), cellW, cellH });
+    }
+
+    // sequencer
+    {
+        auto in = seqPanel.reduced (16, 12);
+        auto t = in.removeFromTop (40);
+        nameBox = t.removeFromLeft (juce::jmin (330, t.getWidth() / 4));
+        t.removeFromLeft (10);
+        for (auto& tab : modeTabs)
+        {
+            tab = t.removeFromLeft (124).reduced (0, 3);
+            t.removeFromLeft (6);
+        }
+        t.removeFromLeft (10);
+        lengthBox = t.removeFromLeft (132).reduced (0, 3);
+        t.removeFromLeft (6);
+        divisionBox = t.removeFromLeft (128).reduced (0, 3);
+        t.removeFromLeft (6);
+        muteBox = t.removeFromLeft (96).reduced (0, 3);
+
+        in.removeFromTop (6 + 10);     // the playhead runs in the gap above the steps
+        auto row = in.removeFromTop (stepsH);
+        const int gap = 6, groupGap = 10;
+        const float w = (float) (row.getWidth() - 15 * gap - 3 * groupGap) / 16.0f;
+        for (int i = 0; i < 16; ++i)
+        {
+            const int x = row.getX() + juce::roundToInt ((float) i * (w + (float) gap)) + (i / 4) * groupGap;
+            stepBoxes[(size_t) i] = { x, row.getY(), juce::roundToInt (w), stepsH };
+        }
+        in.removeFromTop (10);
+        miniMap = in.removeFromTop (16);
+        in.removeFromTop (8);
+        hintRow = in.removeFromTop (28);
+        in.removeFromTop (6);
+        trigRow = in.removeFromTop (40);
+        const int tw = (trigRow.getWidth() - 6 * 8) / 7;
+        auto tr = trigRow;
+        for (auto& b : trigBoxes)
+        {
+            b = tr.removeFromLeft (tw);
+            tr.removeFromLeft (8);
+        }
+        clearBox = hintRow.withLeft (hintRow.getRight() - 170);
+    }
+}
+
+SeqPage::Hit SeqPage::zoneAt (juce::Point<int> p) const
+{
+    if (playBox.contains (p))     return { Zone::play, 0 };
+    if (tempoBox.contains (p))    return { Zone::tempo, 0 };
+    if (swingBox.contains (p))    return { Zone::swing, 0 };
+    for (int i = 0; i < numTracks; ++i)
+        if (voices[(size_t) i].contains (p)) return { Zone::voice, i };
+    for (int i = 0; i < (int) sectionTabs.size(); ++i)
+        if (sectionTabs[(size_t) i].contains (p)) return { Zone::section, i };
+    if (listenBox.contains (p))   return { Zone::listen, 0 };
+    for (int i = 0; i < (int) paramBoxes.size(); ++i)
+        if (paramBoxes[(size_t) i].contains (p)) return { Zone::param, i };
+    for (int i = 0; i < 2; ++i)
+        if (modeTabs[(size_t) i].contains (p)) return { Zone::mode, i };
+    if (lengthBox.contains (p))   return { Zone::length, 0 };
+    if (divisionBox.contains (p)) return { Zone::division, 0 };
+    if (muteBox.contains (p))     return { Zone::mute, 0 };
+    for (int i = 0; i < 16; ++i)
+        if (stepBoxes[(size_t) i].contains (p)) return { Zone::step, i };
+    if (miniMap.expanded (0, 4).contains (p)) return { Zone::miniMap, 0 };
+    if (! selection.empty() && clearBox.contains (p)) return { Zone::clearSelection, 0 };
+    for (int i = 0; i < 7; ++i)
+        if (trigBoxes[(size_t) i].contains (p)) return { Zone::trig, i };
+    return {};
+}
+
+//==============================================================================
+// Painting
+
+void SeqPage::paint (juce::Graphics& g)
+{
+    layout();
+    g.fillAll (px::black);
+    px::dither (g, getLocalBounds(), juce::Colour (0xff161616), 1);   // the faint dot grid
+
+    const auto now = nowMs();
+    const auto ppq = seq.playheadPpq();
+
+    std::array<Voice, numTracks> v;
+    Track open;
+    double tempo = 120.0;
+    int swing = 50;
+    seq.read ([&] (const Pattern& p)
+    {
+        for (int i = 0; i < numTracks; ++i)
+        {
+            const auto& t = p.tracks[(size_t) i];
+            auto& o = v[(size_t) i];
+            o.mode = t.mode;
+            o.division = t.division;
+            o.mute = t.mute;
+            o.length = t.activeLength();
+            o.name = trackName (t, i);
+            o.trigs = t.trigs();
+            o.locks = t.countLocks() > 0;
+        }
+        open = p.tracks[(size_t) track];
+        tempo = p.tempo;
+        swing = p.swing;
+    });
+
+    paintHeader (g, now, tempo, swing);
+    paintVoices (g, v, now, ppq);
+
+    // one panel for the open track: its sound, then its sequencer
+    auto panel = soundPanel.getUnion (seqPanel);
+    g.setColour (px::panel);
+    g.fillRect (panel);
+    px::frameRect (g, panel, px::white, 3);
+    {
+        // the pointer towards the open voice, sliding when the track changes
+        float x = (float) voices[(size_t) track].getCentreX();
+        const double t = (now - pointerStart) / 160.0;
+        if (t < 1.0 && pointerFromX >= 0.0)
+            x = (float) (pointerFromX + (x - pointerFromX) * stepped (t, 5));
+        juce::Path tri;
+        const float y = (float) panel.getY();
+        tri.addTriangle (x - 12.0f, y, x + 12.0f, y, x, y - 12.0f);
+        g.setColour (px::white);
+        g.fillPath (tri);
+    }
+    paintSound (g, open);
+    px::dither (g, juce::Rectangle<int> (seqPanel.getX() + 16, seqPanel.getY() - 2, seqPanel.getWidth() - 32, 4), px::faint, 3);
+    paintSequencer (g, open, ppq);
+    paintOverlays (g, now);
+}
+
+void SeqPage::paintHeader (juce::Graphics& g, double now, double tempo, int swing)
+{
+    const auto ppq = seq.playheadPpq();
+    const bool playing = ppq >= 0.0;
+    const bool host = seq.isFollowingHost();
+    const int load = seq.midiLoadPercent();
+
+    // the mascot hops on the beat, jumps when excited, blinks now and then, sweats when the cable is full
+    const bool up = playing && std::fmod (ppq, 1.0) < 0.5;
+    const bool excited = now < excitedUntil;
+    const bool blink = std::fmod (now, 4200.0) < 140.0;
+    const int lift = excited ? (std::fmod (now, 160.0) < 80.0 ? 10 : 4) : (up ? 4 : 0);
+    const auto m = juce::Point<int> (mascotArea.getX(), mascotArea.getCentreY() - 16 - lift);
+    px::mascot (g, m, 4, blink && ! excited);
+    if (load > 80)
+    {
+        g.setColour (px::red);
+        const int dy = (int) (std::fmod (now, 600.0) / 100.0) * 2;
+        g.fillRect (m.x + 42, m.y + 2 + dy, 4, 4);
+        g.fillRect (m.x + 40, m.y + 6 + dy, 8, 4);
+    }
+
+    auto k = kitBox;
+    auto kitName = juce::String (engine.getKit().name());
+    if (kitName.isEmpty())
+        kitName = fr ("non lu");
+    px::drawText (g, "KIT", k.removeFromLeft (46), juce::Justification::centredLeft, px::text (30.0f), px::dim);
+    px::drawText (g, kitName.toUpperCase(), k, juce::Justification::centredLeft, px::text (30.0f), px::white);
+
+    // play
+    {
+        auto b = playBox.reduced (0, 4);
+        const bool down = drag.hit.zone == Zone::play;
+        if (host)
+        {
+            g.setColour (px::red);
+            g.fillRect (b);
+            px::drawText (g, "DAW", b, juce::Justification::centred, px::label (19.0f, true), px::black);
+        }
+        else
+        {
+            px::button (g, b.withTrimmedBottom (3), playing, down, px::red);
+            auto inner = b.withTrimmedBottom (3).translated (0, down ? 3 : 0);
+            playIcon (g, inner.removeFromLeft (44), playing, playing ? px::black : px::white);
+            px::drawText (g, playing ? "STOP" : "PLAY", inner, juce::Justification::centredLeft, px::label (19.0f, true),
+                          playing ? px::black : px::white);
+        }
+    }
+
+    auto field = [&] (juce::Rectangle<int> r, const juce::String& name, const juce::String& value, bool active, Zone z)
+    {
+        if (active && hover.zone == z)
+            px::frameRect (g, r, px::frame, 2);
+        auto t = r.reduced (8, 0);
+        px::drawText (g, name, t.removeFromLeft (textWidth (px::text (30.0f), name) + 10),
+                      juce::Justification::centredLeft, px::text (30.0f), px::dim);
+        px::drawText (g, value, t, juce::Justification::centredLeft, px::text (34.0f), active ? px::white : px::grey);
+    };
+    field (tempoBox, "BPM", juce::String (host ? seq.getTempo() : tempo, 1), ! host, Zone::tempo);
+    field (swingBox, "SWING", juce::String (swing) + "%", true, Zone::swing);
+
+    // MIDI cable load
+    {
+        auto r = loadBox;
+        auto top = r.removeFromTop (24);
+        px::drawText (g, "MIDI", top.removeFromLeft (60), juce::Justification::centredLeft, px::label (12.5f), px::dim);
+        px::drawText (g, juce::String (load) + "%", top, juce::Justification::centredRight, px::text (26.0f), load > 80 ? px::red : px::white);
+        px::bar (g, r.removeFromTop (10), 12, juce::jlimit (0, 12, (load * 12 + 50) / 100), load > 80 ? px::red : px::white);
+    }
+
+    px::dither (g, header.withTop (header.getBottom() + 4).withHeight (4), px::faint, 3);
+}
+
+void SeqPage::paintVoices (juce::Graphics& g, const std::array<Voice, numTracks>& all, double now, double ppq)
+{
+    for (int i = 0; i < numTracks; ++i)
+    {
+        const auto& tr = all[(size_t) i];
+        auto r = voices[(size_t) i];
+        bool keyboard = false;
+        const double hit = seq.lastHitMs (i, keyboard);
+        const double age = hit < 0.0 ? 1e9 : now - hit;
+        // the flash fades out in four dithers, like an old screen
+        const int level = age < 60.0 ? 4 : age < 120.0 ? 3 : age < 180.0 ? 2 : age < 240.0 ? 1 : 0;
+        const auto flash = keyboard ? px::red : px::white;
+
+        g.setColour (px::cell);
+        g.fillRect (r);
+        px::dither (g, r, flash, level);
+        const bool selected = i == track;
+        px::frameRect (g, r, selected ? px::white : (hover.zone == Zone::voice && hover.index == i ? px::grey : px::frame), selected ? 3 : 2);
+
+        const bool inverted = level >= 4;
+        auto inner = r.reduced (8, 5);
+        auto strip = inner.removeFromBottom (4);
+        inner.removeFromBottom (3);
+        const int jump = age < 60.0 ? 3 : 0;
+        auto top = inner.removeFromTop (inner.getHeight() / 2 + 2).translated (0, -jump);
+        auto nameRow = inner.translated (0, -jump);
+
+        // on the dithered fade, the text sits on small black plates to stay readable
+        auto plate = [&] (juce::Rectangle<int> area, const juce::String& t, const juce::Font& f)
+        {
+            if (level > 0 && level < 4)
+            {
+                const int w = juce::jmin (area.getWidth(), textWidth (f, t) + 6);
+                g.setColour (px::black);
+                g.fillRect (juce::Rectangle<int> (area.getX() - 3, area.getCentreY() - juce::roundToInt (f.getHeight() * 0.4f),
+                                                  w, juce::roundToInt (f.getHeight() * 0.8f)));
+            }
+        };
+        const auto numText = juce::String (i + 1).paddedLeft ('0', 2);
+        plate (top, numText, px::text (28.0f));
+        px::drawText (g, numText, top, juce::Justification::centredLeft, px::text (28.0f),
+                      inverted ? px::black : (tr.mute ? px::faint : px::dim));
+        top.removeFromRight (12);
+        if (tr.mode == Mode::notes && ! tr.mute)
+            px::drawText (g, "NOTE", top, juce::Justification::centredRight, px::label (9.0f), inverted ? px::black : px::grey);
+        const auto name = tr.name.toUpperCase();
+        plate (nameRow, name, px::label (10.0f));
+        px::drawText (g, name, nameRow, juce::Justification::centredLeft, px::label (10.0f),
+                      inverted ? px::black : (tr.mute ? px::dim : px::white));
+
+        // a strip of the page being played
+        const int len = tr.length;
+        const int playing = playingStep (tr.division, tr.length, ppq);
+        const int base = playing >= 0 ? (playing / stepsPerPage) * stepsPerPage : 0;
+        const float w = (float) (strip.getWidth() + 1) / 16.0f;
+        for (int s = 0; s < 16; ++s)
+        {
+            const int idx = base + s;
+            auto b = juce::Rectangle<int> (strip.getX() + juce::roundToInt ((float) s * w), strip.getY(), juce::jmax (1, juce::roundToInt (w) - 1), strip.getHeight());
+            juce::Colour c = juce::Colour (0xff222222);
+            if (idx < len && tr.trigs[(size_t) idx])
+                c = tr.mute ? px::faint : px::white;
+            if (idx == playing && ! tr.mute)
+                c = px::red;
+            if (idx >= len)
+                c = px::black;
+            g.setColour (inverted && c != px::red ? px::black : c);
+            g.fillRect (b);
+        }
+
+        if (tr.mute)
+        {
+            auto chip = r.withTrimmedLeft (r.getWidth() - 50).withHeight (16).translated (-5, 5);
+            g.setColour (px::red);
+            g.fillRect (chip);
+            px::drawText (g, "MUTE", chip, juce::Justification::centred, px::label (9.0f), px::black);
+        }
+        else if (tr.locks)
+        {
+            g.setColour (px::yellow);
+            g.fillRect (r.getRight() - 14, r.getY() + 6, 7, 7);
+        }
+    }
+}
+
+void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
+{
+    const auto now = nowMs();
+
+    // section tabs
+    for (int i = 0; i < (int) sectionTabs.size(); ++i)
+    {
+        auto b = sectionTabs[(size_t) i];
+        const bool on = i == section;
+        if (on)
+        {
+            g.setColour (px::white);
+            g.fillRect (b);
+        }
+        else
+        {
+            g.setColour (px::cell);
+            g.fillRect (b);
+            px::frameRect (g, b, hover.zone == Zone::section && hover.index == i ? px::grey : px::frame, 2);
+        }
+        px::drawText (g, fr (ui::soundSections()[(size_t) i].tab).toUpperCase(), b, juce::Justification::centred,
+                      px::label (11.0f), on ? px::black : px::grey);
+    }
+    {
+        const bool down = drag.hit.zone == Zone::listen;
+        px::button (g, listenBox.withTrimmedBottom (3), true, down, px::white);
+        auto inner = listenBox.withTrimmedBottom (3).translated (0, down ? 3 : 0).withTrimmedBottom (down ? 0 : 4);
+        playIcon (g, inner.removeFromLeft (40), false, px::black);
+        px::drawText (g, fr ("ÉCOUTER"), inner, juce::Justification::centredLeft, px::label (12.0f), px::black);
+    }
+
+    // the values shown move towards the real ones: the picture stretches
+    const auto& kit = engine.getKit();
+    const bool known = kit.hasSound (track);
+    const bool locking = ! selection.empty();
+    auto target = [&] (int address) -> float
+    {
+        float v = known ? (float) kit.soundValue (track, address) : 0.0f;
+        if (locking)
+            if (auto* l = tr.steps[(size_t) selection.front()].findLock (address))
+                v = (float) l->value;
+        return v;
+    };
+    bool anyLocked = false;
+    for (auto& def : params())
+    {
+        auto& v = shownValues[(size_t) (def.address & 0x7F)];
+        const float to = target (def.address);
+        if (! shownReady || def.choice || std::abs (to - v) < 0.6f)
+            v = to;
+        else
+            v += (to - v) * 0.28f;
+        if (locking)
+            for (auto st : selection)
+                anyLocked = anyLocked || tr.steps[(size_t) st].findLock (def.address) != nullptr;
+    }
+    shownReady = true;
+
+    const double wt = (now - wipeStart) / 200.0;
+    const int slide = wt < 1.0 ? juce::roundToInt ((1.0f - stepped (wt, 5)) * 40.0f) : 0;
+
+    juce::Graphics::ScopedSaveState state (g);
+    g.reduceClipRegion (soundPanel.reduced (6));
+    g.addTransform (juce::AffineTransform::translation ((float) slide, 0.0f));
+
+    viz::draw (g, vizBox, section, [this] (int address) { return shownValues[(size_t) (address & 0x7F)]; },
+               anyLocked ? px::yellow : px::white, now);
+
+    const auto& defs = params();
+    for (int i = 0; i < (int) defs.size() && i < (int) paramBoxes.size(); ++i)
+    {
+        const auto& def = defs[(size_t) i];
+        auto b = paramBoxes[(size_t) i];
+        const int base = known ? kit.soundValue (track, def.address) : 0;
+        const int maxV = paramMax (def.address);
+
+        int lockedCount = 0, lockedValue = -1;
+        bool mixed = false;
+        for (auto st : selection)
+            if (auto* l = tr.steps[(size_t) st].findLock (def.address))
+            {
+                if (lockedCount > 0 && l->value != lockedValue)
+                    mixed = true;
+                lockedValue = l->value;
+                ++lockedCount;
+            }
+        const bool locked = locking && lockedCount > 0;
+        const bool hot = hover.zone == Zone::param && hover.index == i;
+        const bool dragging = drag.hit.zone == Zone::param && drag.hit.index == i;
+
+        g.setColour (dragging ? juce::Colour (0xff1c1c1c) : px::cell);
+        g.fillRect (b);
+        px::frameRect (g, b, locked ? px::yellow : (hot || dragging ? px::white : px::frame), 2);
+
+        juce::String text;
+        juce::Colour colour = px::white;
+        int shown = base;
+        if (locked)
+        {
+            shown = lockedValue;
+            text = (mixed || lockedCount < (int) selection.size()) ? fr ("MIXTE") : valueText (def.address, lockedValue);
+            colour = px::yellow;
+        }
+        else if (! known)
+        {
+            text = "?";
+            colour = px::dim;
+        }
+        else
+        {
+            text = valueText (def.address, base);
+            colour = locking ? px::dim : px::white;
+        }
+
+        auto in = b.reduced (8, 5);
+        const bool roomy = in.getHeight() >= 46;
+        auto bottom = in.removeFromBottom (def.choice ? 0 : 5);
+        auto nameRow = roomy ? in.removeFromTop (16) : in;
+        px::drawText (g, fr (def.label).toUpperCase(), nameRow, roomy ? juce::Justification::centredLeft : juce::Justification::topLeft,
+                      px::label (9.5f), locked ? px::yellow : (hot || dragging ? px::white : px::grey));
+        px::drawText (g, text, in, roomy ? juce::Justification::centredRight : juce::Justification::bottomRight, px::text (30.0f), colour);
+        if (def.choice)
+        {
+            // a small pixel arrow: click for the list
+            g.setColour (hot ? px::white : px::dim);
+            const int ax = b.getRight() - 16, ay = b.getY() + 8;
+            g.fillRect (ax, ay, 8, 2);
+            g.fillRect (ax + 2, ay + 2, 4, 2);
+        }
+        else
+        {
+            const int filled = juce::roundToInt (16.0 * shown / juce::jmax (1, maxV));
+            const int marker = locked && known ? juce::jlimit (0, 15, juce::roundToInt (16.0 * base / juce::jmax (1, maxV))) : -1;
+            px::bar (g, bottom, 16, filled, locked ? px::yellow : (locking ? px::faint : px::white), marker);
+        }
+    }
+
+    // the wipe: a dither that clears in steps
+    if (wt < 1.0)
+        px::dither (g, soundPanel.reduced (6).translated (-slide, 0), px::panel, 3 - (int) (stepped (wt, 3) * 3.0f));
+}
+
+void SeqPage::paintSequencer (juce::Graphics& g, const Track& tr, double ppq)
+{
+    const int playing = playingStep (tr.division, tr.activeLength(), ppq);
+
+    px::drawText (g, juce::String (track + 1).paddedLeft ('0', 2) + " " + trackName (tr, track).toUpperCase(), nameBox,
+                  juce::Justification::centredLeft, px::text (44.0f), px::white);
+    for (int i = 0; i < 2; ++i)
+    {
+        const bool on = (tr.mode == Mode::notes) == (i == 1);
+        auto b = modeTabs[(size_t) i];
+        px::button (g, b.withTrimmedBottom (2), on, false);
+        px::drawText (g, modeNames[i], b.withTrimmedBottom (on ? 6 : 2), juce::Justification::centred, px::label (14.0f),
+                      on ? px::black : px::grey);
+    }
+    auto smallField = [&] (juce::Rectangle<int> r, const juce::String& name, const juce::String& value, Zone z)
+    {
+        g.setColour (px::cell);
+        g.fillRect (r);
+        px::frameRect (g, r, hover.zone == z ? px::grey : px::frame, 2);
+        auto t = r.reduced (8, 0);
+        px::drawText (g, name, t.removeFromLeft (58), juce::Justification::centredLeft, px::label (11.0f), px::dim);
+        px::drawText (g, value, t, juce::Justification::centredRight, px::text (32.0f), px::white);
+    };
+    smallField (lengthBox, "LONG.", juce::String (tr.activeLength()), Zone::length);
+    smallField (divisionBox, "VIT.", divisionName (tr.division), Zone::division);
+    {
+        auto b = muteBox;
+        g.setColour (tr.mute ? px::red : px::cell);
+        g.fillRect (b);
+        if (! tr.mute)
+            px::frameRect (g, b, hover.zone == Zone::mute ? px::grey : px::frame, 2);
+        px::drawText (g, "MUTE", b, juce::Justification::centred, px::label (13.0f), tr.mute ? px::black : px::grey);
+    }
+
+    paintSteps (g, tr, playing);
+    paintMiniMap (g, tr, playing);
+
+    // hint or selection
+    auto h = hintRow;
+    if (! selection.empty())
+    {
+        juce::StringArray nums;
+        auto sorted = selection;
+        std::sort (sorted.begin(), sorted.end());
+        for (auto s : sorted)
+            nums.add (juce::String (s + 1));
+        auto chipText = fr ("VERROU · PAS ") + nums.joinIntoString (" ");
+        auto chip = h.removeFromLeft (juce::jmin (h.getWidth() - 200, textWidth (px::label (14.0f), chipText) + 24));
+        g.setColour (px::yellow);
+        g.fillRect (chip);
+        px::drawText (g, chipText, chip.reduced (10, 0), juce::Justification::centredLeft, px::label (14.0f), px::black);
+        h.removeFromLeft (14);
+        px::drawText (g, fr ("les potards du son verrouillent ces pas"), h.withTrimmedRight (180), juce::Justification::centredLeft,
+                      px::text (26.0f), px::grey);
+        g.setColour (px::cell);
+        g.fillRect (clearBox);
+        px::frameRect (g, clearBox, hover.zone == Zone::clearSelection ? px::white : px::yellow, 2);
+        px::drawText (g, fr ("FINI (ÉCHAP)"), clearBox, juce::Justification::centred, px::label (11.0f), px::yellow);
+    }
+    else
+    {
+        auto hint = tr.mode == Mode::notes
+            ? fr ("clic = poser · glisser haut/bas sur une note = la changer · Maj + clic = verrou")
+            : fr ("clic = poser · glisser = peindre · Maj + clic = verrou · clic droit = menu");
+        px::drawText (g, hint, h, juce::Justification::centredLeft, px::text (26.0f), px::dim);
+    }
+
+    paintTrigRow (g, tr);
+}
+
+void SeqPage::paintSteps (juce::Graphics& g, const Track& tr, int playing)
+{
+    const auto now = nowMs();
+    const int len = tr.activeLength();
+    const auto trigs = tr.trigs();
+    const double waveT = (now - stopWaveStart) / 360.0;
+
+    for (int i = 0; i < 16; ++i)
+    {
+        const int idx = page * stepsPerPage + i;
+        auto r = stepBoxes[(size_t) i];
+        if (idx >= len)
+        {
+            px::dither (g, r, juce::Colour (0xff1a1a1a), 1);
+            continue;
+        }
+        const auto& s = tr.steps[(size_t) idx];
+        const bool on = trigs[(size_t) idx];
+        const bool selected = isSelected (idx);
+        const bool soft = s.velocity < 64;
+
+        if (selected)
+            r.translate (0, 4);
+        if (on)
+        {
+            if (soft)
+            {
+                g.setColour (px::black);
+                g.fillRect (r);
+                px::dither (g, r, px::white, 3);
+            }
+            else
+            {
+                g.setColour (px::white);
+                g.fillRect (r);
+                if (! selected)
+                {
+                    g.setColour (juce::Colour (0xffa8a8a8));
+                    g.fillRect (r.withTop (r.getBottom() - 7));
+                }
+            }
+        }
+        else
+        {
+            g.setColour (px::cell);
+            g.fillRect (r);
+            if (i % 4 == 0)
+                px::dither (g, r.reduced (2), px::faint, 1);
+        }
+
+        // the playhead leaves a short red trail; a wave runs when it stops
+        if (playing >= 0 && ! tr.mute && ! on)
+        {
+            const int back = ((playing - idx) % len + len) % len;
+            if (back == 1) px::dither (g, r.reduced (3), px::red, 2);
+            if (back == 2) px::dither (g, r.reduced (3), px::red, 1);
+        }
+        if (waveT >= 0.0 && waveT < 1.0)
+        {
+            const float pos = (float) waveT * 20.0f - 2.0f;
+            if (std::abs ((float) i - pos) < 1.0f)
+                px::dither (g, r.reduced (2), on ? px::black : px::white, 2);
+        }
+
+        px::frameRect (g, r, selected ? px::yellow : (on ? px::white : (hover.zone == Zone::step && hover.index == i ? px::grey : px::frame)),
+                       selected ? 4 : 2);
+
+        // marks: locks (yellow), condition / probability (dithered band), retrigs (ticks)
+        const bool dark = on && ! soft;
+        if (! s.locks.empty())
+        {
+            g.setColour (px::yellow);
+            g.fillRect (r.getRight() - 16, r.getY() + 6, 10, 10);
+        }
+        if (s.condB > 0 || s.probability < 100)
+            px::dither (g, juce::Rectangle<int> (r.getX() + 6, r.getY() + 6, juce::jmax (4, r.getWidth() - 26), 6), dark ? px::black : px::grey, 3);
+        if (s.retrig > 1)
+            for (int k = 0; k < s.retrig; ++k)
+            {
+                g.setColour (dark ? px::black : px::grey);
+                g.fillRect (r.getX() + 6 + k * 7, r.getY() + 16, 4, 8);
+            }
+
+        auto label = r.reduced (6, 4).withTrimmedBottom (dark && ! selected ? 6 : 0);
+        juce::String text = juce::String (idx + 1);
+        if (tr.mode == Mode::notes && on)
+            text = noteName (s.note);
+        const auto textColour = on ? (soft ? px::white : px::black) : juce::Colour (0xff4a4a4a);
+        if (soft && on)
+        {
+            auto t = label.removeFromBottom (24).withWidth (textWidth (px::text (26.0f), text) + 6);
+            g.setColour (px::black);
+            g.fillRect (t);
+            px::drawText (g, text, t.withTrimmedLeft (3), juce::Justification::centredLeft, px::text (26.0f), textColour);
+        }
+        else
+            px::drawText (g, text, label, juce::Justification::bottomLeft, px::text (26.0f), textColour);
+
+        if (idx == playing && ! tr.mute)
+        {
+            g.setColour (px::red);
+            g.fillRect (stepBoxes[(size_t) i].getX() + 4, stepBoxes[(size_t) i].getY() - 10, stepBoxes[(size_t) i].getWidth() - 8, 5);
+        }
+    }
+}
+
+void SeqPage::paintMiniMap (juce::Graphics& g, const Track& tr, int playing)
+{
+    const int len = tr.activeLength();
+    const auto trigs = tr.trigs();
+    const int gap = 1, groupGap = 5;
+    const float w = (float) (miniMap.getWidth() - 7 * groupGap) / (float) maxSteps;
+    for (int i = 0; i < maxSteps; ++i)
+    {
+        const int x = miniMap.getX() + juce::roundToInt ((float) i * w) + (i / 16) * groupGap;
+        juce::Rectangle<int> b (x, miniMap.getY(), juce::jmax (1, juce::roundToInt (w) - gap), miniMap.getHeight());
+        if (i >= len)
+        {
+            g.setColour (juce::Colour (0xff111111));
+            g.fillRect (b);
+            continue;
+        }
+        const bool visible = i / stepsPerPage == page;
+        juce::Colour c = trigs[(size_t) i] ? (visible ? px::white : px::grey) : (visible ? px::faint : juce::Colour (0xff1f1f1f));
+        if (i == playing && ! tr.mute)
+            c = px::red;
+        g.setColour (c);
+        g.fillRect (b);
+        if (! tr.steps[(size_t) i].locks.empty() && trigs[(size_t) i])
+        {
+            g.setColour (px::yellow);
+            g.fillRect (b.removeFromTop (4));
+        }
+    }
+    // the page shown above, framed
+    const int x0 = miniMap.getX() + juce::roundToInt ((float) (page * stepsPerPage) * w) + page * groupGap;
+    const int x1 = miniMap.getX() + juce::roundToInt ((float) ((page + 1) * stepsPerPage) * w) + page * groupGap - gap;
+    px::frameRect (g, juce::Rectangle<int> (x0, miniMap.getY(), x1 - x0, miniMap.getHeight()).expanded (3), px::white, 2);
+}
+
+void SeqPage::paintTrigRow (juce::Graphics& g, const Track& tr)
+{
+    const bool active = ! selection.empty();
+    for (int i = 0; i < 7; ++i)
+    {
+        auto b = trigBoxes[(size_t) i];
+        const bool usable = active && (i != 6 || tr.mode == Mode::notes);
+        g.setColour (px::cell);
+        g.fillRect (b);
+        px::frameRect (g, b, usable && hover.zone == Zone::trig && hover.index == i ? px::grey : px::frame, 2);
+        auto t = b.reduced (10, 0);
+        px::drawText (g, fr (trigNames[i]).toUpperCase(), t.removeFromLeft (t.getWidth() / 2), juce::Justification::centredLeft,
+                      px::label (13.0f), usable ? px::grey : px::faint);
+        px::drawText (g, usable ? trigText (tr, i) : juce::String ("-"), t, juce::Justification::centredRight, px::text (32.0f),
+                      usable ? px::white : px::faint);
+    }
+}
+
+//==============================================================================
+// Animations
+
+void SeqPage::showPopup (int slot, const Track& tr)
+{
+    if (slot < 0 || slot >= (int) params().size())
+        return;
+    const auto& def = params()[(size_t) slot];
+    const int v = shownValue (tr, slot);
+    const int maxV = paramMax (def.address);
+    const bool locked = ! selection.empty();
+    popup.name = fr (def.label).toUpperCase();
+    popup.value = valueText (def.address, v);
+    popup.position = (float) v / (float) juce::jmax (1, maxV);
+    popup.choice = def.choice;
+    popup.colour = locked ? px::yellow : px::white;
+    popup.marker = locked && engine.getKit().hasSound (track)
+                       ? (float) engine.getKit().soundValue (track, def.address) / (float) juce::jmax (1, maxV) : -1.0f;
+    popup.anchor = paramBoxes[(size_t) slot];
+    popup.shownMs = nowMs();
+}
+
+void SeqPage::addBurst (juce::Point<int> at, juce::Colour c)
+{
+    if (bursts.size() > 24)
+        bursts.erase (bursts.begin());
+    bursts.push_back ({ at, nowMs(), c });
+}
+
+void SeqPage::showToast (const juce::String& text, juce::Colour c)
+{
+    toast = { text, c, nowMs() };
+}
+
+void SeqPage::paintOverlays (juce::Graphics& g, double now)
+{
+    // pixels flying out of a step or a knob
+    for (auto it = bursts.begin(); it != bursts.end();)
+    {
+        const double t = (now - it->startMs) / 420.0;
+        if (t >= 1.0)
+        {
+            it = bursts.erase (it);
+            continue;
+        }
+        const float d = stepped (t, 7) * 38.0f;
+        g.setColour (it->colour);
+        for (int k = 0; k < 8; ++k)
+        {
+            const float a = juce::MathConstants<float>::twoPi * (float) k / 8.0f + 0.3f;
+            const int s = t < 0.6 ? 6 : 4;
+            g.fillRect (it->at.x + juce::roundToInt (d * std::cos (a)) - s / 2, it->at.y + juce::roundToInt (d * std::sin (a)) - s / 2, s, s);
+        }
+        ++it;
+    }
+
+    // a message sliding in at the top right of the sequencer
+    {
+        const double t = now - toast.startMs;
+        if (t >= 0.0 && t < 1300.0 && toast.text.isNotEmpty())
+        {
+            const auto f = px::label (13.0f);
+            const int w = textWidth (f, toast.text) + 30, hgt = 30;
+            float in = t < 120.0 ? stepped (t / 120.0, 4) : (t > 1180.0 ? 1.0f - stepped ((t - 1180.0) / 120.0, 4) : 1.0f);
+            auto box = juce::Rectangle<int> (seqPanel.getRight() - 16 - juce::roundToInt ((float) w * in), seqPanel.getY() + 14, w, hgt);
+            juce::Graphics::ScopedSaveState state (g);
+            g.reduceClipRegion (seqPanel.reduced (3));
+            g.setColour (toast.colour);
+            g.fillRect (box);
+            px::drawText (g, toast.text, box.reduced (14, 0), juce::Justification::centredLeft, f, px::black);
+        }
+    }
+
+    // the value of the knob being turned, big, as on Elektron screens
+    {
+        const double t = now - popup.shownMs;
+        const bool held = drag.hit.zone == Zone::param;
+        if (held || (t >= 0.0 && t < 900.0))
+        {
+            const int w = 360, h = 150;
+            auto box = juce::Rectangle<int> (w, h).withCentre ({ popup.anchor.getCentreX(), popup.anchor.getY() - h / 2 - 8 });
+            box = box.constrainedWithin (getLocalBounds().reduced (8));
+            // opens in two steps
+            const float open = stepped (juce::jmax (0.0, now - popup.shownMs + (held ? 1000.0 : 0.0)) / 80.0, 2);
+            auto shown = box.withSizeKeepingCentre (juce::roundToInt (w * juce::jmax (0.5f, open)), juce::roundToInt (h * juce::jmax (0.5f, open)));
+            g.setColour (px::black);
+            g.fillRect (shown);
+            px::frameRect (g, shown, popup.colour, 3);
+            if (open >= 1.0f)
+            {
+                auto in = shown.reduced (18, 12);
+                px::drawText (g, popup.name, in.removeFromTop (26), juce::Justification::centredLeft, px::label (12.0f), px::grey);
+                if (! popup.choice)
+                {
+                    auto barRow = in.removeFromBottom (16);
+                    px::bar (g, barRow, 24, juce::roundToInt (popup.position * 24.0f), popup.colour,
+                             popup.marker >= 0.0f ? juce::jlimit (0, 23, juce::roundToInt (popup.marker * 24.0f)) : -1);
+                    in.removeFromBottom (6);
+                }
+                px::drawText (g, popup.value, in, juce::Justification::centredLeft,
+                              px::text (juce::jmin (80.0f, 620.0f / (float) juce::jmax (4, popup.value.length()))), popup.colour);
+            }
+            // dissolves in dithers at the end
+            if (! held && t > 600.0)
+                px::dither (g, shown, px::black, 1 + (int) ((t - 600.0) / 100.0));
+        }
+    }
+}
+
+//==============================================================================
+// Values
+
+int SeqPage::paramMax (int address) const
+{
+    auto names = ra::valueNames (ra::Object::sound, address);
+    return names.empty() ? 127 : (int) names.size() - 1;
+}
+
+int SeqPage::shownValue (const Track& tr, int slot) const
+{
+    const auto& def = params()[(size_t) slot];
+    int v = engine.getKit().hasSound (track) ? engine.getKit().soundValue (track, def.address) : 0;
+    if (! selection.empty())
+        if (auto* l = tr.steps[(size_t) selection.front()].findLock (def.address))
+            v = l->value;
+    return v;
+}
+
+void SeqPage::setParam (int slot, int value)
+{
+    if (slot < 0 || slot >= (int) params().size())
+        return;
+    const auto& def = params()[(size_t) slot];
+    value = juce::jlimit (0, paramMax (def.address), value);
+    if (selection.empty())
+    {
+        if (engine.getKit().hasSound (track) && engine.getKit().soundValue (track, def.address) != value)
+            engine.setSoundParameter (track, def.address, value);
+    }
+    else
+    {
+        bool first = false;
+        seq.edit ([&] (Pattern& p)
+        {
+            for (auto s : selection)
+            {
+                auto& step = p.tracks[(size_t) track].steps[(size_t) s];
+                first = first || step.findLock (def.address) == nullptr;
+                step.setLock (def.address, value);
+            }
+        });
+        if (first)
+        {
+            excitedUntil = nowMs() + 500.0;
+            addBurst (paramBoxes[(size_t) slot].getCentre(), px::yellow);
+        }
+    }
+    Track tr;
+    seq.read ([&] (const Pattern& p) { tr = p.tracks[(size_t) track]; });
+    showPopup (slot, tr);
+}
+
+void SeqPage::clearParamLocks (int slot)
+{
+    if (slot < 0 || slot >= (int) params().size())
+        return;
+    const auto address = params()[(size_t) slot].address;
+    seq.edit ([&] (Pattern& p)
+    {
+        for (auto s : selection)
+            p.tracks[(size_t) track].steps[(size_t) s].clearLock (address);
+    });
+    showToast (fr ("VERROU RETIRÉ"), px::yellow);
+}
+
+void SeqPage::showChoices (int slot)
+{
+    const auto& def = params()[(size_t) slot];
+    auto names = ra::valueNames (ra::Object::sound, def.address);
+    Track tr;
+    seq.read ([&] (const Pattern& p) { tr = p.tracks[(size_t) track]; });
+    const int current = shownValue (tr, slot);
+    juce::PopupMenu m;
+    for (int i = 0; i < (int) names.size(); ++i)
+        m.addItem (i + 1, juce::String::fromUTF8 (names[(size_t) i].c_str()), true, i == current);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (localAreaToGlobal (paramBoxes[(size_t) slot])),
+                     [safe = juce::Component::SafePointer<SeqPage> (this), slot] (int r)
+    {
+        if (safe != nullptr && r > 0)
+            safe->setParam (slot, r - 1);
+    });
+}
+
+int SeqPage::trigValue (const Track& tr, int field) const
+{
+    if (selection.empty())
+        return 0;
+    const auto& s = tr.steps[(size_t) selection.front()];
+    switch (field)
+    {
+        case 0: return s.velocity;
+        case 1: return s.length;
+        case 2: return s.micro;
+        case 3: return s.probability;
+        case 4:
+        {
+            auto c = conditions();
+            for (size_t i = 0; i < c.size(); ++i)
+                if (c[i].first == (s.condB == 0 ? 0 : s.condA) && c[i].second == s.condB)
+                    return (int) i;
+            return 0;
+        }
+        case 5: return s.retrig;
+        case 6: return s.note;
+        default: return 0;
+    }
+}
+
+juce::String SeqPage::trigText (const Track& tr, int field) const
+{
+    const int v = trigValue (tr, field);
+    switch (field)
+    {
+        case 1:
+        {
+            static const char* eighths[8] = { "", "1/8", "1/4", "3/8", "1/2", "5/8", "3/4", "7/8" };
+            if (v < 8) return eighths[v];
+            return juce::String (v / 8.0, v % 8 == 0 ? 0 : 2).trimCharactersAtEnd ("0");
+        }
+        case 2: return v > 0 ? "+" + juce::String (v) : juce::String (v);
+        case 3: return juce::String (v) + "%";
+        case 4:
+        {
+            auto c = conditions()[(size_t) v];
+            return c.second == 0 ? juce::String ("1:1") : juce::String (c.first) + ":" + juce::String (c.second);
+        }
+        case 5: return v <= 1 ? juce::String ("NON") : "x" + juce::String (v);
+        case 6: return noteName (v);
+        default: return juce::String (v);
+    }
+}
+
+void SeqPage::setTrigValue (int field, int value)
+{
+    if (selection.empty())
+        return;
+    seq.edit ([&] (Pattern& p)
+    {
+        for (auto idx : selection)
+        {
+            auto& s = p.tracks[(size_t) track].steps[(size_t) idx];
+            switch (field)
+            {
+                case 0: s.velocity = (std::uint8_t) juce::jlimit (1, 127, value); break;
+                case 1: s.length = (std::uint8_t) juce::jlimit (1, 64, value); break;
+                case 2: s.micro = (std::int8_t) juce::jlimit (-11, 11, value); break;
+                case 3: s.probability = (std::uint8_t) juce::jlimit (0, 100, value); break;
+                case 4:
+                {
+                    auto c = conditions();
+                    auto pick = c[(size_t) juce::jlimit (0, (int) c.size() - 1, value)];
+                    s.condA = (std::uint8_t) pick.first;
+                    s.condB = (std::uint8_t) pick.second;
+                    break;
+                }
+                case 5: s.retrig = (std::uint8_t) juce::jlimit (1, 8, value); break;
+                case 6: s.note = (std::uint8_t) juce::jlimit (0, 127, value); lastNote = s.note; break;
+                default: break;
+            }
+        }
+    });
+}
+
+//==============================================================================
+// Mouse and keys
+
+void SeqPage::mouseMove (const juce::MouseEvent& e)
+{
+    auto h = zoneAt (e.getPosition());
+    if (h.zone != hover.zone || h.index != hover.index)
+    {
+        hover = h;
+        const bool draggable = h.zone == Zone::tempo || h.zone == Zone::swing || h.zone == Zone::length
+                            || h.zone == Zone::trig || h.zone == Zone::param;
+        setMouseCursor (draggable ? juce::MouseCursor::UpDownResizeCursor
+                                  : (h.zone == Zone::none ? juce::MouseCursor::NormalCursor : juce::MouseCursor::PointingHandCursor));
+    }
+}
+
+void SeqPage::mouseDown (const juce::MouseEvent& e)
+{
+    grabKeyboardFocus();
+    drag = {};
+    drag.hit = zoneAt (e.getPosition());
+    drag.startY = e.getPosition().y;
+    const bool right = e.mods.isPopupMenu();
+    const bool shift = e.mods.isShiftDown();
+
+    Track tr;
+    double tempo = 120.0;
+    int swing = 50;
+    seq.read ([&] (const Pattern& p) { tr = p.tracks[(size_t) track]; tempo = p.tempo; swing = p.swing; });
+
+    switch (drag.hit.zone)
+    {
+        case Zone::play:
+            if (! seq.isFollowingHost())
+                seq.togglePlay();
+            break;
+        case Zone::tempo:      drag.startValue = juce::roundToInt (tempo * 10.0); break;
+        case Zone::swing:      drag.startValue = swing; break;
+        case Zone::voice:
+            if (right)
+                showVoiceMenu (drag.hit.index);
+            else if (e.mods.isAltDown())
+                seq.edit ([&] (Pattern& p) { auto& m = p.tracks[(size_t) drag.hit.index].mute; m = ! m; });
+            else
+                selectTrack (drag.hit.index);
+            break;
+        case Zone::section:
+            if (drag.hit.index != section)
+            {
+                section = drag.hit.index;
+                startWipe();
+            }
+            break;
+        case Zone::listen:     engine.playSound (track); break;
+        case Zone::param:
+            if (right)
+            {
+                if (! selection.empty())
+                    clearParamLocks (drag.hit.index);
+                drag.hit = {};
+                break;
+            }
+            drag.startValue = shownValue (tr, drag.hit.index);
+            showPopup (drag.hit.index, tr);
+            break;
+        case Zone::mode:
+        {
+            const auto m = drag.hit.index == 1 ? Mode::notes : Mode::steps;
+            if (m != tr.mode)
+            {
+                seq.edit ([&] (Pattern& p) { p.tracks[(size_t) track].mode = m; });
+                showToast (m == Mode::notes ? fr ("MODE NOTES") : fr ("MODE PAS"));
+            }
+            break;
+        }
+        case Zone::length:     drag.startValue = tr.activeLength(); break;
+        case Zone::division:
+            seq.edit ([&] (Pattern& p)
+            {
+                auto& d = p.tracks[(size_t) track].division;
+                d = (Division) (((int) d + (right ? numDivisions - 1 : 1)) % numDivisions);
+            });
+            break;
+        case Zone::mute:       seq.edit ([&] (Pattern& p) { auto& m = p.tracks[(size_t) track].mute; m = ! m; }); break;
+        case Zone::miniMap:
+        {
+            const int i = juce::jlimit (0, maxSteps - 1, (e.getPosition().x - miniMap.getX()) * maxSteps / juce::jmax (1, miniMap.getWidth()));
+            if (i < tr.activeLength() && i / stepsPerPage != page)
+            {
+                page = i / stepsPerPage;
+                showToast ("PAGE " + juce::String (page + 1) + "/" + juce::String ((tr.activeLength() + stepsPerPage - 1) / stepsPerPage));
+            }
+            break;
+        }
+        case Zone::step:
+        {
+            const int idx = page * stepsPerPage + drag.hit.index;
+            if (idx >= tr.activeLength())
+                break;
+            if (right)
+            {
+                showStepMenu (idx);
+                break;
+            }
+            if (shift)
+            {
+                toggleSelection (idx);
+                drag.hit = {};
+                break;
+            }
+            const bool wasOn = tr.isOn (idx);
+            drag.lastStep = idx;
+            if (tr.mode == Mode::notes && wasOn)
+            {
+                // decided on mouse up: a click switches it off, a drag changes the note
+                drag.noteDrag = true;
+                drag.startValue = tr.steps[(size_t) idx].note;
+                break;
+            }
+            drag.paintOn = ! wasOn;
+            seq.edit ([&] (Pattern& p)
+            {
+                auto& t = p.tracks[(size_t) track];
+                if (t.mode == Mode::euclid)
+                    t.printEuclid();
+                auto& s = t.steps[(size_t) idx];
+                s.on = drag.paintOn;
+                if (s.on && t.mode == Mode::notes)
+                    s.note = (std::uint8_t) lastNote;
+            });
+            if (drag.paintOn)
+                addBurst (stepBoxes[(size_t) drag.hit.index].getCentre(), px::white);
+            break;
+        }
+        case Zone::trig:
+            if (selection.empty() || (drag.hit.index == 6 && tr.mode != Mode::notes))
+            {
+                drag.hit = {};
+                break;
+            }
+            drag.startValue = trigValue (tr, drag.hit.index);
+            if (drag.hit.index == 4)
+                setTrigValue (4, right ? 0 : (drag.startValue + 1) % (int) conditions().size());
+            break;
+        case Zone::clearSelection: selection.clear(); break;
+        case Zone::none:
+            if (soundPanel.getUnion (seqPanel).contains (e.getPosition()))
+                selection.clear();
+            break;
+    }
+    repaint();
+}
+
+void SeqPage::mouseDrag (const juce::MouseEvent& e)
+{
+    const int dy = drag.startY - e.getPosition().y;
+    if (e.getDistanceFromDragStart() > 3)
+        drag.moved = true;
+
+    switch (drag.hit.zone)
+    {
+        case Zone::tempo:
+        {
+            const bool fine = e.mods.isShiftDown();
+            const double t = juce::jlimit (30.0, 300.0, (drag.startValue + dy * (fine ? 1 : 5)) / 10.0);
+            seq.edit ([&] (Pattern& p) { p.tempo = std::round (t * (fine ? 10.0 : 2.0)) / (fine ? 10.0 : 2.0); });
+            break;
+        }
+        case Zone::swing:
+        {
+            const int v = juce::jlimit (50, 75, drag.startValue + dy / 4);
+            seq.edit ([&] (Pattern& p) { p.swing = (std::uint8_t) v; });
+            break;
+        }
+        case Zone::length:
+        {
+            const int v = juce::jlimit (1, maxSteps, drag.startValue + dy / 3);
+            seq.edit ([&] (Pattern& p)
+            {
+                auto& t = p.tracks[(size_t) track];
+                if (t.mode == Mode::euclid)
+                    t.printEuclid();
+                t.length = (std::uint8_t) v;
+            });
+            page = juce::jmin (page, (v - 1) / stepsPerPage);
+            selection.erase (std::remove_if (selection.begin(), selection.end(), [v] (int s) { return s >= v; }), selection.end());
+            break;
+        }
+        case Zone::param:
+        {
+            // up / down turns the knob from where it is: the whole range in about 200 pixels
+            // (finer with Shift), a list one choice per 12 pixels
+            const int maxV = paramMax (params()[(size_t) drag.hit.index].address);
+            const double fine = e.mods.isShiftDown() ? 0.25 : 1.0;
+            const double delta = maxV >= 24 ? dy * maxV / 200.0 * fine : dy / 12.0;
+            if (drag.moved)
+                setParam (drag.hit.index, drag.startValue + juce::roundToInt (delta));
+            break;
+        }
+        case Zone::step:
+        {
+            if (drag.lastStep < 0)
+                break;
+            if (drag.noteDrag)
+            {
+                // a semitone per 6 pixels
+                const int note = juce::jlimit (0, 127, drag.startValue + dy / 6);
+                const int idx = drag.lastStep;
+                seq.edit ([&] (Pattern& p) { p.tracks[(size_t) track].steps[(size_t) idx].note = (std::uint8_t) note; });
+                lastNote = note;
+                break;
+            }
+            // paint the same state over the steps the mouse crosses
+            auto h = zoneAt (e.getPosition());
+            if (h.zone == Zone::step)
+            {
+                const int idx = page * stepsPerPage + h.index;
+                bool changed = false;
+                seq.edit ([&] (Pattern& p)
+                {
+                    auto& t = p.tracks[(size_t) track];
+                    if (idx >= t.activeLength())
+                        return;
+                    auto& s = t.steps[(size_t) idx];
+                    if (s.on != drag.paintOn)
+                    {
+                        s.on = drag.paintOn;
+                        changed = true;
+                        if (s.on && t.mode == Mode::notes)
+                            s.note = (std::uint8_t) lastNote;
+                    }
+                });
+                if (changed && drag.paintOn)
+                    addBurst (stepBoxes[(size_t) h.index].getCentre(), px::white);
+            }
+            break;
+        }
+        case Zone::trig:
+        {
+            if (drag.hit.index == 4)
+                break;
+            const int perUnit = drag.hit.index == 0 || drag.hit.index == 3 ? 2 : 6;
+            setTrigValue (drag.hit.index, drag.startValue + dy / perUnit);
+            break;
+        }
+        case Zone::none: case Zone::play: case Zone::voice: case Zone::section: case Zone::listen:
+        case Zone::mode: case Zone::division: case Zone::mute: case Zone::miniMap: case Zone::clearSelection:
+            break;
+    }
+    repaint();
+}
+
+void SeqPage::mouseUp (const juce::MouseEvent&)
+{
+    if (drag.hit.zone == Zone::step && drag.noteDrag && ! drag.moved && drag.lastStep >= 0)
+    {
+        const int idx = drag.lastStep;
+        seq.edit ([&] (Pattern& p) { p.tracks[(size_t) track].steps[(size_t) idx].on = false; });
+    }
+    if (drag.hit.zone == Zone::param && ! drag.moved && drag.hit.index >= 0 && params()[(size_t) drag.hit.index].choice)
+        showChoices (drag.hit.index);
+    if (drag.hit.zone == Zone::param)
+        popup.shownMs = nowMs();       // stays a moment, then dissolves
+    drag = {};
+    repaint();
+}
+
+void SeqPage::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    auto h = zoneAt (e.getPosition());
+    if (h.zone == Zone::voice)
+        rename (h.index);
+    else if (nameBox.contains (e.getPosition()))
+        rename (track);
+    else if (h.zone == Zone::param && ! selection.empty())
+        clearParamLocks (h.index);
+}
+
+void SeqPage::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+{
+    const int dir = (w.deltaY + w.deltaX) > 0 ? 1 : ((w.deltaY + w.deltaX) < 0 ? -1 : 0);
+    if (dir == 0)
+        return;
+    auto h = zoneAt (e.getPosition());
+    Track tr;
+    seq.read ([&] (const Pattern& p) { tr = p.tracks[(size_t) track]; });
+    switch (h.zone)
+    {
+        case Zone::tempo:  seq.edit ([&] (Pattern& p) { p.tempo = juce::jlimit (30.0, 300.0, p.tempo + dir); }); break;
+        case Zone::swing:  seq.edit ([&] (Pattern& p) { p.swing = (std::uint8_t) juce::jlimit (50, 75, p.swing + dir); }); break;
+        case Zone::trig:
+            if (! selection.empty())
+                setTrigValue (h.index, trigValue (tr, h.index) + dir);
+            break;
+        case Zone::param:
+            setParam (h.index, shownValue (tr, h.index) + dir);
+            popup.shownMs = nowMs();
+            break;
+        case Zone::none: case Zone::play: case Zone::voice: case Zone::section: case Zone::listen: case Zone::mode:
+        case Zone::length: case Zone::division: case Zone::mute: case Zone::miniMap: case Zone::step: case Zone::clearSelection:
+            break;
+    }
+    repaint();
+}
+
+bool SeqPage::keyPressed (const juce::KeyPress& k)
+{
+    if (k == juce::KeyPress::escapeKey)
+    {
+        selection.clear();
+        repaint();
+        return true;
+    }
+    if (k == juce::KeyPress::spaceKey)
+    {
+        if (! seq.isFollowingHost())
+            seq.togglePlay();
+        return true;
+    }
+    if (k == juce::KeyPress::leftKey || k == juce::KeyPress::rightKey)
+    {
+        int len = 16;
+        seq.read ([&] (const Pattern& p) { len = p.tracks[(size_t) track].activeLength(); });
+        const int pages = (len + stepsPerPage - 1) / stepsPerPage;
+        const int next = juce::jlimit (0, pages - 1, page + (k == juce::KeyPress::rightKey ? 1 : -1));
+        if (next != page)
+        {
+            page = next;
+            showToast ("PAGE " + juce::String (page + 1) + "/" + juce::String (pages));
+        }
+        repaint();
+        return true;
+    }
+    if (k == juce::KeyPress::upKey || k == juce::KeyPress::downKey)
+    {
+        selectTrack (track + (k == juce::KeyPress::downKey ? 1 : -1));
+        return true;
+    }
+    return false;
+}
+
+//==============================================================================
+// Menus and renaming
+
+void SeqPage::showVoiceMenu (int voice)
+{
+    bool muted = false;
+    seq.read ([&] (const Pattern& p) { muted = p.tracks[(size_t) voice].mute; });
+    juce::PopupMenu m;
+    m.addItem (1, muted ? "Remettre le son" : "Couper (mute)");
+    m.addItem (2, "Renommer");
+    m.addSeparator();
+    m.addItem (3, "Copier la piste");
+    m.addItem (4, "Coller la piste", hasClipboard);
+    m.addItem (5, "Effacer la piste");
+    m.addSeparator();
+    m.addItem (6, fr ("Écouter le son"));
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                     [safe = juce::Component::SafePointer<SeqPage> (this), voice] (int r)
+    {
+        auto* self = safe.getComponent();
+        if (self == nullptr || r == 0)
+            return;
+        auto& s = self->seq;
+        switch (r)
+        {
+            case 1: s.edit ([&] (Pattern& p) { auto& mu = p.tracks[(size_t) voice].mute; mu = ! mu; }); break;
+            case 2: self->rename (voice); break;
+            case 3:
+                s.read ([&] (const Pattern& p) { self->clipboard = p.tracks[(size_t) voice]; });
+                self->hasClipboard = true;
+                self->showToast (fr ("PISTE COPIÉE"));
+                break;
+            case 4:
+                s.edit ([&] (Pattern& p) { auto name = p.tracks[(size_t) voice].name; p.tracks[(size_t) voice] = self->clipboard; p.tracks[(size_t) voice].name = name; });
+                self->showToast (fr ("PISTE COLLÉE"));
+                break;
+            case 5:
+                s.edit ([&] (Pattern& p) { auto name = p.tracks[(size_t) voice].name; p.tracks[(size_t) voice] = Track(); p.tracks[(size_t) voice].name = name; });
+                self->showToast (fr ("PISTE EFFACÉE"), px::red);
+                break;
+            case 6: self->engine.playSound (voice); break;
+            default: break;
+        }
+        if (voice == self->track)
+            self->selection.clear();
+        self->repaint();
+    });
+}
+
+void SeqPage::showStepMenu (int step)
+{
+    juce::PopupMenu m;
+    m.addItem (1, isSelected (step) ? fr ("Retirer de la sélection") : fr ("Choisir pour verrouiller (Maj + clic)"));
+    m.addItem (2, "Effacer ses verrous");
+    m.addItem (3, fr ("Remettre le pas à zéro"));
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                     [safe = juce::Component::SafePointer<SeqPage> (this), step] (int r)
+    {
+        auto* self = safe.getComponent();
+        if (self == nullptr || r == 0)
+            return;
+        const int t = self->track;
+        if (r == 1)
+            self->toggleSelection (step);
+        else if (r == 2)
+            self->seq.edit ([&] (Pattern& p) { p.tracks[(size_t) t].steps[(size_t) step].locks.clear(); });
+        else if (r == 3)
+            self->seq.edit ([&] (Pattern& p)
+            {
+                auto& s = p.tracks[(size_t) t].steps[(size_t) step];
+                const bool on = s.on;
+                s = Step();
+                s.on = on;
+            });
+        self->repaint();
+    });
+}
+
+void SeqPage::rename (int voice)
+{
+    juce::String current;
+    seq.read ([&] (const Pattern& p) { current = juce::String::fromUTF8 (p.tracks[(size_t) voice].name.c_str()); });
+    nameEditor = std::make_unique<juce::TextEditor>();
+    auto* ed = nameEditor.get();
+    ed->setFont (px::text (28.0f));
+    ed->setText (current, false);
+    ed->setTextToShowWhenEmpty ("SON " + juce::String (voice + 1).paddedLeft ('0', 2), px::dim);
+    ed->setInputRestrictions (14);
+    ed->setColour (juce::TextEditor::backgroundColourId, px::black);
+    ed->setColour (juce::TextEditor::outlineColourId, px::white);
+    ed->setBounds (voices[(size_t) voice].reduced (3));
+    addAndMakeVisible (ed);
+    ed->selectAll();
+    ed->grabKeyboardFocus();
+    auto finish = [this, voice] (bool keep)
+    {
+        if (nameEditor == nullptr)
+            return;
+        if (keep)
+        {
+            auto text = nameEditor->getText().trim().toStdString();
+            if ((int) text.size() > maxNameBytes)
+                text.resize ((size_t) maxNameBytes);
+            seq.edit ([&] (Pattern& p) { p.tracks[(size_t) voice].name = text; });
+        }
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SeqPage> (this)]
+        {
+            if (safe != nullptr)
+            {
+                safe->nameEditor.reset();
+                safe->grabKeyboardFocus();
+            }
+        });
+    };
+    ed->onReturnKey = [finish] { finish (true); };
+    ed->onFocusLost = [finish] { finish (true); };
+    ed->onEscapeKey = [finish] { finish (false); };
+}

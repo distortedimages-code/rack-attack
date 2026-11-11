@@ -5,6 +5,7 @@
 #include <JuceHeader.h>
 
 #include "../Source/app/Engine.h"
+#include "../Source/app/Sequencer.h"
 #include "../Source/app/FakeRackAttack.h"
 #include "../Source/app/Library.h"
 #include "../Source/app/Session.h"
@@ -61,6 +62,13 @@ namespace
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juce;
+
+    // start from an empty library: only inside the temporary HOME of the tests
+    {
+        auto home = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
+        if (home.getFileName() == "test-home")
+            home.getChildFile ("Documents").getChildFile ("RackAttack").deleteRecursively();
+    }
 
     Session session;
     Engine engine (session);
@@ -207,6 +215,91 @@ int main()
     std::printf ("burst: %d parameter changes, %d notes in one second\n", params, notes);
     CHECK (params >= 120 && params <= 260);   // wide margins: build machines can be slow
     CHECK (notes >= 5 && notes <= 11);
+
+    // 10b. The sequencer: a kick on each beat and a lock on step 5, sent just before its
+    //      note and put back when the clock stops.
+    {
+        std::vector<juce::MidiMessage> seqSent;
+        engine.setTestOutput ([&] (const juce::MidiMessage& m) { seqSent.push_back (m); fake.receive (m); });
+        const int base = engine.getKit().soundValue (0, 0x27);
+        {
+            Sequencer seq (engine);
+            seq.stopTimerForTest();
+            seq.refreshFromKit();
+            seq.edit ([] (ra::seq::Pattern& p)
+            {
+                p.tempo = 120.0;
+                for (int i : { 0, 4, 8, 12 })
+                    p.tracks[0].steps[(size_t) i].on = true;
+                p.tracks[0].steps[4].setLock (0x27, 101);
+            });
+            CHECK (! seq.isPlaying());
+            seq.play();
+            double t = 1000.0;
+            for (int i = 0; i < 400; ++i, t += 2.0)     // 800 ms at 120 BPM: steps 1 and 5
+                seq.tickForTest (t);
+            CHECK (seq.isPlaying());
+            seq.stop();
+            seq.tickForTest (t);
+            CHECK (! seq.isPlaying());
+        }
+        auto isLock = [] (const juce::MidiMessage& m, int value)
+        {
+            if (! m.isSysEx() || m.getSysExDataSize() < 10)
+                return false;
+            auto* d = m.getSysExData();
+            return d[3] == ra::cmd::SNDP && d[5] == 0 && d[7] == 0x27 && (value < 0 || d[8] == value);   // after F0: 3E 11 ID CMD BUFN SON PAH PAL VAL
+        };
+        std::vector<int> order;   // 1 = note of sound 1, 2 = lock 101, 3 = put back
+        for (auto& m : seqSent)
+        {
+            if (m.isNoteOn() && m.getNoteNumber() == 36 && m.getChannel() == engine.channel.load()) order.push_back (1);
+            else if (isLock (m, 101)) order.push_back (2);
+            else if (isLock (m, base)) order.push_back (3);
+        }
+        CHECK ((order == std::vector<int> { 1, 2, 1, 3 }));
+        if (order != std::vector<int> { 1, 2, 1, 3 })
+            for (auto o : order) std::printf ("  order %d\n", o);
+
+        // Following the DAW (real time, blocks every 5 ms): a kick per beat, then the
+        // DAW loops back to the start and the kick of beat 1 comes again.
+        seqSent.clear();
+        {
+            Sequencer seq (engine);
+            seq.stopTimerForTest();
+            seq.refreshFromKit();
+            seq.edit ([] (ra::seq::Pattern& p)
+            {
+                for (int i : { 0, 4, 8, 12 })
+                    p.tracks[0].steps[(size_t) i].on = true;
+            });
+            auto run = [&] (double fromPpq, double ms)
+            {
+                const auto start = juce::Time::getMillisecondCounterHiRes();
+                for (;;)
+                {
+                    const auto now = juce::Time::getMillisecondCounterHiRes();
+                    if (now - start > ms)
+                        break;
+                    seq.hostTransport (true, fromPpq + (now - start) / 500.0, 120.0);
+                    seq.tickForTest (now);
+                    juce::Thread::sleep (5);
+                }
+            };
+            run (0.0, 1150.0);      // beats 1, 2, 3
+            CHECK (seq.isFollowingHost());
+            run (0.0, 300.0);       // looped back: beat 1 again
+            seq.hostTransport (false, 0.0, 120.0);
+            seq.tickForTest (juce::Time::getMillisecondCounterHiRes());
+            CHECK (! seq.isPlaying());
+        }
+        int kicks = 0;
+        for (auto& m : seqSent)
+            kicks += m.isNoteOn() && m.getNoteNumber() == 36 ? 1 : 0;
+        std::printf ("following the DAW: %d kicks\n", kicks);
+        CHECK (kicks == 4);
+        engine.setTestOutput ([&fake] (const juce::MidiMessage& m) { fake.receive (m); });
+    }
 
     // 11. The unit goes quiet: the connection shows it
     fake.silent = true;

@@ -45,10 +45,13 @@ Tout est dans `Documents/RackAttack/` :
 
 ## Code
 
-- `Source/core/` — protocole et modèle de kit, sans JUCE (servira au plugin).
-- `Source/app/` — l'interface et le lien avec la machine (JUCE 8).
+- `Source/core/` — protocole, modèle de kit et séquenceur (`RaSeq` : patterns, euclidien, horloge en noires, verrous), sans JUCE.
+- `Source/app/` — l'interface et le lien avec la machine (JUCE 8). `Sequencer` envoie les notes et les verrous à l'heure (planifiés 40 ms à l'avance, en suivant le transport du logiciel) ; `SeqPage` est la page principale (voix, son, séquenceur) ; `SoundViz` dessine le son de chaque section en pixels ; `Pixel` le look rétro.
 - `Source/plugin/` — le plug-in et les mises à jour.
+- `Resources/fonts/` — Silkscreen et VT323, sous licence SIL Open Font License (textes de licence à côté).
 - `docs/index.html` — la page de téléchargement (GitHub Pages, dossier `docs` de `main`).
-- `Tests/` — `CoreTests` (dont deux messages réels acceptés par la machine), `EngineTests` (l'appli face à un faux RackAttack : ID à trouver, 50 programmes, changements de programme, envois vérifiés) et `UpdaterTests` (versions, réponse de GitHub, contrôle, remplacement des plug-ins avec ou sans mot de passe).
+- `Tests/` — `CoreTests` (dont deux messages réels acceptés par la machine), `SeqTests` (rythmes euclidiens, temps des notes, verrous, conditions, sauvegarde), `EngineTests` (l'appli face à un faux RackAttack : ID à trouver, 50 programmes, changements de programme, envois vérifiés, séquenceur avec horloge propre puis suivant un logiciel qui boucle) et `UpdaterTests` (versions, réponse de GitHub, contrôle, remplacement des plug-ins avec ou sans mot de passe).
+
+Voir l'appli sans machine : `RA_DEMO=1` (un faux RackAttack et un petit pattern qui joue).
 
 Compiler : `cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j 8 && ctest --test-dir build`.

@@ -94,6 +94,17 @@ public:
     void sendSysex (const ra::Bytes& sysex, const juce::String& why = {}, bool showInJournal = true);
     void sendShort (const juce::MidiMessage& m, bool log = true);
     void playSound (int sound);                     // one note, sound 0..23
+
+    // The sequencer: messages with their own time (sample positions at the given rate
+    // after startMs, on the ms counter), sent on time by the output's own thread; and
+    // dropping those not sent yet. Any thread. Not written to the journal.
+    void sendTimed (const juce::MidiBuffer& buffer, double startMs, double samplesPerSecond);
+    void clearTimed();
+    void sendQuiet (const juce::MidiMessage& m)     { sendNow (m); }
+
+    // Notes coming from the RackAttack (a keyboard plugged into it), on the MIDI
+    // input's thread. Set before the input is opened.
+    std::function<void (const juce::MidiMessage&)> onIncomingNote;
     void resendSoundDump (int sound);               // the sound as last read, unchanged
     bool hasSoundDump (int sound) const;
 

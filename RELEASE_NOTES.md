@@ -1,9 +1,12 @@
-**RackAttack Editor 0.3** : le premier plug-in.
+**RackAttack Editor 0.4** : le séquenceur, et un nouveau look rétro.
 
-- **AU, VST3 et appli** pour Mac (Apple Silicon et Intel, macOS 11 ou plus récent).
-- **Mises à jour depuis le plug-in** : un bouton apparaît en haut quand une nouvelle version sort. Le fichier est vérifié avant l'installation ; macOS demande ton mot de passe pour les dossiers des plug-ins.
-- Branchement guidé, pages Kit, Son, Effets, Bibliothèque et Outils (comme la 0.2).
+- **Une page pour tout** (la première) : en haut les 24 voix, qui choisissent la piste et flashent quand elles jouent (blanc : séquenceur, rouge : clavier) ; au milieu le son de la piste ; en bas son séquenceur.
+- **Le son en images** : pour chaque section (Osc, Mix, Filtre, Ampli, Env, LFO, Sortie), une image en pixels qui bouge avec les réglages (la forme d'onde, la courbe du filtre, l'enveloppe qui s'étire…). Les réglages se changent en glissant vers le haut ou le bas ; un clic ouvre les listes.
+- **Séquenceur** : 24 pistes, jusqu'à 128 pas (8 pages de 16), une longueur et une vitesse par piste, en **pas** ou en **notes** (une mélodie sur le Tuned Channel du son).
+- **Verrous de paramètres** : Maj + clic sur des pas, puis change des réglages du son. Ils passent en jaune et ne valent que pour ces pas.
+- Par pas : vélocité, durée, micro-décalage, probabilité, condition (1:2, 3:4…), retrig.
+- Suit le tempo et le transport de ton logiciel ; sinon, bouton PLAY et tempo propre. Le pattern est enregistré avec ton projet.
+- Les notes jouées sur la piste du plug-in partent vers le RackAttack.
+- Look pixel noir, blanc, rouge et jaune, avec tramages et petites animations.
 
-**Installer** : ouvre `RackAttack-Editor-mac.dmg` et glisse chaque élément sur le dossier à côté de lui. Premier lancement de l'appli : clic droit → *Ouvrir*.
-
-L'appli ne sauvegarde rien dans la mémoire du RackAttack : pour garder un changement, **Shift + Store** sur la machine.
+Pour garder un réglage de son, toujours **Shift + Store** sur la machine. Le pattern, lui, reste dans le plug-in.

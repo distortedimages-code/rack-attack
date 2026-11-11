@@ -2,43 +2,37 @@
 
 void MainComponent::Light::paint (juce::Graphics& g)
 {
-    juce::Colour c = ui::dim;
-    juce::String t = "Non branché — cliquer ici"_fr;
+    juce::Colour c = px::dim;
+    juce::String t = "Non branché — clic ici"_fr;
     switch (state)
     {
-        case Engine::Connection::connected: c = ui::accent;  t = "RackAttack connecté"_fr; break;
-        case Engine::Connection::searching: c = ui::warning; t = "Recherche…"_fr; break;
-        case Engine::Connection::noAnswer:  c = ui::bad;     t = "Pas de réponse — cliquer ici"_fr; break;
+        case Engine::Connection::connected: c = px::white;  t = "RackAttack connecté"_fr; break;
+        case Engine::Connection::searching: c = px::yellow; t = "Recherche…"_fr; break;
+        case Engine::Connection::noAnswer:  c = px::red;    t = "Pas de réponse — clic ici"_fr; break;
         case Engine::Connection::noPorts:   break;
     }
-    auto r = getLocalBounds().toFloat();
-    g.setColour (ui::panelLight);
-    g.fillRoundedRectangle (r, r.getHeight() / 2.0f);
-    g.setColour (c);
-    g.fillEllipse (r.getX() + 12.0f, r.getCentreY() - 6.0f, 12.0f, 12.0f);
-    g.setColour (ui::text);
-    g.setFont (ui::font (14.0f));
-    g.drawText (t, getLocalBounds().withTrimmedLeft (32).withTrimmedRight (10), juce::Justification::centredLeft);
+    auto r = getLocalBounds();
+    g.setColour (px::cell);
+    g.fillRect (r);
+    px::frameRect (g, r, px::frame, 2);
+    // a square light; blinks while searching
+    const bool on = state != Engine::Connection::searching || (juce::Time::getMillisecondCounter() / 300) % 2 == 0;
+    if (on)
+    {
+        g.setColour (c);
+        g.fillRect (r.getX() + 12, r.getCentreY() - 6, 12, 12);
+    }
+    px::drawText (g, t, r.withTrimmedLeft (34).withTrimmedRight (8), juce::Justification::centredLeft, px::text (24.0f), px::white);
 }
 
 MainComponent::MainComponent (AppContext& c)
     : ctx (c), session (c.session), engine (c.engine), library (c.library)
 {
-    lookAndFeel.setColourScheme (juce::LookAndFeel_V4::getDarkColourScheme());
-    lookAndFeel.setColour (juce::ResizableWindow::backgroundColourId, ui::background);
-    lookAndFeel.setColour (juce::TextButton::buttonOnColourId, ui::accent.darker (0.3f));
-    lookAndFeel.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff141614));
-    lookAndFeel.setColour (juce::TextEditor::textColourId, ui::text);
-    lookAndFeel.setColour (juce::Label::textColourId, ui::text);
-    lookAndFeel.setColour (juce::Slider::thumbColourId, ui::accent);
-    lookAndFeel.setColour (juce::ToggleButton::tickColourId, ui::accent);
-    lookAndFeel.setColour (juce::ComboBox::backgroundColourId, ui::panelLight);
-    lookAndFeel.setColour (juce::ListBox::backgroundColourId, ui::panelLight);
     setLookAndFeel (&lookAndFeel);
 
-    pages = { &kitPage, &soundPage, &effectsPage, &libraryPage, &toolsPage };
-    const juce::String names[5] = { "Kit", "Son", "Effets", "Bibliothèque"_fr, "Outils" };
-    for (int i = 0; i < 5; ++i)
+    pages = { &seqPage, &kitPage, &soundPage, &effectsPage, &libraryPage, &toolsPage };
+    const juce::String names[numPages] = { "Séquenceur"_fr, "Kit", "Son", "Effets", "Bibliothèque"_fr, "Outils" };
+    for (int i = 0; i < numPages; ++i)
     {
         auto* b = pageButtons.add (new juce::TextButton (names[i]));
         b->setClickingTogglesState (true);
@@ -51,7 +45,7 @@ MainComponent::MainComponent (AppContext& c)
     kitPage.onEditSound = [this] (int s)
     {
         soundPage.selectSound (s);
-        showPage (1);
+        showPage (2);
     };
 
     light.onClick = [this] { showWizard(); };
@@ -97,7 +91,6 @@ MainComponent::MainComponent (AppContext& c)
         addChildComponent (comp);
 
     addAndMakeVisible (statusLine);
-    bar.setColour (juce::ProgressBar::foregroundColourId, ui::accent);
     addChildComponent (bar);
 
     addChildComponent (wizard);
@@ -127,12 +120,14 @@ MainComponent::~MainComponent()
 
 void MainComponent::showPage (int index)
 {
-    page = juce::jlimit (0, 4, index);
-    for (int i = 0; i < 5; ++i)
+    page = juce::jlimit (0, numPages - 1, index);
+    for (int i = 0; i < numPages; ++i)
     {
         pages[(size_t) i]->setVisible (i == page);
         pageButtons[i]->setToggleState (i == page, juce::dontSendNotification);
     }
+    if (page == 0)
+        seqPage.grabKeyboardFocus();
 }
 
 void MainComponent::showWizard()
@@ -261,12 +256,18 @@ void MainComponent::taskFinished (const juce::String&, bool ok, const juce::Stri
 //==============================================================================
 void MainComponent::paint (juce::Graphics& g)
 {
-    g.fillAll (ui::background);
-    g.setColour (ui::accent);
-    g.setFont (ui::font (20.0f, true));
-    g.drawText ("RackAttack", 16, 0, 140, 56, juce::Justification::centredLeft);
-    g.setColour (ui::panelLight);
-    g.fillRect (0, 56, getWidth(), 1);
+    g.fillAll (px::black);
+    auto title = juce::Rectangle<int> (16, 0, 200, 56);
+    const auto f = px::label (13.0f, true);
+    auto put = [&] (const juce::String& t, juce::Colour c)
+    {
+        const int w = juce::roundToInt (juce::GlyphArrangement::getStringWidth (f, t)) + 2;
+        px::drawText (g, t, title.removeFromLeft (w), juce::Justification::centredLeft, f, c);
+    };
+    put ("RACK", px::white);
+    put (juce::String::fromUTF8 ("·"), px::red);
+    put ("ATTACK", px::white);
+    px::dither (g, { 0, 54, getWidth(), 2 }, px::faint, 3);
 }
 
 void MainComponent::resized()
@@ -275,15 +276,15 @@ void MainComponent::resized()
     wizard.setBounds (r);
 
     auto top = r.removeFromTop (56).reduced (12, 10);
-    top.removeFromLeft (140);
+    top.removeFromLeft (200);
     for (auto* b : pageButtons)
     {
-        b->setBounds (top.removeFromLeft (b->getButtonText().length() > 6 ? 130 : 90));
+        b->setBounds (top.removeFromLeft (b->getButtonText().length() > 6 ? 140 : 90));
         top.removeFromLeft (6);
     }
     journalButton.setBounds (top.removeFromRight (90));
     top.removeFromRight (10);
-    light.setBounds (top.removeFromRight (250));
+    light.setBounds (top.removeFromRight (270));
     top.removeFromRight (10);
     if (updateButton.isVisible())
         updateButton.setBounds (top.removeFromRight (200));

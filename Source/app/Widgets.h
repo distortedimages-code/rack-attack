@@ -5,27 +5,31 @@
 #include <JuceHeader.h>
 
 #include "../core/RaSysex.h"
+#include "Pixel.h"
 #include "Text.h"
 
 namespace ui
 {
-    const juce::Colour background (0xff1b1e1c);
-    const juce::Colour panel (0xff252a26);
-    const juce::Colour panelLight (0xff2f3530);
-    const juce::Colour accent (0xff8cc63f);       // RackAttack green
-    const juce::Colour text (0xffe9ede7);
-    const juce::Colour dim (0xff97a197);
-    const juce::Colour warning (0xffffb347);
-    const juce::Colour bad (0xffff6b5b);
+    // The retro pixel palette (see Pixel.h): black, white, red for "live" and
+    // problems, yellow-orange for locks and warnings.
+    const juce::Colour background (0xff000000);
+    const juce::Colour panel (0xff0a0a0a);
+    const juce::Colour panelLight (0xff1c1c1c);
+    const juce::Colour accent (0xffffffff);
+    const juce::Colour text (0xffffffff);
+    const juce::Colour dim (0xff8a8a8a);
+    const juce::Colour warning (0xffffb000);
+    const juce::Colour bad (0xffff3b2f);
 
+    // VT323 runs small: its sizes are scaled so the old sizes stay readable.
     inline juce::Font font (float size, bool bold = false)
     {
-        return juce::Font (juce::FontOptions (size, bold ? juce::Font::bold : juce::Font::plain));
+        return bold ? px::label (size * 0.62f, true) : px::text (size * 1.4f);
     }
 
     inline juce::Font mono (float size)
     {
-        return juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), size, juce::Font::plain));
+        return px::text (size * 1.45f);
     }
 
     inline juce::String twoDigits (int n)   { return juce::String (n).paddedLeft ('0', 2); }
@@ -39,13 +43,11 @@ namespace ui
         void paint (juce::Graphics& g) override
         {
             g.setColour (panel);
-            g.fillRoundedRectangle (getLocalBounds().toFloat(), 8.0f);
+            g.fillRect (getLocalBounds());
+            px::frameRect (g, getLocalBounds(), px::frame, 2);
             if (title.isNotEmpty())
-            {
-                g.setColour (accent);
-                g.setFont (font (14.0f, true));
-                g.drawText (title.toUpperCase(), 12, 6, getWidth() - 24, 20, juce::Justification::centredLeft);
-            }
+                px::drawText (g, title.toUpperCase(), { 12, 6, getWidth() - 24, 20 }, juce::Justification::centredLeft,
+                              px::label (10.0f), px::grey);
         }
 
         int titleHeight() const   { return title.isNotEmpty() ? 28 : 8; }
@@ -58,8 +60,8 @@ namespace ui
         {
             label.setText (name, juce::dontSendNotification);
             label.setJustificationType (juce::Justification::centred);
-            label.setFont (font (12.0f));
-            label.setColour (juce::Label::textColourId, dim);
+            label.setFont (font (13.0f));
+            label.setColour (juce::Label::textColourId, px::grey);
             label.setMinimumHorizontalScale (0.7f);
             addAndMakeVisible (label);
 
@@ -77,7 +79,7 @@ namespace ui
             addAndMakeVisible (slider);
 
             value.setJustificationType (juce::Justification::centred);
-            value.setFont (font (12.0f));
+            value.setFont (font (15.0f));
             addAndMakeVisible (value);
             showValue();
         }
@@ -93,8 +95,8 @@ namespace ui
         void resized() override
         {
             auto r = getLocalBounds();
-            label.setBounds (r.removeFromTop (16));
-            value.setBounds (r.removeFromBottom (16));
+            label.setBounds (r.removeFromTop (18));
+            value.setBounds (r.removeFromBottom (20));
             slider.setBounds (r.reduced (2));
         }
 
@@ -160,15 +162,12 @@ namespace ui
 
     inline void styleBig (juce::TextButton& b, bool primary = false)
     {
+        // a primary button looks lit (white, black text)
+        b.getProperties().set ("primary", primary);
         if (primary)
-        {
-            b.setColour (juce::TextButton::buttonColourId, accent.darker (0.35f));
-            b.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
-        }
+            b.setColour (juce::TextButton::textColourOffId, px::black);
         else
-        {
-            b.removeColour (juce::TextButton::buttonColourId);
             b.removeColour (juce::TextButton::textColourOffId);
-        }
+        b.repaint();
     }
 }

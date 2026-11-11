@@ -30,6 +30,7 @@ private:
     struct Light : public juce::Component
     {
         Engine::Connection state = Engine::Connection::noPorts;
+        bool simulation = false;
         std::function<void()> onClick;
         void paint (juce::Graphics&) override;
         void mouseUp (const juce::MouseEvent&) override   { if (onClick) onClick(); }
@@ -45,9 +46,11 @@ private:
     // ConnectWizard::Host
     juce::String currentInput() override    { return ctx.getInput(); }
     juce::String currentOutput() override   { return ctx.getOutput(); }
-    void chooseInput (const juce::String& identifier) override    { ctx.chooseInput (identifier); }
-    void chooseOutput (const juce::String& identifier) override   { ctx.chooseOutput (identifier); }
+    void chooseInput (const juce::String& identifier) override    { leaveSimulation(); ctx.chooseInput (identifier); }
+    void chooseOutput (const juce::String& identifier) override   { leaveSimulation(); ctx.chooseOutput (identifier); }
+    void leaveSimulation()                                         { if (ctx.isSimulation()) { ctx.setSimulation (false); light.simulation = false; light.repaint(); } }
     void wizardFinished (bool connected) override;
+    void startSimulation() override;
 
     void changeListenerCallback (juce::ChangeBroadcaster*) override   { refreshUpdate(); }
     void timerCallback() override

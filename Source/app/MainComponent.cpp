@@ -11,10 +11,15 @@ void MainComponent::Light::paint (juce::Graphics& g)
         case Engine::Connection::noAnswer:  c = px::red;    t = "Pas de réponse — clic ici"_fr; break;
         case Engine::Connection::noPorts:   break;
     }
+    if (simulation)
+    {
+        c = px::yellow;
+        t = "SIMULATION";
+    }
     auto r = getLocalBounds();
     g.setColour (px::cell);
     g.fillRect (r);
-    px::frameRect (g, r, px::frame, 2);
+    px::frameRect (g, r, simulation ? px::yellow : px::frame, 2);
     // a square light; blinks while searching
     const bool on = state != Engine::Connection::searching || (juce::Time::getMillisecondCounter() / 300) % 2 == 0;
     if (on)
@@ -50,6 +55,16 @@ MainComponent::MainComponent (AppContext& c)
 
     light.onClick = [this] { showWizard(); };
     light.state = engine.getConnection();
+    light.simulation = ctx.isSimulation();
+    toolsPage.isSimulation = [this] { return ctx.isSimulation(); };
+    toolsPage.setSimulation = [this] (bool on)
+    {
+        ctx.setSimulation (on);
+        light.simulation = ctx.isSimulation();
+        light.repaint();
+        if (! on && ! ctx.isSetUp())
+            showWizard();
+    };
     addAndMakeVisible (light);
 
     ui::styleBig (updateButton, true);
@@ -135,6 +150,16 @@ void MainComponent::showWizard()
     wizard.setVisible (true);
     wizard.toFront (true);
     wizard.start();
+}
+
+void MainComponent::startSimulation()
+{
+    ctx.setSimulation (true);
+    ctx.setSetUp (true);
+    wizard.setVisible (false);
+    light.simulation = true;
+    light.repaint();
+    toolsPage.refreshSettings();
 }
 
 void MainComponent::wizardFinished (bool connected)
@@ -230,6 +255,7 @@ void MainComponent::statusChanged (const juce::String& s)
 void MainComponent::connectionChanged (Engine::Connection c)
 {
     light.state = c;
+    light.simulation = ctx.isSimulation();
     light.repaint();
     if (c == Engine::Connection::connected)
     {

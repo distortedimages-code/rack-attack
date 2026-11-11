@@ -14,7 +14,8 @@ bool RackAttackProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
 
 void RackAttackProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    // no sound of its own: the RackAttack plays through its own outputs
+    // With the unit, no sound of its own: the RackAttack plays through its own outputs.
+    // In simulation, the RackAttack in software plays here.
     buffer.clear();
 
     // the DAW's transport drives the sequencer while it plays
@@ -34,6 +35,16 @@ void RackAttackProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     for (const auto meta : midi)
         seq.hostNote (meta.getMessage());
     midi.clear();
+
+    if (auto* sim = context.simulator())
+    {
+        if (std::abs (simRate - getSampleRate()) > 1.0 && getSampleRate() > 0.0)
+        {
+            simRate = getSampleRate();
+            sim->prepare (simRate);
+        }
+        sim->render (buffer, buffer.getNumSamples(), playing ? bpm : seq.getTempo());
+    }
 }
 
 juce::AudioProcessorEditor* RackAttackProcessor::createEditor()

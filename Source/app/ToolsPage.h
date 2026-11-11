@@ -21,6 +21,9 @@ public:
 
     void refreshSettings();   // shows the engine's ID, channel and note of sound 1
 
+    std::function<bool()> isSimulation;
+    std::function<void (bool)> setSimulation;
+
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -37,6 +40,7 @@ private:
     juce::Label updateLabel;
     juce::TextButton checkButton { "Vérifier les mises à jour"_fr };
     juce::ToggleButton autoCheck { "Vérifier une fois par jour"_fr };
+    juce::ToggleButton simulationToggle { "Mode simulation : le RackAttack en logiciel, sans la machine" };
 
     juce::Label idLabel, channelLabel, baseLabel, baseName, intro;
     juce::ComboBox idBox, channelBox;

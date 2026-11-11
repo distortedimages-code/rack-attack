@@ -42,6 +42,7 @@ public:
 
 private:
     AppContext context;
+    double simRate = 0.0;     // the rate the simulator was prepared for (audio thread)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RackAttackProcessor)
 };

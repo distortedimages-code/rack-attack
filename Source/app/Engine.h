@@ -45,7 +45,7 @@ public:
     juce::String openInput (const juce::String& identifier);
     juce::String openOutput (const juce::String& identifier);
     bool hasOutput() const;
-    bool hasInput() const               { return input != nullptr || testOutput != nullptr; }
+    bool hasInput() const               { return input != nullptr || testOutput != nullptr || timedOutput != nullptr; }
 
     std::atomic<int> deviceId { 0 };     // RackAttack Sysex ID (found by connect())
     std::atomic<int> channel { 1 };      // 1..16: notes, programme changes, CC
@@ -123,6 +123,8 @@ public:
     // Tests only: a virtual output that receives everything sent, and a way to
     // feed messages as if they came from the RackAttack.
     void setTestOutput (std::function<void (const juce::MidiMessage&)> sink);
+    // The simulator: every message with the time (ms counter) it must sound at.
+    void setTimedOutput (std::function<void (const juce::MidiMessage&, double)> sink);
     void injectForTest (const juce::MidiMessage& m)   { handleIncomingMidiMessage (nullptr, m); }
 
 private:
@@ -170,6 +172,7 @@ private:
     juce::CriticalSection outLock;
     std::unique_ptr<juce::MidiOutput> output;
     std::function<void (const juce::MidiMessage&)> testOutput;
+    std::function<void (const juce::MidiMessage&, double)> timedOutput;
     std::unique_ptr<juce::MidiInput> input;
 
     juce::CriticalSection inLock;

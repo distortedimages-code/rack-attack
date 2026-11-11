@@ -112,13 +112,15 @@ juce::String Engine::openOutput (const juce::String& identifier)
 bool Engine::hasOutput() const
 {
     const juce::ScopedLock sl (outLock);
-    return output != nullptr || testOutput != nullptr;
+    return output != nullptr || testOutput != nullptr || timedOutput != nullptr;
 }
 
 void Engine::sendNow (const juce::MidiMessage& m)
 {
     const juce::ScopedLock sl (outLock);
-    if (testOutput != nullptr)
+    if (timedOutput != nullptr)
+        timedOutput (m, juce::Time::getMillisecondCounterHiRes());
+    else if (testOutput != nullptr)
         testOutput (m);
     else if (output != nullptr)
         output->sendMessageNow (m);
@@ -127,7 +129,12 @@ void Engine::sendNow (const juce::MidiMessage& m)
 void Engine::sendTimed (const juce::MidiBuffer& buffer, double startMs, double samplesPerSecond)
 {
     const juce::ScopedLock sl (outLock);
-    if (testOutput != nullptr)
+    if (timedOutput != nullptr)
+    {
+        for (const auto meta : buffer)
+            timedOutput (meta.getMessage(), startMs + meta.samplePosition * 1000.0 / samplesPerSecond);
+    }
+    else if (testOutput != nullptr)
     {
         for (const auto meta : buffer)
             testOutput (meta.getMessage());
@@ -141,6 +148,16 @@ void Engine::clearTimed()
     const juce::ScopedLock sl (outLock);
     if (output != nullptr)
         output->clearAllPendingMessages();
+}
+
+void Engine::setTimedOutput (std::function<void (const juce::MidiMessage&, double)> sink)
+{
+    {
+        const juce::ScopedLock sl (outLock);
+        timedOutput = std::move (sink);
+    }
+    if (! hasInput() || ! hasOutput())
+        setConnection (Connection::noPorts);
 }
 
 void Engine::setTestOutput (std::function<void (const juce::MidiMessage&)> sink)

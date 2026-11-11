@@ -20,6 +20,7 @@ public:
         virtual void chooseInput (const juce::String& identifier) = 0;
         virtual void chooseOutput (const juce::String& identifier) = 0;
         virtual void wizardFinished (bool connected) = 0;
+        virtual void startSimulation() = 0;
     };
 
     ConnectWizard (Engine&, Host&);
@@ -53,6 +54,7 @@ private:
     juce::Label inLabel, outLabel;
     juce::ComboBox inBox, outBox;
     juce::TextButton refresh { "Rafraîchir"_fr };
+    juce::TextButton simulate { "Pas de RackAttack ? Mode simulation" };
     juce::StringArray inIds, outIds;
 
     // 2. settings on the unit

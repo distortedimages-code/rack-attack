@@ -351,6 +351,14 @@ ToolsPage::ToolsPage (Engine& e, Updater& u, std::function<void()> changed)
     addAndMakeVisible (checkButton);
     addAndMakeVisible (autoCheck);
     checkButton.onClick = [this] { updater.checkNow(); };
+    addAndMakeVisible (simulationToggle);
+    simulationToggle.setColour (juce::ToggleButton::textColourId, px::yellow);
+    simulationToggle.onClick = [this]
+    {
+        if (setSimulation)
+            setSimulation (simulationToggle.getToggleState());
+        refreshSettings();
+    };
     autoCheck.onClick = [this] { updater.setAutoCheck (autoCheck.getToggleState()); };
     updater.changes.addChangeListener (this);
     refreshUpdate();
@@ -411,6 +419,7 @@ ToolsPage::~ToolsPage()
 
 void ToolsPage::refreshSettings()
 {
+    simulationToggle.setToggleState (isSimulation && isSimulation(), juce::dontSendNotification);
     idBox.setSelectedId (engine.deviceId.load() + 1, juce::dontSendNotification);
     channelBox.setSelectedId (engine.channel.load(), juce::dontSendNotification);
     baseNote.setValue (engine.baseNote.load(), juce::dontSendNotification);
@@ -456,6 +465,8 @@ void ToolsPage::resized()
     autoCheck.setBounds (up.removeFromLeft (230));
     up.removeFromLeft (10);
     updateLabel.setBounds (up);
+    r.removeFromTop (6);
+    simulationToggle.setBounds (r.removeFromTop (28).removeFromLeft (620));
     r.removeFromTop (6);
     intro.setBounds (r.removeFromTop (24));
     r.removeFromTop (6);

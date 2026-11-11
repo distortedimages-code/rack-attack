@@ -1,5 +1,7 @@
 #include "MainComponent.h"
 
+#include "LayoutAudit.h"
+
 void MainComponent::Light::paint (juce::Graphics& g)
 {
     juce::Colour c = px::dim;
@@ -81,6 +83,22 @@ MainComponent::MainComponent (AppContext& c)
     };
     addAndMakeVisible (journalButton);
 
+    // the zoom: as remembered, else the largest that fits the screen at 100 % or less
+    {
+        float z = (float) ctx.settings().getDoubleValue ("zoom", 0.0);
+        if (z <= 0.0f)
+        {
+            z = 1.0f;
+            if (auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+                if ((float) d->userArea.getWidth() < (float) ui::designWidth || (float) d->userArea.getHeight() < (float) ui::designHeight + 60.0f)
+                    z = 0.75f;
+        }
+        zoom = juce::jlimit (0.75f, 2.0f, z);
+    }
+    zoomButton.setButtonText (juce::String (juce::roundToInt (zoom * 100.0f)) + " %");
+    zoomButton.onClick = [this] { showZoomMenu(); };
+    addAndMakeVisible (zoomButton);
+
     journal.setMultiLine (true);
     journal.setReadOnly (true);
     journal.setCaretVisible (false);
@@ -102,8 +120,11 @@ MainComponent::MainComponent (AppContext& c)
             zip.revealToUser();
         }
     };
-    for (auto* comp : std::initializer_list<juce::Component*> { &journal, &noteField, &noteButton, &zipButton, &folderButton })
+    for (auto* comp : std::initializer_list<juce::Component*> { &journalBacking, &journal, &noteField, &noteButton, &zipButton, &folderButton })
+    {
         addChildComponent (comp);
+        comp->getProperties().set ("overlay", true);      // over the page, on purpose
+    }
 
     addAndMakeVisible (statusLine);
     addChildComponent (bar);
@@ -128,13 +149,21 @@ MainComponent::MainComponent (AppContext& c)
     engine.addListener (this);
     ctx.updater.changes.addChangeListener (this);
 
-    setSize (1400, 900);
+    setSize (ui::designWidth, ui::designHeight);
     showPage (juce::SystemStats::getEnvironmentVariable ("RA_PAGE", "0").getIntValue());
     startTimer (250);
 
     ctx.start();   // the first time a window opens: ports of last time, then find the unit
     if (! ctx.isSetUp() || juce::SystemStats::getEnvironmentVariable ("RA_WIZARD", {}) == "1")
         showWizard();
+
+    // the layout check (RA_AUDIT=1): every page, every assistant screen, then quit
+    if (juce::SystemStats::getEnvironmentVariable ("RA_AUDIT", {}).isNotEmpty())
+        juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer<MainComponent> (this)]
+        {
+            if (safe != nullptr)
+                safe->runAudit();
+        });
 
     // screenshots: open the measuring assistant (RA_MEASURE=1), or run its try (RA_MEASURE=run)
     const auto measureEnv = juce::SystemStats::getEnvironmentVariable ("RA_MEASURE", {});
@@ -174,6 +203,79 @@ void MainComponent::showWizard()
     wizard.setVisible (true);
     wizard.toFront (true);
     wizard.start();
+}
+
+void MainComponent::showZoomMenu()
+{
+    juce::PopupMenu m;
+    m.addSectionHeader ("Taille de la fenêtre"_fr);
+    juce::Rectangle<int> screen;
+    if (auto* d = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds()))
+        screen = d->userArea;
+    for (int i = 0; i < (int) std::size (ui::zoomSteps); ++i)
+    {
+        const float z = ui::zoomSteps[i];
+        const bool fits = screen.isEmpty() || ((float) ui::designWidth * z <= (float) screen.getWidth()
+                                               && (float) ui::designHeight * z + 40.0f <= (float) screen.getHeight());
+        m.addItem (i + 1, juce::String (juce::roundToInt (z * 100.0f)) + " %" + (fits ? juce::String() : "  (plus grand que l'écran)"_fr),
+                   true, std::abs (z - zoom) < 0.01f);
+    }
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&zoomButton),
+                     [safe = juce::Component::SafePointer<MainComponent> (this)] (int r)
+    {
+        if (safe == nullptr || r <= 0)
+            return;
+        safe->zoom = ui::zoomSteps[r - 1];
+        safe->ctx.settings().setValue ("zoom", (double) safe->zoom);
+        safe->ctx.settings().saveIfNeeded();
+        safe->zoomButton.setButtonText (juce::String (juce::roundToInt (safe->zoom * 100.0f)) + " %");
+        if (safe->onZoom)
+            safe->onZoom (safe->zoom);
+    });
+}
+
+void MainComponent::runAudit()
+{
+    juce::StringArray report;
+    auto check = [&] (const juce::String& where)
+    {
+        resized();
+        for (auto& line : audit::run (*this))
+            report.add (where + " : " + line);
+    };
+    const juce::String names[numPages] = { "Séquenceur"_fr, "Kit", "Son", "Effets", "Bibliothèque"_fr, "Outils" };
+    for (int i = 0; i < numPages; ++i)
+    {
+        showPage (i);
+        check (names[i]);
+    }
+    showPage (0);
+    journalButton.setToggleState (true, juce::sendNotification);
+    check ("Journal ouvert");
+    journalButton.setToggleState (false, juce::sendNotification);
+
+    wizard.setVisible (true);
+    wizard.toFront (false);
+    wizard.start();
+    check ("Branchement 1/3");
+    wizard.setVisible (false);
+
+    showMeasure();
+    check ("Mesure 1/5");
+    for (auto screen : { "audio", "ready", "run", "done" })
+    {
+        measureWizard.demo (screen);
+        check ("Mesure " + juce::String (screen));
+    }
+    measureWizard.setVisible (false);
+
+    const auto file = juce::File (juce::SystemStats::getEnvironmentVariable ("RA_AUDIT", {}));
+    const auto text = report.isEmpty() ? juce::String ("Rien ne déborde."_fr) : report.joinIntoString ("\n");
+    if (file.getParentDirectory().isDirectory() && file.getFileName().isNotEmpty() && file.getFileName() != "1")
+        file.replaceWithText (text);
+    std::printf ("%s\n%d problème(s)\n", text.toRawUTF8(), report.size());
+    std::fflush (stdout);
+    juce::JUCEApplicationBase::quit();
 }
 
 void MainComponent::showMeasure()
@@ -358,8 +460,10 @@ void MainComponent::resized()
         b->setBounds (top.removeFromLeft (b->getButtonText().length() > 6 ? 140 : 90));
         top.removeFromLeft (6);
     }
-    journalButton.setBounds (top.removeFromRight (90));
-    top.removeFromRight (10);
+    journalButton.setBounds (top.removeFromRight (88));
+    top.removeFromRight (8);
+    zoomButton.setBounds (top.removeFromRight (76));
+    top.removeFromRight (8);
     light.setBounds (top.removeFromRight (270));
     top.removeFromRight (10);
     if (updateButton.isVisible())
@@ -370,11 +474,17 @@ void MainComponent::resized()
     bottom.removeFromRight (10);
     statusLine.setBounds (bottom);
 
-    for (auto* comp : std::initializer_list<juce::Component*> { &journal, &noteField, &noteButton, &zipButton, &folderButton })
+    for (auto* p : pages)
+        p->setBounds (r);
+
+    // the journal opens over the right of the page (the page keeps its size)
+    for (auto* comp : std::initializer_list<juce::Component*> { &journalBacking, &journal, &noteField, &noteButton, &zipButton, &folderButton })
         comp->setVisible (journalOpen);
     if (journalOpen)
     {
-        auto side = r.removeFromRight (420).reduced (8, 8);
+        auto side = r.removeFromRight (420);
+        journalBacking.setBounds (side);
+        side = side.reduced (8, 8).withTrimmedLeft (4);
         auto buttons = side.removeFromBottom (30);
         zipButton.setBounds (buttons.removeFromLeft (150));
         buttons.removeFromLeft (6);
@@ -387,7 +497,4 @@ void MainComponent::resized()
         side.removeFromBottom (6);
         journal.setBounds (side);
     }
-
-    for (auto* p : pages)
-        p->setBounds (r);
 }

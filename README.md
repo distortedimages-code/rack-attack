@@ -4,7 +4,7 @@
 
 **Page de téléchargement** : https://distortedimages-code.github.io/rack-attack/
 
-## Ce que fait l'appli (version 0.5)
+## Ce que fait l'appli (version 0.5.1)
 
 - **Branchement guidé** en 3 écrans : les câbles et ports MIDI, deux réglages sur la machine, puis l'appli trouve le RackAttack toute seule (y compris son Sysex ID) et lit le kit en cours.
 - **Kit** : les 24 sons en pads (écouter, volume, pan, sortie), le programme (nom, mode MIDI, triggers A/B/C), changement de programme.
@@ -57,6 +57,6 @@ Tout est dans `Documents/RackAttack/` :
 - `Source/sim/` — le RackAttack en logiciel (`RaSynth`), sans JUCE ; ses échelles (Hz, ms, gains) sont dans un `Calibration`, réglé par défaut d'après le manuel et remplacé par des mesures. `Source/app/Measure` est le banc de mesure, `MeasureWizard` l'assistant.
 - `Tests/` — `SynthTests` (le simulateur), `MeasureTests` (la mesure sur le simulateur avec un étalonnage connu, qu'elle doit retrouver), `CoreTests` (dont deux messages réels acceptés par la machine), `SeqTests` (rythmes euclidiens, temps des notes, verrous, conditions, sauvegarde), `EngineTests` (l'appli face à un faux RackAttack : ID à trouver, 50 programmes, changements de programme, envois vérifiés, séquenceur avec horloge propre puis suivant un logiciel qui boucle) et `UpdaterTests` (versions, réponse de GitHub, contrôle, remplacement des plug-ins avec ou sans mot de passe).
 
-Voir l'appli sans machine : `RA_DEMO=1` (le simulateur et un petit pattern qui joue). Pour les captures : `RA_PAGE=n`, `RA_WIZARD=1`, `RA_MEASURE=1|audio|ready|run|done`.
+Voir l'appli sans machine : `RA_DEMO=1` (le simulateur et un petit pattern qui joue). Pour les captures : `RA_PAGE=n`, `RA_WIZARD=1`, `RA_MEASURE=1|audio|ready|run|done`. Contrôle de mise en page : `RA_AUDIT=1` (ou `RA_AUDIT=<fichier>`) parcourt toutes les pages et les assistants et liste les textes coupés ou serrés et les éléments qui débordent ou se chevauchent.
 
 Compiler : `cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j 8 && ctest --test-dir build`.

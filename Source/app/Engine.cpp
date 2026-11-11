@@ -247,6 +247,23 @@ bool Engine::hasSoundDump (int sound) const
     return sound >= 0 && sound < 24 && ! soundDumps[(size_t) sound].empty();
 }
 
+int Engine::freeTunedChannel (int exceptSound) const
+{
+    std::array<bool, 18> used {};
+    const int global = juce::jlimit (1, 16, channel.load());
+    used[(size_t) global] = true;
+    for (int s = 0; s < ra::Kit::numSounds; ++s)
+        if (s != exceptSound && kit.hasSound (s))
+        {
+            const int c = kit.soundValue (s, 0x58);
+            used[(size_t) juce::jlimit (0, 17, c == 17 ? global : c)] = true;
+        }
+    for (int c = 16; c >= 1; --c)
+        if (! used[(size_t) c])
+            return c;
+    return 0;
+}
+
 void Engine::resendSoundDump (int sound)
 {
     ra::Bytes dump;

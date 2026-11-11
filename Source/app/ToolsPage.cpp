@@ -473,7 +473,7 @@ void ToolsPage::resized()
     auto up = r.removeFromTop (28);
     checkButton.setBounds (up.removeFromLeft (200));
     up.removeFromLeft (10);
-    autoCheck.setBounds (up.removeFromLeft (230));
+    autoCheck.setBounds (up.removeFromLeft (290));
     up.removeFromLeft (10);
     updateLabel.setBounds (up);
     r.removeFromTop (6);

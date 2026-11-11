@@ -44,7 +44,7 @@ private:
     enum class Zone
     {
         none, play, tempo, swing, voice,
-        section, listen, param,
+        section, listen, param, tune,
         mode, length, division, mute, miniMap, step, trig, clearSelection
     };
     struct Hit { Zone zone = Zone::none; int index = -1; };
@@ -74,6 +74,17 @@ private:
 
     // the sound's parameters of the section shown
     const std::vector<ui::ParamDef>& params() const   { return sectionParams[(size_t) section]; }
+
+    // Every setting on screen: the section's, then the quick access row (the same few
+    // settings for every sound, some swapped for what this sound needs).
+    struct Quick { ui::ParamDef def; juce::String why; };
+    std::vector<Quick> quickFor (int sound) const;
+    void updateSlots();                    // slots = the section's settings + the quick row
+    std::vector<ui::ParamDef> slots;
+    std::vector<juce::String> slotWhy;     // why a quick setting is there (empty: always there)
+    int quickFrom = 0;
+    juce::Rectangle<int> quickRow, tuneBox;
+    void toggleTuned();
     int paramMax (int address) const;
     int shownValue (const ra::seq::Track&, int slot) const;   // the lock of the selected steps, else the sound's
     void setParam (int slot, int value);
@@ -108,7 +119,7 @@ private:
     juce::Rectangle<int> soundPanel, soundTitle, listenBox, vizBox;
     std::array<float, 128> shownValues {};      // what the picture shows, moving towards the values
     bool shownReady = false;
-    std::vector<juce::Rectangle<int>> sectionTabs, paramBoxes;
+    std::vector<juce::Rectangle<int>> sectionTabs, paramBoxes, quickBoxes;
     juce::Rectangle<int> seqPanel, nameBox, lengthBox, divisionBox, muteBox, hintRow, miniMap, trigRow, clearBox;
     std::array<juce::Rectangle<int>, 2> modeTabs;
     std::array<juce::Rectangle<int>, 16> stepBoxes;

@@ -50,6 +50,9 @@ namespace px
     void drawText (juce::Graphics&, const juce::String&, juce::Rectangle<int>, juce::Justification,
                    const juce::Font&, juce::Colour);
 
+    // The layout check listens here: text drawText had to cut (text, width needed, width it had).
+    extern std::function<void (const juce::String&, int, int)> cutTextHook;
+
     //==========================================================================
     class Look : public juce::LookAndFeel_V4
     {

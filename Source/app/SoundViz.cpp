@@ -1,5 +1,6 @@
 #include "SoundViz.h"
 #include "Pixel.h"
+#include "Text.h"
 #include "../core/RaSysex.h"
 
 namespace viz
@@ -126,7 +127,7 @@ namespace
     {
         auto names = ra::valueNames (ra::Object::sound, address);
         const int i = juce::roundToInt (v);
-        return i >= 0 && i < (int) names.size() ? juce::String::fromUTF8 (names[(size_t) i].c_str()).toUpperCase() : juce::String (i);
+        return i >= 0 && i < (int) names.size() ? upper (juce::String::fromUTF8 (names[(size_t) i].c_str())) : juce::String (i);
     }
 
     //==========================================================================

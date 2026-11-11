@@ -210,11 +210,19 @@ void mascot (juce::Graphics& g, juce::Point<int> p, int s, bool blink)
         }
 }
 
+std::function<void (const juce::String&, int, int)> cutTextHook;
+
 void drawText (juce::Graphics& g, const juce::String& t, juce::Rectangle<int> r, juce::Justification j,
                const juce::Font& f, juce::Colour c)
 {
     g.setFont (f);
     g.setColour (c);
+    if (cutTextHook != nullptr && t.trim().isNotEmpty())
+    {
+        const float need = juce::GlyphArrangement::getStringWidth (f, t);
+        if (need > (float) r.getWidth() + 0.5f)
+            cutTextHook (t, juce::roundToInt (need), r.getWidth());
+    }
     auto s = t;
     while (s.isNotEmpty() && juce::GlyphArrangement::getStringWidth (f, s) > (float) r.getWidth())
         s = s.dropLastCharacters (1);

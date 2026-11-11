@@ -158,8 +158,8 @@ namespace
         bool pingLeft = true;
 
         int type() const              { return std::min ((int) p[0], 8); }
-        float par (int i) const       { return uni (p[(size_t) (1 + i)]); }   // Param 1..11 at 02..0C
-        std::uint8_t raw (int i) const { return p[(size_t) (1 + i)]; }
+        float par (int i) const       { return uni (p[(size_t) (2 + i)]); }   // Param 1..11 at 02..0C (i = 0..10)
+        std::uint8_t raw (int i) const { return p[(size_t) (2 + i)]; }
 
         void prepare (float sampleRate)
         {

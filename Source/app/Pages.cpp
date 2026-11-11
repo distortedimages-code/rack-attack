@@ -423,7 +423,7 @@ KitPage::KitPage (Engine& e) : engine (e)
         triggerSound[(size_t) t] = std::make_unique<ui::Choice> (triggerNames[t], soundNames());
         triggerSound[(size_t) t]->onChange = [this, t] (int v) { engine.setProgramParameter (0x14 + 2 * t, v); };
         programCard.addAndMakeVisible (*triggerSound[(size_t) t]);
-        triggerVelocity[(size_t) t] = std::make_unique<ui::Knob> ("Vélocité"_fr);
+        triggerVelocity[(size_t) t] = std::make_unique<ui::Cell> ("Vélocité"_fr);
         triggerVelocity[(size_t) t]->onChange = [this, t] (int v) { engine.setProgramParameter (0x15 + 2 * t, v); };
         programCard.addAndMakeVisible (*triggerVelocity[(size_t) t]);
     }
@@ -560,7 +560,7 @@ EffectsPage::Column::Column (EffectsPage& o, int i) : ui::Card ("FX" + juce::Str
     addAndMakeVisible (*out);
     for (int k = 0; k < 11; ++k)
     {
-        auto* knob = knobs.add (new ui::Knob ({}));
+        auto* knob = knobs.add (new ui::Cell ({}));
         knob->onChange = [this, k] (int v) { owner.engine.setEffectParameter (index, 0x02 + k, v); };
         addChildComponent (knob);
     }
@@ -578,7 +578,7 @@ void EffectsPage::Column::refresh()
         knobs[k]->setVisible (n != nullptr);
         if (n != nullptr)
         {
-            knobs[k]->label.setText (n, juce::dontSendNotification);
+            knobs[k]->setLabel (n);
             knobs[k]->setValue (kit.effectValue (index, 0x02 + k));
         }
     }

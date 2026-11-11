@@ -83,7 +83,7 @@ private:
     std::vector<ui::ParamDef> slots;
     std::vector<juce::String> slotWhy;     // why a quick setting is there (empty: always there)
     int quickFrom = 0;
-    juce::Rectangle<int> quickRow, tuneBox;
+    juce::Rectangle<int> quickRow, quickHeader, tuneBox;
     void toggleTuned();
     int paramMax (int address) const;
     int shownValue (const ra::seq::Track&, int slot) const;   // the lock of the selected steps, else the sound's
@@ -145,6 +145,8 @@ private:
     void addBurst (juce::Point<int> at, juce::Colour);
     void showToast (const juce::String&, juce::Colour = px::white);
     void startWipe()                          { wipeStart = juce::Time::getMillisecondCounterHiRes(); }
+    void paintSectionTitle (juce::Graphics&, juce::Rectangle<int> screen, const juce::String&, double t);
+    double titleStart = -1e9;                 // the section's name flies over the screen
 
     struct Popup
     {

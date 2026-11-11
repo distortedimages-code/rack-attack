@@ -193,6 +193,29 @@ int main()
         CHECK (notesOn (ev).size() == 1 && ! params);
     }
 
+    // The OPTIONS edits
+    {
+        Track t;
+        t.name = "Kick";
+        t.length = 8;
+        t.steps[0].on = true;
+        t.steps[3].on = true;
+        t.steps[3].setLock (0x27, 90);
+        shiftSteps (t, 1);
+        CHECK (t.steps[1].on && t.steps[4].on && ! t.steps[0].on && t.steps[4].findLock (0x27) != nullptr);
+        shiftSteps (t, -2);
+        CHECK (t.steps[7].on && t.steps[2].on);                      // turns within the 8 steps
+        clearLocks (t);
+        CHECK (t.countLocks() == 0 && t.countTrigs() == 2);
+        fillEvery (t, 4);
+        CHECK (t.steps[0].on && t.steps[4].on && ! t.steps[2].on && t.countTrigs() == 2);
+        clearSteps (t);
+        CHECK (t.countTrigs() == 0 && t.length == 8);
+        t.division = Division::eighth;
+        resetTrack (t);
+        CHECK (t.name == "Kick" && t.length == 16 && t.division == Division::sixteenth);
+    }
+
     // Conditions and probability
     {
         Pattern p;

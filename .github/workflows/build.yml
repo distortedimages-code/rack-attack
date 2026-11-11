@@ -5,7 +5,7 @@ name: build
 on:
   push:
     branches: [ "**" ]
-    paths-ignore: [ "docs/**", "**.md" ]
+    paths-ignore: ["docs/**", "**.md", "site/**", ".github/workflows/site.yml"]
   workflow_dispatch:
 
 jobs:
@@ -28,7 +28,13 @@ jobs:
             cp -R "$ART/$b" pkg/
           done
           ditto -c -k pkg out/RackAttack-Editor-mac.zip
+          # the disk image with its installer, as the release makes it (to catch problems before a release)
+          VER=$(sed -n 's/^project(RackAttack VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          python3 -m pip install --quiet --break-system-packages dmgbuild==1.6.7 || python3 -m pip install --quiet dmgbuild==1.6.7
+          tools/dmg/make_dmg.sh pkg out/RackAttack-Editor-mac.dmg "$VER"
       - uses: actions/upload-artifact@v4
         with:
           name: RackAttack-Editor-mac
-          path: out/RackAttack-Editor-mac.zip
+          path: |
+            out/RackAttack-Editor-mac.zip
+            out/RackAttack-Editor-mac.dmg

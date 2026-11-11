@@ -218,6 +218,8 @@ SoundPage::SoundPage (Engine& e, Library& l) : engine (e), library (l)
                     auto* cell = new ui::Cell (spot.label, isChoice (spot.address) ? ra::valueNames (ra::Object::sound, spot.address)
                                                                                  : std::vector<std::string>());
                     cell->onChange = [this, a = spot.address] (int v) { engine.setSoundParameter (sound, a, v); };
+                    cell->format = [a = spot.address] (int v) { return ui::valueText (a, v); };
+                    cell->centred = ui::isBipolar (spot.address);
                     if (spot.source >= 0)
                     {
                         cell->addSource (sources (spot.source));
@@ -355,6 +357,8 @@ KitPage::Pad::Pad (KitPage& o, int i) : ui::Card(), owner (o), index (i)
 
     volume.onChange = [this] (int v) { owner.engine.setSoundParameter (index, 0x35, v); };
     pan.onChange = [this] (int v) { owner.engine.setSoundParameter (index, 0x3A, v); };
+    pan.format = [] (int v) { return ui::valueText (0x3A, v); };
+    pan.centred = true;
     addAndMakeVisible (volume);
     addAndMakeVisible (pan);
 

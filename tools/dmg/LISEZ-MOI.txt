@@ -1,0 +1,23 @@
+RACK·ATTACK EDITOR — installation sur Mac
+=========================================
+
+Quitte d'abord ton logiciel de musique (Live, Logic, Bitwig…).
+
+LE PLUS SIMPLE : double-clique sur « Installer RackAttack Editor ».
+  Si macOS refuse de l'ouvrir, colle plutôt cette commande dans le Terminal
+  (Cmd + Espace, tape « Terminal », Entrée), puis ton mot de passe :
+
+@INSTALLEUR@
+
+À LA MAIN : glisse chaque élément sur le raccourci de son dossier
+  (le .component sur Components, le .vst3 sur VST3, l'appli sur Applications),
+  puis colle cette commande dans le Terminal, Entrée, et ton mot de passe
+  (rien ne s'affiche pendant la frappe, c'est normal) :
+
+@COMMANDE@
+
+  Quand le Terminal écrit « RackAttack Editor est prêt. », rouvre ton logiciel.
+  Dans Live, s'il n'apparaît pas : Réglages > Plug-ins > Réanalyser.
+
+Ensuite, les mises à jour se font depuis le plug-in (bouton « Mettre à jour » en haut).
+Les tutos : https://distortedimages-code.github.io/rack-attack/

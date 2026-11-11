@@ -102,6 +102,13 @@ struct Pattern
     bool load (const std::vector<std::uint8_t>& data);   // false (and unchanged) if not a pattern
 };
 
+// The sequencer's OPTIONS: whole-track and whole-pattern edits.
+void clearSteps (Track&);                     // no trig, no lock, every step back to its defaults
+void clearLocks (Track&);                     // the locks only
+void resetTrack (Track&);                     // like new (16 steps, 1/16, steps mode), the name kept
+void shiftSteps (Track&, int by);             // turns the steps of the active length (+1: one to the right)
+void fillEvery (Track&, int every);           // a trig every `every` steps over the active length, from the first
+
 //==============================================================================
 // What the player needs to know about the unit and the kit.
 struct Context

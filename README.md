@@ -4,7 +4,7 @@
 
 **Page de téléchargement** : https://distortedimages-code.github.io/rack-attack/
 
-## Ce que fait l'appli (version 0.5.3)
+## Ce que fait l'appli (version 0.5.4)
 
 - **Branchement guidé** en 3 écrans : les câbles et ports MIDI, deux réglages sur la machine, puis l'appli trouve le RackAttack toute seule (y compris son Sysex ID) et lit le kit en cours.
 - **Kit** : les 24 sons en pads (écouter, volume, pan, sortie), le programme (nom, mode MIDI, triggers A/B/C), changement de programme.
@@ -18,11 +18,14 @@
 
 L'appli n'écrit jamais dans la mémoire du RackAttack : elle modifie le programme en cours. Pour garder un changement : **Shift + Store** sur la machine. Pour l'annuler : **Shift + Recall**.
 
-Les valeurs s'affichent brutes (0–127) tant que leur échelle exacte n'a pas été mesurée sur la machine. Pendant que tu t'en sers, l'appli note ce qui manque encore au protocole dans son journal.
+Les valeurs s'affichent dans leur unité quand elle est connue (pour cent, demi-tons, notes, gauche/droite), avec un zéro au milieu pour les réglages qui vont dans les deux sens ; les autres restent en 0–127 tant que leur échelle n'a pas été mesurée sur la machine. Pendant que tu t'en sers, l'appli note ce qui manque encore au protocole dans son journal.
 
 ## Installer
 
-Télécharge `RackAttack-Editor-mac.dmg` (lien sur la page, toujours la dernière version), ouvre-le et glisse chaque élément sur le dossier à côté de lui. Premier lancement de l'appli : clic droit → *Ouvrir*.
+Télécharge `RackAttack-Editor-mac.dmg` (lien sur la page, toujours la dernière version) et ouvre-le. Deux façons, expliquées sur la page et dans le LISEZ-MOI du DMG :
+
+- **l'installeur** (« Installer RackAttack Editor », AU, VST3 et appli au choix) ; comme il n'est pas signé chez Apple, macOS peut refuser de l'ouvrir : la commande Terminal du LISEZ-MOI le lance quand même ;
+- **à la main** : glisser chaque élément sur le raccourci de son dossier, puis coller la commande Terminal qui débloque l'AU et le VST3 et fait valider l'AU.
 
 Ensuite, les mises à jour se font depuis le plug-in : un bouton **Mise à jour** apparaît en haut quand une version sort (fichier vérifié, mot de passe demandé par macOS).
 
@@ -53,7 +56,7 @@ Tout est dans `Documents/RackAttack/` :
 - `Source/app/` — l'interface et le lien avec la machine (JUCE 8). `Sequencer` envoie les notes et les verrous à l'heure (planifiés 40 ms à l'avance, en suivant le transport du logiciel) ; `SeqPage` est la page principale (voix, son, séquenceur) ; `SoundViz` dessine le son de chaque section en pixels ; `Pixel` le look rétro.
 - `Source/plugin/` — le plug-in et les mises à jour.
 - `Resources/fonts/` — Silkscreen et VT323, sous licence SIL Open Font License (textes de licence à côté).
-- `docs/index.html` — la page de téléchargement (GitHub Pages, dossier `docs` de `main`).
+- `site/` — le site (GitHub Pages, publié par `.github/workflows/site.yml` ; `site/build_site.py` y écrit la version et les commandes Terminal du DMG). `tools/dmg/` — le DMG et son installeur (`make_dmg.sh`).
 - `Source/sim/` — le RackAttack en logiciel (`RaSynth`), sans JUCE ; ses échelles (Hz, ms, gains) sont dans un `Calibration`, réglé par défaut d'après le manuel et remplacé par des mesures. `Source/app/Measure` est le banc de mesure, `MeasureWizard` l'assistant.
 - `Tests/` — `SynthTests` (le simulateur), `MeasureTests` (la mesure sur le simulateur avec un étalonnage connu, qu'elle doit retrouver), `CoreTests` (dont deux messages réels acceptés par la machine), `SeqTests` (rythmes euclidiens, temps des notes, verrous, conditions, sauvegarde), `EngineTests` (l'appli face à un faux RackAttack : ID à trouver, 50 programmes, changements de programme, envois vérifiés, séquenceur avec horloge propre puis suivant un logiciel qui boucle) et `UpdaterTests` (versions, réponse de GitHub, contrôle, remplacement des plug-ins avec ou sans mot de passe).
 

@@ -15,6 +15,7 @@
 #include <JuceHeader.h>
 
 #include "Engine.h"
+#include "ParamText.h"
 #include "Pixel.h"
 #include "Sequencer.h"
 #include "SoundSections.h"
@@ -45,7 +46,7 @@ private:
     {
         none, play, tempo, swing, voice,
         section, listen, param, tune,
-        mode, length, division, mute, miniMap, step, trig, clearSelection
+        mode, length, division, mute, options, miniMap, step, trig, clearSelection
     };
     struct Hit { Zone zone = Zone::none; int index = -1; };
 
@@ -99,6 +100,10 @@ private:
     void toggleSelection (int step);
     bool isSelected (int step) const;
     void showVoiceMenu (int voice);
+    void showOptions();
+    void keepForUndo (const juce::String& what);      // the pattern as it is, for "Annuler"
+    std::unique_ptr<ra::seq::Pattern> undo;
+    juce::String undoWhat;
     void showStepMenu (int step);
     void rename (int voice);
     static int playingStep (ra::seq::Division, int length, double ppq);
@@ -120,7 +125,7 @@ private:
     std::array<float, 128> shownValues {};      // what the picture shows, moving towards the values
     bool shownReady = false;
     std::vector<juce::Rectangle<int>> sectionTabs, paramBoxes, quickBoxes;
-    juce::Rectangle<int> seqPanel, nameBox, lengthBox, divisionBox, muteBox, hintRow, miniMap, trigRow, clearBox;
+    juce::Rectangle<int> seqPanel, nameBox, lengthBox, divisionBox, muteBox, optionsBox, hintRow, miniMap, trigRow, clearBox;
     std::array<juce::Rectangle<int>, 2> modeTabs;
     std::array<juce::Rectangle<int>, 16> stepBoxes;
     std::array<juce::Rectangle<int>, 7> trigBoxes;
@@ -152,7 +157,7 @@ private:
     {
         juce::String name, value;
         float position = 0.0f, marker = -1.0f;
-        bool choice = false;
+        bool choice = false, centred = false;
         juce::Colour colour;
         juce::Rectangle<int> anchor;
         double shownMs = -1e9;

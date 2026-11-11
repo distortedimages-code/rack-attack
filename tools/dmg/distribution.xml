@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>RackAttack Editor @VERSION@</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <domains enable_localSystem="true" enable_currentUserHome="false" enable_anywhere="false"/>
+    <volume-check><allowed-os-versions><os-version min="11.0"/></allowed-os-versions></volume-check>
+    <choices-outline>
+        <line choice="au"/>
+        <line choice="vst3"/>
+        <line choice="app"/>
+    </choices-outline>
+    <choice id="au" title="Audio Unit" description="Pour Logic, GarageBand, MainStage, Live… : /Library/Audio/Plug-Ins/Components">
+        <pkg-ref id="com.distortedimages.rackattackeditor.au"/>
+    </choice>
+    <choice id="vst3" title="VST3" description="Pour Live, Bitwig, Cubase, Studio One, Reaper… : /Library/Audio/Plug-Ins/VST3">
+        <pkg-ref id="com.distortedimages.rackattackeditor.vst3"/>
+    </choice>
+    <choice id="app" title="Appli" description="RackAttack Editor tout seul, sans logiciel de musique : /Applications">
+        <pkg-ref id="com.distortedimages.rackattackeditor.app"/>
+    </choice>
+    <pkg-ref id="com.distortedimages.rackattackeditor.au" version="@VERSION@" onConclusion="none">au.pkg</pkg-ref>
+    <pkg-ref id="com.distortedimages.rackattackeditor.vst3" version="@VERSION@" onConclusion="none">vst3.pkg</pkg-ref>
+    <pkg-ref id="com.distortedimages.rackattackeditor.app" version="@VERSION@" onConclusion="none">app.pkg</pkg-ref>
+</installer-gui-script>

@@ -1,0 +1,41 @@
+# RackAttack Editor's site on GitHub Pages (site/, built by site/build_site.py: the version and the disk image's two
+# Terminal commands are written in). Pages must be set to deploy from GitHub Actions (Settings > Pages > Source).
+name: Site
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'tools/dmg/*-command.txt', 'CMakeLists.txt', '.github/workflows/site.yml']
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Site
+        run: python3 site/build_site.py site/out
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site/out }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

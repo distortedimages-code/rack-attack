@@ -37,11 +37,16 @@ namespace px
     void bar (juce::Graphics&, juce::Rectangle<int>, int blocks, int filled, juce::Colour on,
               int marker = -1, juce::Colour off = juce::Colour (0xff1c1c1c));
 
+    // The same for an amount that goes both ways: lit from the middle to the value
+    // (position 0..1, 0.5 = the middle, shown by a brighter notch).
+    void barCentred (juce::Graphics&, juce::Rectangle<int>, int blocks, float position, juce::Colour on,
+                     int marker = -1, juce::Colour off = juce::Colour (0xff1c1c1c));
+
     // A round knob drawn in square pixels, as on Elektron screens: a lit arc up to the
     // value, the knob's circle and a pointer. `marker` (0..1, < 0 = none) shows a
     // second position on the arc (the sound's own value under a lock).
     void knob (juce::Graphics&, juce::Rectangle<int> area, float position, juce::Colour on,
-               int pixel = 3, float marker = -1.0f, juce::Colour body = juce::Colour (0xff6f6f6f));
+               int pixel = 3, float marker = -1.0f, juce::Colour body = juce::Colour (0xff6f6f6f), bool centred = false);
 
     // The mascot, 10 x 8 pixels of `size`; `blink` closes its eyes.
     void mascot (juce::Graphics&, juce::Point<int> topLeft, int size, bool blink);

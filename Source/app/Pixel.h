@@ -84,7 +84,18 @@ namespace px
         void drawProgressBar (juce::Graphics&, juce::ProgressBar&, int width, int height, double progress, const juce::String&) override;
         void fillTextEditorBackground (juce::Graphics&, int width, int height, juce::TextEditor&) override;
         void drawTextEditorOutline (juce::Graphics&, int width, int height, juce::TextEditor&) override;
+        // menus (right click, OPTIONS, combo boxes): black, a white frame, white bars for the item under
+        // the mouse, section titles in an inverted band like the cards, pixel ticks and arrows
         void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
+        void drawPopupMenuItem (juce::Graphics&, const juce::Rectangle<int>& area, bool isSeparator, bool isActive,
+                                bool isHighlighted, bool isTicked, bool hasSubMenu, const juce::String& text,
+                                const juce::String& shortcutKeyText, const juce::Drawable* icon, const juce::Colour* textColour) override;
+        void drawPopupMenuSectionHeader (juce::Graphics&, const juce::Rectangle<int>&, const juce::String&) override;
+        void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator, int standardMenuItemHeight,
+                                        int& idealWidth, int& idealHeight) override;
+        void drawPopupMenuUpDownArrow (juce::Graphics&, int width, int height, bool isScrollUpArrow) override;
+        int getPopupMenuBorderSize() override                    { return 4; }
+        int getMenuWindowFlags() override                        { return 0; }     // flat: no soft shadow
         void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height, bool vertical,
                             int thumbStart, int thumbSize, bool over, bool down) override;
     };

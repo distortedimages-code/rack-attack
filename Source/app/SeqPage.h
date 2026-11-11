@@ -41,12 +41,14 @@ public:
     void mouseMove (const juce::MouseEvent&) override;
     bool keyPressed (const juce::KeyPress&) override;
 
+    void demoOptions()      { showOptions(); }     // screenshots (RA_MENU=1)
+
 private:
     enum class Zone
     {
         none, play, tempo, swing, voice,
         section, listen, param, tune,
-        mode, length, division, mute, options, miniMap, step, trig, clearSelection
+        mode, length, division, mute, options, initTrack, initAll, miniMap, step, trig, clearSelection
     };
     struct Hit { Zone zone = Zone::none; int index = -1; };
 
@@ -101,6 +103,8 @@ private:
     bool isSelected (int step) const;
     void showVoiceMenu (int voice);
     void showOptions();
+    void initTracks (bool all);
+    static const juce::String initTrackText, initAllText;                       // INIT PISTE / INIT SÉQUENCE: empty, 16 steps, 1/16
     void keepForUndo (const juce::String& what);      // the pattern as it is, for "Annuler"
     std::unique_ptr<ra::seq::Pattern> undo;
     juce::String undoWhat;
@@ -125,7 +129,7 @@ private:
     std::array<float, 128> shownValues {};      // what the picture shows, moving towards the values
     bool shownReady = false;
     std::vector<juce::Rectangle<int>> sectionTabs, paramBoxes, quickBoxes;
-    juce::Rectangle<int> seqPanel, nameBox, lengthBox, divisionBox, muteBox, optionsBox, hintRow, miniMap, trigRow, clearBox;
+    juce::Rectangle<int> seqPanel, nameBox, lengthBox, divisionBox, muteBox, optionsBox, initTrackBox, initAllBox, hintRow, miniMap, trigRow, clearBox;
     std::array<juce::Rectangle<int>, 2> modeTabs;
     std::array<juce::Rectangle<int>, 16> stepBoxes;
     std::array<juce::Rectangle<int>, 7> trigBoxes;
@@ -160,8 +164,11 @@ private:
         bool choice = false, centred = false;
         juce::Colour colour;
         juce::Rectangle<int> anchor;
-        double shownMs = -1e9;
+        double shownMs = -1e9;               // last touched: it dissolves 0.6 s after
+        double openedMs = -1e9;              // opened from nothing: the only time it grows in
+        bool up = false;                     // on screen, held or dissolving
     } popup;
+    void touchPopup();
     struct Burst { juce::Point<int> at; double startMs; juce::Colour colour; };
     std::vector<Burst> bursts;
     struct Toast { juce::String text; juce::Colour colour; double startMs = -1e9; } toast;

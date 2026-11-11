@@ -1,12 +1,11 @@
-**RackAttack Editor 0.4** : le séquenceur, et un nouveau look rétro.
+**RackAttack Editor 0.5** : le RackAttack en logiciel, et une mesure guidée pour qu'il sonne comme une vraie machine.
 
-- **Une page pour tout** (la première) : en haut les 24 voix, qui choisissent la piste et flashent quand elles jouent (blanc : séquenceur, rouge : clavier) ; au milieu le son de la piste ; en bas son séquenceur.
-- **Le son en images** : pour chaque section (Osc, Mix, Filtre, Ampli, Env, LFO, Sortie), une image en pixels qui bouge avec les réglages (la forme d'onde, la courbe du filtre, l'enveloppe qui s'étire…). Les réglages se changent en glissant vers le haut ou le bas ; un clic ouvre les listes.
-- **Séquenceur** : 24 pistes, jusqu'à 128 pas (8 pages de 16), une longueur et une vitesse par piste, en **pas** ou en **notes** (une mélodie sur le Tuned Channel du son).
-- **Verrous de paramètres** : Maj + clic sur des pas, puis change des réglages du son. Ils passent en jaune et ne valent que pour ces pas.
-- Par pas : vélocité, durée, micro-décalage, probabilité, condition (1:2, 3:4…), retrig.
-- Suit le tempo et le transport de ton logiciel ; sinon, bouton PLAY et tempo propre. Le pattern est enregistré avec ton projet.
-- Les notes jouées sur la piste du plug-in partent vers le RackAttack.
-- Look pixel noir, blanc, rouge et jaune, avec tramages et petites animations.
+- **Mode simulation** : pas de RackAttack sous la main ? Le plug-in en joue un en logiciel, par sa sortie audio. Même architecture que la machine (2 oscillateurs avec FM, ring, crack, filtre multimode avec drive, 2 enveloppes, 2 LFO, 4 effets : chorus, flanger, phaser, overdrive, delay, mod delay, reverb, lo-fi) et mêmes messages : le séquenceur, l'éditeur et les verrous marchent pareil. Bouton dans le branchement guidé, ou *Outils → Mode simulation*. Un kit de démo est prêt à jouer.
+- **Mesurer mon RackAttack** (*Outils*) : avec la machine branchée en MIDI et ses sorties sur ta carte son, le plug-in lui fait jouer des sons de test pendant environ 5 minutes et en tire un fichier de mesures : hauteurs, volumes, enveloppes et leurs formes, filtre, résonance, LFO, crack, et un enregistrement des cymbales.
+  - Avant de commencer : un vu-mètre et un son test pour être sûr que le son arrive bien, puis deux cases à cocher (enceintes coupées, mains loin de la machine).
+  - Pendant la mesure : « NE TOUCHE PAS À LA MACHINE », le fantôme qui mesure des objets sur un tapis roulant, et quelques conseils pour patienter. Si quelqu'un touche la machine, tout se met en pause et la partie en cours recommence.
+  - Le son 24 du kit sert de cobaye ; il est remis comme avant à la fin, rien n'est enregistré dans la machine.
+  - Le fichier `.ramesure` (dans *Documents/RackAttack/Mesures*) s'envoie à qui veut ; *Outils → Charger des mesures…* fait alors sonner son simulateur comme cette machine. Il contient des enregistrements des sons de la machine : garde-le pour toi.
+- **Essai sans machine** : l'assistant de mesure peut tourner sur le simulateur, en accéléré, pour voir comment ça se passe.
 
-Pour garder un réglage de son, toujours **Shift + Store** sur la machine. Le pattern, lui, reste dans le plug-in.
+Pour garder un réglage de son, toujours **Shift + Store** sur la machine.

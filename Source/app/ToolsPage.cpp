@@ -1,5 +1,7 @@
 #include "ToolsPage.h"
 
+#include "Pixel.h"
+
 namespace
 {
     void fillSounds (juce::ComboBox& box)
@@ -351,6 +353,22 @@ ToolsPage::ToolsPage (Engine& e, Updater& u, std::function<void()> changed)
     addAndMakeVisible (checkButton);
     addAndMakeVisible (autoCheck);
     checkButton.onClick = [this] { updater.checkNow(); };
+    addAndMakeVisible (simulationToggle);
+    simulationToggle.setColour (juce::ToggleButton::textColourId, px::yellow);
+    simulationToggle.onClick = [this]
+    {
+        if (setSimulation)
+            setSimulation (simulationToggle.getToggleState());
+        refreshSettings();
+    };
+    for (auto* b : { &measureButton, &loadButton, &forgetButton })
+        addAndMakeVisible (b);
+    measureButton.setColour (juce::TextButton::textColourOffId, px::yellow);
+    measureButton.onClick = [this] { if (openMeasure) openMeasure(); };
+    loadButton.onClick = [this] { if (loadMeasures) loadMeasures(); };
+    forgetButton.onClick = [this] { if (forgetMeasures) forgetMeasures(); refreshSettings(); };
+    measuresLabel.setColour (juce::Label::textColourId, ui::dim);
+    addAndMakeVisible (measuresLabel);
     autoCheck.onClick = [this] { updater.setAutoCheck (autoCheck.getToggleState()); };
     updater.changes.addChangeListener (this);
     refreshUpdate();
@@ -411,6 +429,8 @@ ToolsPage::~ToolsPage()
 
 void ToolsPage::refreshSettings()
 {
+    simulationToggle.setToggleState (isSimulation && isSimulation(), juce::dontSendNotification);
+    measuresLabel.setText ("Le simulateur suit : "_fr + (measuresSource ? measuresSource() : juce::String()), juce::dontSendNotification);
     idBox.setSelectedId (engine.deviceId.load() + 1, juce::dontSendNotification);
     channelBox.setSelectedId (engine.channel.load(), juce::dontSendNotification);
     baseNote.setValue (engine.baseNote.load(), juce::dontSendNotification);
@@ -456,6 +476,17 @@ void ToolsPage::resized()
     autoCheck.setBounds (up.removeFromLeft (230));
     up.removeFromLeft (10);
     updateLabel.setBounds (up);
+    r.removeFromTop (6);
+    simulationToggle.setBounds (r.removeFromTop (28).removeFromLeft (620));
+    r.removeFromTop (6);
+    auto sim = r.removeFromTop (30);
+    measureButton.setBounds (sim.removeFromLeft (240));
+    sim.removeFromLeft (10);
+    loadButton.setBounds (sim.removeFromLeft (220));
+    sim.removeFromLeft (10);
+    forgetButton.setBounds (sim.removeFromLeft (170));
+    sim.removeFromLeft (12);
+    measuresLabel.setBounds (sim);
     r.removeFromTop (6);
     intro.setBounds (r.removeFromTop (24));
     r.removeFromTop (6);

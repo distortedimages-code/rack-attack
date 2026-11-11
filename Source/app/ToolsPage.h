@@ -21,6 +21,12 @@ public:
 
     void refreshSettings();   // shows the engine's ID, channel and note of sound 1
 
+    std::function<bool()> isSimulation;
+    std::function<void (bool)> setSimulation;
+    std::function<void()> openMeasure;                      // the measuring assistant
+    std::function<void()> loadMeasures, forgetMeasures;     // file chooser / back to the manual
+    std::function<juce::String()> measuresSource;
+
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -37,6 +43,10 @@ private:
     juce::Label updateLabel;
     juce::TextButton checkButton { "Vérifier les mises à jour"_fr };
     juce::ToggleButton autoCheck { "Vérifier une fois par jour"_fr };
+    juce::ToggleButton simulationToggle { "Mode simulation : le RackAttack en logiciel, sans la machine" };
+    juce::TextButton measureButton { "Mesurer mon RackAttack..." }, loadButton { "Charger des mesures..." },
+                     forgetButton { "Revenir au manuel" };
+    juce::Label measuresLabel;
 
     juce::Label idLabel, channelLabel, baseLabel, baseName, intro;
     juce::ComboBox idBox, channelBox;

@@ -22,6 +22,10 @@ ConnectWizard::ConnectWizard (Engine& e, Host& h) : engine (e), host (h)
             host.wizardFinished (connected);
     };
     later.onClick = [this] { host.wizardFinished (connected); };
+    simulate.onClick = [this] { host.startSimulation(); };
+    ui::styleBig (simulate, false);
+    simulate.setColour (juce::TextButton::textColourOffId, px::yellow);
+    addChildComponent (simulate);
 
     // 1. ports
     inLabel.setText ("Entrée MIDI (ce qui vient du RackAttack)"_fr, juce::dontSendNotification);
@@ -120,7 +124,7 @@ void ConnectWizard::showStep (int s)
     step = juce::jlimit (0, 2, s);
     stepLabel.setText ("BRANCHER LE RACKATTACK   ·   "_fr + juce::String (step + 1) + " / 3", juce::dontSendNotification);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &inLabel, &outLabel, &inBox, &outBox, &refresh })
+    for (auto* c : std::initializer_list<juce::Component*> { &inLabel, &outLabel, &inBox, &outBox, &refresh, &simulate })
         c->setVisible (step == 0);
     ctlDone.setVisible (step == 1);
     prgDone.setVisible (step == 1);
@@ -236,7 +240,10 @@ void ConnectWizard::resized()
         outLabel.setBounds (r.removeFromTop (22));
         outBox.setBounds (r.removeFromTop (36));
         r.removeFromTop (14);
-        refresh.setBounds (r.removeFromTop (30).removeFromLeft (130));
+        auto row = r.removeFromTop (34);
+        refresh.setBounds (row.removeFromLeft (130));
+        row.removeFromLeft (14);
+        simulate.setBounds (row.removeFromLeft (juce::jmin (row.getWidth(), 360)));
     }
     else if (step == 1)
     {

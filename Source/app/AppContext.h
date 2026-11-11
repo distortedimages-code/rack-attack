@@ -13,6 +13,7 @@
 #include "Library.h"
 #include "Sequencer.h"
 #include "Session.h"
+#include "SimDevice.h"
 
 class AppContext
 {
@@ -36,7 +37,17 @@ public:
     bool isSetUp() const;              // the connection assistant was completed once
     void setSetUp (bool done);
     void saveSettings();               // ports, Sysex ID, channel, note of sound 1
-    bool isDemo() const                { return demo != nullptr; }
+    // Simulation: the RackAttack in software (no unit needed), heard through the plug-in.
+    bool isSimulation() const          { return simActive.load(); }
+    void setSimulation (bool on);
+    SimDevice* simulator()             { return simActive.load() ? simPtr.load() : nullptr; }   // any thread
+    bool isDemo() const                { return isSimulation(); }
+
+    // Measurements of a real unit (a .ramesure file) the simulator follows; remembered.
+    bool useMeasures (const juce::File&, juce::String& error);
+    void forgetMeasures();
+    juce::File getMeasures() const     { return measuresFile; }
+    juce::String measuresSource() const;   // "mesures du ..." or "réglages du manuel"
 
     std::unique_ptr<juce::PropertiesFile> settingsFile;
     Session session;
@@ -46,7 +57,18 @@ public:
     Updater updater { [this]() -> juce::PropertiesFile& { return *settingsFile; } };
 
 private:
-    std::unique_ptr<FakeRackAttack> demo;   // RA_DEMO=1 only: a pretend unit, for checking the screens
+    void enterSimulation();
+    void leaveSimulation();
+    void loadDemoPattern();
+
+    void applyMeasures();
+
+    juce::File measuresFile;
+    std::unique_ptr<ra::synth::Calibration> measured;
+    std::unique_ptr<SimDevice> simOwner;
+    std::atomic<SimDevice*> simPtr { nullptr };
+    std::atomic<bool> simActive { false };
+    bool demoFromEnvironment = false;        // RA_DEMO=1: nothing saved
     juce::String inId, outId;
     bool started = false;
 

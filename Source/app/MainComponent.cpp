@@ -11,10 +11,15 @@ void MainComponent::Light::paint (juce::Graphics& g)
         case Engine::Connection::noAnswer:  c = px::red;    t = "Pas de réponse — clic ici"_fr; break;
         case Engine::Connection::noPorts:   break;
     }
+    if (simulation)
+    {
+        c = px::yellow;
+        t = "SIMULATION";
+    }
     auto r = getLocalBounds();
     g.setColour (px::cell);
     g.fillRect (r);
-    px::frameRect (g, r, px::frame, 2);
+    px::frameRect (g, r, simulation ? px::yellow : px::frame, 2);
     // a square light; blinks while searching
     const bool on = state != Engine::Connection::searching || (juce::Time::getMillisecondCounter() / 300) % 2 == 0;
     if (on)
@@ -50,6 +55,16 @@ MainComponent::MainComponent (AppContext& c)
 
     light.onClick = [this] { showWizard(); };
     light.state = engine.getConnection();
+    light.simulation = ctx.isSimulation();
+    toolsPage.isSimulation = [this] { return ctx.isSimulation(); };
+    toolsPage.setSimulation = [this] (bool on)
+    {
+        ctx.setSimulation (on);
+        light.simulation = ctx.isSimulation();
+        light.repaint();
+        if (! on && ! ctx.isSetUp())
+            showWizard();
+    };
     addAndMakeVisible (light);
 
     ui::styleBig (updateButton, true);
@@ -94,6 +109,21 @@ MainComponent::MainComponent (AppContext& c)
     addChildComponent (bar);
 
     addChildComponent (wizard);
+    addChildComponent (measureWizard);
+    measureWizard.onClose = [this] { measureWizard.setVisible (false); toolsPage.refreshSettings(); };
+    measureWizard.useMeasures = [this] (const juce::File& f, juce::String& error)
+    {
+        const bool ok = ctx.useMeasures (f, error);
+        toolsPage.refreshSettings();
+        return ok;
+    };
+    measureWizard.isSimulation = [this] { return ctx.isSimulation(); };
+    measureWizard.stopSequencer = [this] { ctx.sequencer.stop(); };
+    measureWizard.settings = [this] { return &ctx.settings(); };
+    toolsPage.openMeasure = [this] { showMeasure(); };
+    toolsPage.loadMeasures = [this] { chooseMeasures(); };
+    toolsPage.forgetMeasures = [this] { ctx.forgetMeasures(); };
+    toolsPage.measuresSource = [this] { return ctx.measuresSource(); };
 
     engine.addListener (this);
     ctx.updater.changes.addChangeListener (this);
@@ -105,6 +135,15 @@ MainComponent::MainComponent (AppContext& c)
     ctx.start();   // the first time a window opens: ports of last time, then find the unit
     if (! ctx.isSetUp() || juce::SystemStats::getEnvironmentVariable ("RA_WIZARD", {}) == "1")
         showWizard();
+
+    // screenshots: open the measuring assistant (RA_MEASURE=1), or run its try (RA_MEASURE=run)
+    const auto measureEnv = juce::SystemStats::getEnvironmentVariable ("RA_MEASURE", {});
+    if (measureEnv.isNotEmpty())
+    {
+        showMeasure();
+        if (measureEnv != "1")
+            measureWizard.demo (measureEnv);
+    }
 
     refreshUpdate();
     ctx.updater.checkIfDue();
@@ -135,6 +174,41 @@ void MainComponent::showWizard()
     wizard.setVisible (true);
     wizard.toFront (true);
     wizard.start();
+}
+
+void MainComponent::showMeasure()
+{
+    measureWizard.setVisible (true);
+    measureWizard.toFront (true);
+    measureWizard.start();
+}
+
+void MainComponent::chooseMeasures()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Mesures d'un RackAttack", measure::defaultFolder(), "*.ramesure");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& fc)
+    {
+        const auto file = fc.getResult();
+        if (file == juce::File())
+            return;
+        juce::String error;
+        if (ctx.useMeasures (file, error))
+            statusLine.show ("Le simulateur suit maintenant : "_fr + ctx.measuresSource(), ui::accent);
+        else
+            statusLine.show (error, ui::bad);
+        toolsPage.refreshSettings();
+    });
+}
+
+void MainComponent::startSimulation()
+{
+    ctx.setSimulation (true);
+    ctx.setSetUp (true);
+    wizard.setVisible (false);
+    light.simulation = true;
+    light.repaint();
+    toolsPage.refreshSettings();
 }
 
 void MainComponent::wizardFinished (bool connected)
@@ -230,6 +304,7 @@ void MainComponent::statusChanged (const juce::String& s)
 void MainComponent::connectionChanged (Engine::Connection c)
 {
     light.state = c;
+    light.simulation = ctx.isSimulation();
     light.repaint();
     if (c == Engine::Connection::connected)
     {
@@ -274,6 +349,7 @@ void MainComponent::resized()
 {
     auto r = getLocalBounds();
     wizard.setBounds (r);
+    measureWizard.setBounds (r);
 
     auto top = r.removeFromTop (56).reduced (12, 10);
     top.removeFromLeft (200);

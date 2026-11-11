@@ -1,5 +1,8 @@
 #include "AppContext.h"
 
+#include "Measure.h"
+#include "Text.h"
+
 namespace
 {
     std::unique_ptr<juce::PropertiesFile> makeSettings()
@@ -22,6 +25,52 @@ AppContext::AppContext() : settingsFile (makeSettings())
     engine.baseNote = s.getIntValue ("baseNote", 36);
     inId = s.getValue ("in");
     outId = s.getValue ("out");
+
+    const juce::File file (s.getValue ("measures"));
+    if (s.getValue ("measures").isNotEmpty() && file.existsAsFile())
+    {
+        auto c = std::make_unique<ra::synth::Calibration>();
+        juce::String error;
+        if (measure::load (file, *c, error))
+        {
+            measured = std::move (c);
+            measuresFile = file;
+        }
+    }
+}
+
+bool AppContext::useMeasures (const juce::File& file, juce::String& error)
+{
+    auto c = std::make_unique<ra::synth::Calibration>();
+    if (! measure::load (file, *c, error))
+        return false;
+    measured = std::move (c);
+    measuresFile = file;
+    settings().setValue ("measures", file.getFullPathName());
+    settings().saveIfNeeded();
+    applyMeasures();
+    engine.userNote ("Simulateur : " + juce::String (measured->source) + " (" + file.getFileName() + ")");
+    return true;
+}
+
+void AppContext::forgetMeasures()
+{
+    measured.reset();
+    measuresFile = juce::File();
+    settings().removeValue ("measures");
+    settings().saveIfNeeded();
+    applyMeasures();
+}
+
+juce::String AppContext::measuresSource() const
+{
+    return measured != nullptr ? juce::String (measured->source) : "réglages du manuel"_fr;
+}
+
+void AppContext::applyMeasures()
+{
+    if (simOwner != nullptr)
+        simOwner->setCalibration (measured != nullptr ? *measured : ra::synth::Calibration::defaults());
 }
 
 void AppContext::start()
@@ -37,58 +86,18 @@ void AppContext::start()
         juce::MessageManager::callAsync ([weak] { if (auto* c = weak.get()) c->engine.connect(); });
     };
 
-    if (juce::SystemStats::getEnvironmentVariable ("RA_DEMO", {}) == "1")
+    demoFromEnvironment = juce::SystemStats::getEnvironmentVariable ("RA_DEMO", {}) == "1";
+    if (demoFromEnvironment || settings().getBoolValue ("simulation", false))
     {
-        demo = std::make_unique<FakeRackAttack>();
-        demo->engine = &engine;
-        engine.pauseScale = 0.1;
-        engine.setTestOutput ([this] (const juce::MidiMessage& m) { demo->receive (m); });
+        enterSimulation();
+        if (demoFromEnvironment)
+        {
+            loadDemoPattern();
+            if (juce::SystemStats::getEnvironmentVariable ("RA_DEMO_STILL", {}) != "1")
+                sequencer.play();
+        }
         if (juce::SystemStats::getEnvironmentVariable ("RA_WIZARD", {}) != "1")
             connectLater();
-
-        // a little pattern playing, to see the sequencer move
-        sequencer.edit ([] (ra::seq::Pattern& p)
-        {
-            p.tempo = 124.0;
-            const char* names[] = { "Kick", "Kick 2", "Snare", "Clap", "Rim", "Hat fermé", "Hat ouvert", "Crash" };
-            for (int i = 0; i < 8; ++i)
-                p.tracks[(size_t) i].name = names[i];
-            p.tracks[20].name = "Basse";
-            for (int i : { 0, 4, 8, 12 })
-                p.tracks[0].steps[(size_t) i].on = true;
-            for (int i : { 4, 12, 15 })
-                p.tracks[2].steps[(size_t) i].on = true;
-            p.tracks[2].length = 64;
-            p.tracks[2].steps[15].velocity = 40;
-            p.tracks[2].steps[12].setLock (0x27, 98);
-            p.tracks[2].steps[12].setLock (0x29, 70);
-            p.tracks[2].steps[15].condA = 1;
-            p.tracks[2].steps[15].condB = 2;
-            p.tracks[2].steps[7].on = true;
-            p.tracks[2].steps[7].retrig = 3;
-            p.tracks[3].steps[12].on = true;
-            for (int i = 0; i < 16; i += 2)
-            {
-                p.tracks[5].steps[(size_t) i].on = true;
-                p.tracks[5].steps[(size_t) i].velocity = (std::uint8_t) (i % 4 == 0 ? 110 : 50);
-            }
-            p.tracks[5].steps[6].setLock (0x40, 96);
-            p.tracks[6].steps[6].on = p.tracks[6].steps[14].on = true;
-            p.tracks[13].length = 12;
-            for (int i : { 2, 5, 9 })
-                p.tracks[13].steps[(size_t) i].on = true;
-            p.tracks[16].mute = true;
-            p.tracks[16].steps[15].on = true;
-            p.tracks[20].mode = ra::seq::Mode::notes;
-            const int bass[][2] = { { 0, 36 }, { 3, 36 }, { 6, 43 }, { 10, 46 }, { 13, 48 } };
-            for (auto& b : bass)
-            {
-                p.tracks[20].steps[(size_t) b[0]].on = true;
-                p.tracks[20].steps[(size_t) b[0]].note = (std::uint8_t) b[1];
-            }
-        });
-        if (juce::SystemStats::getEnvironmentVariable ("RA_DEMO_STILL", {}) != "1")
-            sequencer.play();
         return;
     }
 
@@ -103,11 +112,110 @@ void AppContext::start()
         connectLater();
 }
 
+void AppContext::loadDemoPattern()
+{
+    // a little pattern playing, to see the sequencer move
+    sequencer.edit ([] (ra::seq::Pattern& p)
+    {
+        p.tempo = 124.0;
+        const char* names[] = { "Kick", "Kick 2", "Snare", "Clap", "Rim", "Hat fermé", "Hat ouvert", "Crash" };
+        for (int i = 0; i < 8; ++i)
+            p.tracks[(size_t) i].name = names[i];
+        p.tracks[20].name = "Basse";
+        for (int i : { 0, 4, 8, 12 })
+            p.tracks[0].steps[(size_t) i].on = true;
+        for (int i : { 4, 12, 15 })
+            p.tracks[2].steps[(size_t) i].on = true;
+        p.tracks[2].length = 64;
+        p.tracks[2].steps[15].velocity = 40;
+        p.tracks[2].steps[12].setLock (0x27, 98);
+        p.tracks[2].steps[12].setLock (0x29, 70);
+        p.tracks[2].steps[15].condA = 1;
+        p.tracks[2].steps[15].condB = 2;
+        p.tracks[2].steps[7].on = true;
+        p.tracks[2].steps[7].retrig = 3;
+        p.tracks[3].steps[12].on = true;
+        for (int i = 0; i < 16; i += 2)
+        {
+            p.tracks[5].steps[(size_t) i].on = true;
+            p.tracks[5].steps[(size_t) i].velocity = (std::uint8_t) (i % 4 == 0 ? 110 : 50);
+        }
+        p.tracks[5].steps[6].setLock (0x40, 96);
+        p.tracks[6].steps[6].on = p.tracks[6].steps[14].on = true;
+        p.tracks[13].length = 12;
+        for (int i : { 2, 5, 9 })
+            p.tracks[13].steps[(size_t) i].on = true;
+        p.tracks[16].mute = true;
+        p.tracks[16].steps[15].on = true;
+        p.tracks[20].mode = ra::seq::Mode::notes;
+        const int bass[][2] = { { 0, 36 }, { 3, 36 }, { 6, 43 }, { 10, 46 }, { 13, 48 } };
+        for (auto& b : bass)
+        {
+            p.tracks[20].steps[(size_t) b[0]].on = true;
+            p.tracks[20].steps[(size_t) b[0]].note = (std::uint8_t) b[1];
+        }
+    });
+}
+
+void AppContext::enterSimulation()
+{
+    if (simOwner == nullptr)
+    {
+        simOwner = std::make_unique<SimDevice> (engine);
+        simPtr = simOwner.get();
+        applyMeasures();
+    }
+    engine.openInput ({});
+    engine.openOutput ({});
+    engine.pauseScale = 0.1;
+    engine.setTimedOutput ([this] (const juce::MidiMessage& m, double atMs)
+    {
+        if (auto* sim = simPtr.load())
+            sim->receive (m, atMs);
+    });
+    simActive = true;
+}
+
+void AppContext::leaveSimulation()
+{
+    simActive = false;
+    engine.setTimedOutput (nullptr);
+    engine.pauseScale = 1.0;
+    // the real unit's settings (the simulation never saves its own)
+    auto& s = settings();
+    engine.deviceId = s.getIntValue ("id", 0);
+    engine.channel = s.getIntValue ("channel", 1);
+    engine.baseNote = s.getIntValue ("baseNote", 36);
+    for (auto& d : juce::MidiInput::getAvailableDevices())
+        if (d.identifier == inId) engine.openInput (inId);
+    for (auto& d : juce::MidiOutput::getAvailableDevices())
+        if (d.identifier == outId) engine.openOutput (outId);
+}
+
+void AppContext::setSimulation (bool on)
+{
+    if (on == simActive.load())
+        return;
+    if (on)
+        enterSimulation();
+    else
+        leaveSimulation();
+    if (! demoFromEnvironment)
+    {
+        settings().setValue ("simulation", on);
+        settings().saveIfNeeded();
+    }
+    if (on || settingsFile->getBoolValue ("setupDone", false))
+        engine.connect();
+}
+
 AppContext::~AppContext()
 {
     engine.stopPlayer();
     engine.cancel();
     engine.setTestOutput (nullptr);
+    engine.setTimedOutput (nullptr);
+    simPtr = nullptr;
 }
 
 void AppContext::chooseInput (const juce::String& identifier)
@@ -126,7 +234,7 @@ void AppContext::chooseOutput (const juce::String& identifier)
 
 bool AppContext::isSetUp() const
 {
-    return settingsFile->getBoolValue ("setupDone", false) || demo != nullptr;
+    return settingsFile->getBoolValue ("setupDone", false) || simActive.load();
 }
 
 void AppContext::setSetUp (bool done)
@@ -138,8 +246,8 @@ void AppContext::setSetUp (bool done)
 
 void AppContext::saveSettings()
 {
-    if (demo != nullptr)
-        return;
+    if (simActive.load())
+        return;            // the pretend unit's ID and channel are not the real one's
     auto& s = settings();
     s.setValue ("in", inId);
     s.setValue ("out", outId);

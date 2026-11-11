@@ -5,7 +5,7 @@ if(APPLE)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 endif()
 
-project(RackAttack VERSION 0.4.0 LANGUAGES C CXX)
+project(RackAttack VERSION 0.5.0 LANGUAGES C CXX)
 
 # GitHub repository whose releases the plug-in checks for updates (public releases).
 set(RA_UPDATE_REPO "distortedimages-code/rack-attack" CACHE STRING "owner/repo checked for updates (empty = no update check)")
@@ -27,7 +27,7 @@ endif()
 
 #==============================================================================
 # SysEx core, no JUCE inside: shared by the Labo, the future plugin and the tests.
-add_library(ra_core STATIC Source/core/RaSysex.cpp Source/core/RaKit.cpp Source/core/RaSeq.cpp)
+add_library(ra_core STATIC Source/core/RaSysex.cpp Source/core/RaKit.cpp Source/core/RaSeq.cpp Source/sim/RaSynth.cpp)
 target_compile_features(ra_core PUBLIC cxx_std_17)
 set_target_properties(ra_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -45,6 +45,8 @@ juce_add_plugin(RackAttackEditor
     COPY_PLUGIN_AFTER_BUILD FALSE
     PLUGIN_MANUFACTURER_CODE Dimg
     PLUGIN_CODE Ratk
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "RackAttack Editor écoute ta carte son pendant la mesure du RackAttack (pour que le simulateur sonne comme ta machine). Rien n'est envoyé nulle part."
     AU_MAIN_TYPE kAudioUnitType_MusicDevice
     VST3_CATEGORIES Instrument Tools
     FORMATS AU VST3 Standalone)
@@ -65,6 +67,9 @@ set(RA_APP_SOURCES
     Source/app/Sequencer.cpp
     Source/app/SeqPage.cpp
     Source/app/SoundViz.cpp
+    Source/app/SimDevice.cpp
+    Source/app/Measure.cpp
+    Source/app/MeasureWizard.cpp
     Source/app/Pixel.cpp)
 
 # Pixel fonts (SIL Open Font License, see Resources/fonts)
@@ -112,6 +117,10 @@ if(RA_BUILD_TESTS)
     target_link_libraries(SeqTests PRIVATE ra_core)
     add_test(NAME SeqTests COMMAND SeqTests)
 
+    add_executable(SynthTests Tests/SynthTests.cpp)
+    target_link_libraries(SynthTests PRIVATE ra_core)
+    add_test(NAME SynthTests COMMAND SynthTests)
+
     # The Labo engine end to end, against a fake RackAttack (temporary HOME)
     juce_add_console_app(EngineTests PRODUCT_NAME "EngineTests")
     juce_generate_juce_header(EngineTests)
@@ -130,6 +139,36 @@ if(RA_BUILD_TESTS)
     add_test(NAME EngineTests COMMAND EngineTests)
     set_tests_properties(EngineTests PROPERTIES
         ENVIRONMENT "HOME=${CMAKE_CURRENT_BINARY_DIR}/test-home")
+
+    # The measuring procedure, on the simulator with a known calibration
+    juce_add_console_app(MeasureTests PRODUCT_NAME "MeasureTests")
+    juce_generate_juce_header(MeasureTests)
+    target_sources(MeasureTests PRIVATE Tests/MeasureTests.cpp Source/app/Measure.cpp Source/app/Engine.cpp
+        Source/app/Session.cpp Source/app/Library.cpp)
+    target_compile_definitions(MeasureTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(MeasureTests PRIVATE
+        ra_core
+        juce::juce_gui_basics
+        juce::juce_audio_devices
+        juce::juce_audio_formats
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+    add_test(NAME MeasureTests COMMAND MeasureTests)
+    set_tests_properties(MeasureTests PROPERTIES
+        ENVIRONMENT "HOME=${CMAKE_CURRENT_BINARY_DIR}/test-home")
+
+    # Not a test: renders the simulator playing a pattern to a WAV file
+    juce_add_console_app(SimRender PRODUCT_NAME "SimRender")
+    juce_generate_juce_header(SimRender)
+    target_sources(SimRender PRIVATE Tests/SimRender.cpp Source/app/Engine.cpp Source/app/Session.cpp Source/app/Library.cpp)
+    target_compile_definitions(SimRender PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(SimRender PRIVATE
+        ra_core
+        juce::juce_gui_basics
+        juce::juce_audio_devices
+        juce::juce_audio_formats
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
 
     # Update checker: version compare, GitHub answer parsing, checksum, bundle replacement
     juce_add_console_app(UpdaterTests PRODUCT_NAME "UpdaterTests")

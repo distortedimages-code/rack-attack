@@ -509,7 +509,15 @@ function fit (stage, w, h) {
   const stamps = ['OK', 'VU', 'OK !', 'BON'];
   const phrases = ['Va te faire un café.', "T'as pas envie d'une bière ?", 'Il faut que tu ailles me chercher du poulet.', "Est-ce que t'as vu dehors ?",
     "T'as pas vu ton midronome ?", "T'es sûr que le midronome n'est pas sous le carton ?", 'Je mesure, je mesure... Toi, tu bouges pas.',
-    "C'est le moment d'arroser les plantes.", "Si ça siffle, c'est normal. Enfin, je crois.", 'Une petite pause pipi ? Je garde la machine.', "J'en suis à trois bananes et demie."];
+    "C'est le moment d'arroser les plantes.", "Si ça siffle, c'est normal. Enfin, je crois.", 'Une petite pause pipi ? Je garde la machine.', "J'en suis à trois bananes et demie.",
+    'Je crois que je vois un bout du midronome dépasser derrière toi.', 'Et si tu rangeais les câbles ? Le midronome est peut-être dessous.',
+    'Même Aphex Twin trouve ça inquiétant.', 'Elle te manque pas trop ta SidStation ?', 'Tu connais Yoann ? Il est génial !',
+    "C'est Yoann qui m'a créé !", 'Sommes-nous réellement libres de nos choix ?', 'Que devient la conscience après la mort ?',
+    'Le temps existe-t-il indépendamment de nous ?', 'La réalité existe-t-elle sans observateur ?', 'Pourquoi les neutrinos possèdent-ils une masse ?',
+    'La turbulence possède-t-elle une description mathématique universelle ?', "Le temps émerge-t-il de l'intrication quantique ?", 'Les constantes fondamentales peuvent-elles varier dans le temps ?',
+    "Pourquoi l'entropie initiale de l'univers était-elle si faible ?", 'La conscience nécessite-t-elle des phénomènes quantiques ?', 'Existe-t-il une limite fondamentale à la divisibilité spatiale ?',
+    "Les trous noirs conservent-ils toute l'information quantique ?", "Notre univers est-il une phase d'un système plus fondamental ?", 'Ça sent pas le cramé ?',
+    'Tu penses que je pourrais conclure ?'];
   const kindOf = i => (i % 9 === 5 ? 7 : (i * 5 + 2) % 7);
   const SP = 36 * p, beltY = 236, ghostX = 300;
   let belt = W - 420, last = 0, t = 0, inspecting = -1, inspectT = 0, done = new Set(), phrase = 0, phraseT = 0, raf = 0;
@@ -571,12 +579,19 @@ function fit (stage, w, h) {
       sprite(g, s, hx + (ox - hx) * a + wob, hy + (oy - hy) * a, p);
     }
     // what it says
-    const text = phrases[phrase], shown = text.slice(0, Math.floor(phraseT * 28));
+    const text = phrases[phrase], typed = Math.floor(phraseT * 28);
     g.font = '26px VT'; g.textBaseline = 'middle';
-    const bw = Math.max(80, g.measureText(text).width + 24), bx = Math.min(W - bw - 8, ghostX + 54), by = 26;
-    g.fillStyle = '#fff'; g.fillRect(bx, by, bw, 34); g.fillRect(ghostX + 30, by + 34, 8, 8); g.fillRect(ghostX + 22, by + 42, 8, 8);
-    g.fillStyle = '#000'; g.fillRect(bx + 3, by + 3, bw - 6, 28);
-    g.fillStyle = '#fff'; g.fillText(shown, bx + 12, by + 18);
+    const bx = ghostX + 54, maxW = W - bx - 8 - 24, lines = [''];
+    for (const word of text.split(' ')) {      // wrapped over as many lines as it takes
+      const tryLine = lines[lines.length - 1] ? lines[lines.length - 1] + ' ' + word : word;
+      if (g.measureText(tryLine).width > maxW && lines[lines.length - 1]) lines.push(word); else lines[lines.length - 1] = tryLine;
+    }
+    const bw = Math.max(80, Math.max(...lines.map(l => g.measureText(l).width)) + 24), bh = 10 + lines.length * 24, by = Math.max(4, 60 - bh);
+    g.fillStyle = '#fff'; g.fillRect(bx, by, bw, bh); g.fillRect(ghostX + 30, by + bh, 8, 8); g.fillRect(ghostX + 22, by + bh + 8, 8, 8);
+    g.fillStyle = '#000'; g.fillRect(bx + 3, by + 3, bw - 6, bh - 6);
+    g.fillStyle = '#fff';
+    let left = typed;
+    lines.forEach((l, i) => { if (left > 0) g.fillText(l.slice(0, left), bx + 12, by + 17 + i * 24); left -= l.length + 1; });
     if (!still) raf = requestAnimationFrame(frame);
   }
   Promise.all([document.fonts.load('26px VT'), document.fonts.load('700 16px Silk')]).then(() =>

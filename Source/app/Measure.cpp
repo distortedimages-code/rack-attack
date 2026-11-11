@@ -655,8 +655,8 @@ Result Bench::run()
     report->setProperty ("noiseDb", juce::Decibels::gainToDecibels (noise));
     report->setProperty ("warnings", r.warnings);
     report->setProperty ("date", r.when.toISO8601 (true));
-   #if defined (JucePlugin_VersionString)
-    report->setProperty ("app", JucePlugin_VersionString);
+   #if defined (RA_VERSION)
+    report->setProperty ("app", RA_VERSION);
    #endif
     r.report = juce::var (report.get());
     result = nullptr;
@@ -1517,6 +1517,7 @@ bool SynthRig::pause (int why)
     if (! waitWhenPaused)
         return true;
     pausedFor = why;
+    level = 0.0f;
     while (pausedFor.load() >= 0)
     {
         if (stop.load())
@@ -1778,11 +1779,11 @@ juce::File defaultFolder()
         .getChildFile ("RackAttack Editor").getChildFile ("Mesures");
 }
 
-juce::File save (const Result& r, const juce::File& folder)
+juce::File save (const Result& r, const juce::File& folder, const juce::String& prefix)
 {
     if (! folder.createDirectory())
         return {};
-    const auto file = folder.getNonexistentChildFile ("RackAttack-mesures-" + r.when.formatted ("%Y-%m-%d-%Hh%M"), ".ramesure", false);
+    const auto file = folder.getNonexistentChildFile (prefix + r.when.formatted ("%Y-%m-%d-%Hh%M"), ".ramesure", false);
 
     juce::ZipFile::Builder zip;
     auto addText = [&zip] (const juce::String& name, const juce::String& content)

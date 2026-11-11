@@ -8,6 +8,7 @@
 
 #include "AppContext.h"
 #include "ConnectWizard.h"
+#include "MeasureWizard.h"
 #include "Pages.h"
 #include "Pixel.h"
 #include "SeqPage.h"
@@ -62,6 +63,8 @@ private:
 
     void showPage (int index);
     void showWizard();
+    void showMeasure();
+    void chooseMeasures();
     void refreshUpdate();
     void showUpdateDialog();
     void flushJournal();
@@ -97,6 +100,8 @@ private:
     juce::ProgressBar bar { progress };
 
     ConnectWizard wizard { engine, *this };
+    MeasureWizard measureWizard { engine };
+    std::unique_ptr<juce::FileChooser> chooser;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

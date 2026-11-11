@@ -1,5 +1,8 @@
 #include "AppContext.h"
 
+#include "Measure.h"
+#include "Text.h"
+
 namespace
 {
     std::unique_ptr<juce::PropertiesFile> makeSettings()
@@ -22,6 +25,52 @@ AppContext::AppContext() : settingsFile (makeSettings())
     engine.baseNote = s.getIntValue ("baseNote", 36);
     inId = s.getValue ("in");
     outId = s.getValue ("out");
+
+    const juce::File file (s.getValue ("measures"));
+    if (s.getValue ("measures").isNotEmpty() && file.existsAsFile())
+    {
+        auto c = std::make_unique<ra::synth::Calibration>();
+        juce::String error;
+        if (measure::load (file, *c, error))
+        {
+            measured = std::move (c);
+            measuresFile = file;
+        }
+    }
+}
+
+bool AppContext::useMeasures (const juce::File& file, juce::String& error)
+{
+    auto c = std::make_unique<ra::synth::Calibration>();
+    if (! measure::load (file, *c, error))
+        return false;
+    measured = std::move (c);
+    measuresFile = file;
+    settings().setValue ("measures", file.getFullPathName());
+    settings().saveIfNeeded();
+    applyMeasures();
+    engine.userNote ("Simulateur : " + juce::String (measured->source) + " (" + file.getFileName() + ")");
+    return true;
+}
+
+void AppContext::forgetMeasures()
+{
+    measured.reset();
+    measuresFile = juce::File();
+    settings().removeValue ("measures");
+    settings().saveIfNeeded();
+    applyMeasures();
+}
+
+juce::String AppContext::measuresSource() const
+{
+    return measured != nullptr ? juce::String (measured->source) : "réglages du manuel"_fr;
+}
+
+void AppContext::applyMeasures()
+{
+    if (simOwner != nullptr)
+        simOwner->setCalibration (measured != nullptr ? *measured : ra::synth::Calibration::defaults());
 }
 
 void AppContext::start()
@@ -114,6 +163,7 @@ void AppContext::enterSimulation()
     {
         simOwner = std::make_unique<SimDevice> (engine);
         simPtr = simOwner.get();
+        applyMeasures();
     }
     engine.openInput ({});
     engine.openOutput ({});

@@ -43,6 +43,12 @@ public:
     SimDevice* simulator()             { return simActive.load() ? simPtr.load() : nullptr; }   // any thread
     bool isDemo() const                { return isSimulation(); }
 
+    // Measurements of a real unit (a .ramesure file) the simulator follows; remembered.
+    bool useMeasures (const juce::File&, juce::String& error);
+    void forgetMeasures();
+    juce::File getMeasures() const     { return measuresFile; }
+    juce::String measuresSource() const;   // "mesures du ..." or "réglages du manuel"
+
     std::unique_ptr<juce::PropertiesFile> settingsFile;
     Session session;
     Engine engine { session };
@@ -55,6 +61,10 @@ private:
     void leaveSimulation();
     void loadDemoPattern();
 
+    void applyMeasures();
+
+    juce::File measuresFile;
+    std::unique_ptr<ra::synth::Calibration> measured;
     std::unique_ptr<SimDevice> simOwner;
     std::atomic<SimDevice*> simPtr { nullptr };
     std::atomic<bool> simActive { false };

@@ -45,6 +45,8 @@ juce_add_plugin(RackAttackEditor
     COPY_PLUGIN_AFTER_BUILD FALSE
     PLUGIN_MANUFACTURER_CODE Dimg
     PLUGIN_CODE Ratk
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "RackAttack Editor écoute ta carte son pendant la mesure du RackAttack (pour que le simulateur sonne comme ta machine). Rien n'est envoyé nulle part."
     AU_MAIN_TYPE kAudioUnitType_MusicDevice
     VST3_CATEGORIES Instrument Tools
     FORMATS AU VST3 Standalone)
@@ -67,6 +69,7 @@ set(RA_APP_SOURCES
     Source/app/SoundViz.cpp
     Source/app/SimDevice.cpp
     Source/app/Measure.cpp
+    Source/app/MeasureWizard.cpp
     Source/app/Pixel.cpp)
 
 # Pixel fonts (SIL Open Font License, see Resources/fonts)

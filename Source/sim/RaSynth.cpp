@@ -32,6 +32,7 @@ namespace
     inline float uni (std::uint8_t v)   { return (float) v / 127.0f; }
     inline float bip (std::uint8_t v)   { return ((float) v - 64.0f) / 64.0f; }
     inline float fromSemis (float s)    { return std::exp2 (s / 12.0f); }
+    inline int juce_clampVel (float v)  { return std::clamp ((int) std::lround (v * 127.0f), 0, 127); }
 
     struct Rng
     {
@@ -396,6 +397,8 @@ Calibration Calibration::defaults()
         c.crackHz[(size_t) v] = std::pow (5000.0f, t);                             // manual: 1 Hz .. 5 kHz
         c.volumeGain[(size_t) v] = t * t;
         c.velocityGain[(size_t) v] = t * t;
+        c.sustainLevel[(size_t) v] = t;
+        c.resonanceK[(size_t) v] = 2.0f * (1.0f - (float) v / c.selfOscillation);
     }
     return c;
 }
@@ -541,9 +544,26 @@ struct Synth::Impl
         e.stage = Env::Stage::release;
     }
 
+    float fallAt (float u, float shape) const
+    {
+        if (cal.fallCurves.size() != 5)
+            return fall (u, shape);
+        u = std::clamp (u, 0.0f, 1.0f);
+        const float pos = shape * 4.0f;
+        const int i = std::min (3, (int) pos);
+        const float t = pos - (float) i;
+        auto at = [u] (const std::array<float, 64>& c)
+        {
+            const float x = u * 63.0f;
+            const int k = std::min (62, (int) x);
+            return c[(size_t) k] + (c[(size_t) k + 1] - c[(size_t) k]) * (x - (float) k);
+        };
+        return at (cal.fallCurves[(size_t) i]) * (1.0f - t) + at (cal.fallCurves[(size_t) i + 1]) * t;
+    }
+
     void envStep (Env& e, const std::uint8_t* p)
     {
-        const float sustain = uni (p[2]);
+        const float sustain = cal.sustainLevel[p[2]];
         const float shape = uni (p[4]);
         switch (e.stage)
         {
@@ -559,7 +579,7 @@ struct Synth::Impl
                 }
                 return;
             case Env::Stage::decay:
-                e.level = sustain + (1.0f - sustain) * fall ((float) (e.pos / e.len), shape);
+                e.level = sustain + (1.0f - sustain) * fallAt ((float) (e.pos / e.len), shape);
                 if (++e.pos >= e.len)
                 {
                     e.level = sustain;
@@ -568,7 +588,7 @@ struct Synth::Impl
                 return;
             case Env::Stage::sustain: e.level = sustain; return;
             case Env::Stage::release:
-                e.level = e.from * fall ((float) (e.pos / e.len), shape);
+                e.level = e.from * fallAt ((float) (e.pos / e.len), shape);
                 if (++e.pos >= e.len)
                 {
                     e.level = 0.0f;
@@ -765,13 +785,13 @@ struct Synth::Impl
             v.shelfGain = std::pow (10.0f, db / 20.0f);
         }
         else
-            v.k = 2.0f * (1.0f - reso / cal.selfOscillation);   // 0 at the self-oscillation point, below 0 past it
+            v.k = cal.resonanceK[s[fReso]];                       // 0 at the self-oscillation point, below 0 past it
         v.a1 = 1.0f / (1.0f + v.g * (v.g + std::max (v.k, -0.05f)));
         v.a2 = v.g * v.a1;
         v.a3 = v.g * v.a2;
 
         // level (Envelope 1 is applied every sample) and place
-        v.level = cal.volumeGain[s[aVolume]]
+        v.level = cal.volumeGain[s[aVolume]] * (cal.velocityToAmp ? cal.velocityGain[(size_t) juce_clampVel (v.velocity)] : 1.0f)
                 * std::clamp (1.0f + bip (s[aVolMod]) * modValue (v, s[aVolModSrc]) + bip (s[aVolCtrl]) * ctrlValue (v, s[aVolCtrlSrc]), 0.0f, 2.0f);
         float pan = bip (s[aPan]) + bip (s[aPanMod]) * modValue (v, s[aPanModSrc]) + bip (s[aPanCtrl]) * ctrlValue (v, s[aPanCtrlSrc]);
         pan = std::clamp (pan, -1.0f, 1.0f);

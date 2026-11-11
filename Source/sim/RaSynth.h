@@ -47,6 +47,12 @@ struct Calibration
     std::array<float, 128> crackHz {};
     std::array<float, 128> volumeGain {};     // linear
     std::array<float, 128> velocityGain {};   // how loud a velocity plays when it controls volume
+    std::array<float, 128> sustainLevel {};   // envelope sustain value -> level (0..1)
+    std::array<float, 128> resonanceK {};     // filter damping (2 = none, 0 = rings by itself, < 0 = rings louder)
+
+    // The decay / release curves for Shape 0, 32, 64, 96, 127 (1 down to 0 over 64 points),
+    // measured on a unit; empty: the manual's description (exp, linear, inverse, cosine).
+    std::vector<std::array<float, 64>> fallCurves;
 
     float pitchModSemitones = 48.0f;          // a full Pitch Mod / Ctrl (100 %)
     float cutoffModSemitones = 96.0f;         // a full Cutoff Mod / Ctrl
@@ -54,6 +60,7 @@ struct Calibration
     float selfOscillation = 114.0f;           // resonance from which the filter rings by itself
     int tunedRootNote = 60;                   // the note that plays a tuned sound at its own pitch
     bool env1ToAmp = true;                    // Envelope 1 shapes the level of every sound
+    bool velocityToAmp = false;               // velocity changes the level even without a control set
 
     struct Sample
     {

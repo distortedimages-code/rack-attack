@@ -814,6 +814,11 @@ void Engine::handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessag
         return;
     if (raw[0] == 0xF8) { ++clockCount; return; }
     if (raw[0] == 0xFE) { ++sensingCount; return; }
+    {
+        const bool echo = size > 7 && raw[0] == ra::kSox && raw[4] == ra::cmd::SNDP && (int) raw[6] == echoSound.load();
+        if (! echo)
+            ++unitMessages;
+    }
     if (m.isNoteOnOrOff() && onIncomingNote != nullptr)
         onIncomingNote (m);
 

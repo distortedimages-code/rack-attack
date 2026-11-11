@@ -66,6 +66,7 @@ set(RA_APP_SOURCES
     Source/app/SeqPage.cpp
     Source/app/SoundViz.cpp
     Source/app/SimDevice.cpp
+    Source/app/Measure.cpp
     Source/app/Pixel.cpp)
 
 # Pixel fonts (SIL Open Font License, see Resources/fonts)
@@ -134,6 +135,23 @@ if(RA_BUILD_TESTS)
         juce::juce_recommended_warning_flags)
     add_test(NAME EngineTests COMMAND EngineTests)
     set_tests_properties(EngineTests PROPERTIES
+        ENVIRONMENT "HOME=${CMAKE_CURRENT_BINARY_DIR}/test-home")
+
+    # The measuring procedure, on the simulator with a known calibration
+    juce_add_console_app(MeasureTests PRODUCT_NAME "MeasureTests")
+    juce_generate_juce_header(MeasureTests)
+    target_sources(MeasureTests PRIVATE Tests/MeasureTests.cpp Source/app/Measure.cpp Source/app/Engine.cpp
+        Source/app/Session.cpp Source/app/Library.cpp)
+    target_compile_definitions(MeasureTests PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(MeasureTests PRIVATE
+        ra_core
+        juce::juce_gui_basics
+        juce::juce_audio_devices
+        juce::juce_audio_formats
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+    add_test(NAME MeasureTests COMMAND MeasureTests)
+    set_tests_properties(MeasureTests PROPERTIES
         ENVIRONMENT "HOME=${CMAKE_CURRENT_BINARY_DIR}/test-home")
 
     # Not a test: renders the simulator playing a pattern to a WAV file

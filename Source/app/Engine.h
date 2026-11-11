@@ -102,6 +102,11 @@ public:
     void clearTimed();
     void sendQuiet (const juce::MidiMessage& m)     { sendNow (m); }
 
+    // Messages coming from the unit other than clock and sensing (the measurement
+    // pauses when someone touches it). Parameter changes of echoSound don't count.
+    std::atomic<int> unitMessages { 0 };
+    std::atomic<int> echoSound { -1 };
+
     // Notes coming from the RackAttack (a keyboard plugged into it), on the MIDI
     // input's thread. Set before the input is opened.
     std::function<void (const juce::MidiMessage&)> onIncomingNote;

@@ -546,11 +546,12 @@ struct Synth::Impl
 
     float fallAt (float u, float shape) const
     {
-        if (cal.fallCurves.size() != 5)
+        const int n = (int) cal.fallCurves.size();
+        if (n < 2)
             return fall (u, shape);
         u = std::clamp (u, 0.0f, 1.0f);
-        const float pos = shape * 4.0f;
-        const int i = std::min (3, (int) pos);
+        const float pos = std::clamp (shape, 0.0f, 1.0f) * (float) (n - 1);
+        const int i = std::min (n - 2, (int) pos);
         const float t = pos - (float) i;
         auto at = [u] (const std::array<float, 64>& c)
         {
@@ -759,7 +760,7 @@ struct Synth::Impl
             float semis = v.keyOffset;
             semis += bip (s[(size_t) modAddr]) * modValue (v, s[(size_t) modSrcAddr]) * cal.pitchModSemitones;
             semis += bip (s[(size_t) ctrlAddr]) * ctrlValue (v, s[(size_t) ctrlSrcAddr]) * cal.pitchModSemitones;
-            semis += uni (s[(size_t) detuneAddr]) * 2.0f;          // detune: up to 200 cents
+            semis += uni (s[(size_t) detuneAddr]) * cal.detuneSemitones;   // detune: up to 200 cents
             return cal.pitchHz[s[(size_t) pitchAddr]] * fromSemis (semis);
         };
         v.f1 = pitch (o1Pitch, o1Detune, o1PitchMod, o1PitchCtrl, o1PitchModSrc, o1PitchCtrlSrc);
@@ -836,7 +837,10 @@ struct Synth::Impl
             case 6: case 7: case 8:
             {
                 const auto& sample = cal.samples[shape - 6];
-                const float ratio = freq / std::max (1e-6f, cal.pitchHz[(size_t) sample.rootPitch]);
+                const float ratio = sample.semitonesPerStep < 0.0f
+                    ? freq / std::max (1e-6f, cal.pitchHz[(size_t) sample.rootPitch])
+                    : freq / std::max (1e-6f, cal.pitchHz[(size_t) pitchValue])
+                        * fromSemis ((float) (pitchValue - sample.rootPitch) * sample.semitonesPerStep);
                 if (! sample.data.empty())
                 {
                     const auto idx = (size_t) o.samplePos;

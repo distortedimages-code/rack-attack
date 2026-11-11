@@ -50,11 +50,13 @@ struct Calibration
     std::array<float, 128> sustainLevel {};   // envelope sustain value -> level (0..1)
     std::array<float, 128> resonanceK {};     // filter damping (2 = none, 0 = rings by itself, < 0 = rings louder)
 
-    // The decay / release curves for Shape 0, 32, 64, 96, 127 (1 down to 0 over 64 points),
-    // measured on a unit; empty: the manual's description (exp, linear, inverse, cosine).
+    // The decay / release curves for Shape values spread evenly from 0 to 127 (9 of them:
+    // 0, 16, 32 ... 127), each 1 down to 0 over 64 points, measured on a unit; empty: the
+    // manual's description (exp, linear, inverse, cosine).
     std::vector<std::array<float, 64>> fallCurves;
 
     float pitchModSemitones = 48.0f;          // a full Pitch Mod / Ctrl (100 %)
+    float detuneSemitones = 2.0f;             // Detune 127 (manual: 0..200 cents)
     float cutoffModSemitones = 96.0f;         // a full Cutoff Mod / Ctrl
     float fmMaxIndex = 8.0f;                  // FM 100 %: "phase overflows by a factor of 8"
     float selfOscillation = 114.0f;           // resonance from which the filter rings by itself
@@ -67,6 +69,7 @@ struct Calibration
         std::vector<float> data;              // mono
         double rate = 44100.0;
         int rootPitch = 64;                   // the Pitch value at which it was recorded
+        float semitonesPerStep = -1.0f;       // how far one Pitch step moves it; < 0: like the oscillators
     };
     Sample samples[3];                        // HH Closed, HH Open, Crash (recorded from a unit)
 

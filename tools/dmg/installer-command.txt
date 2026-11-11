@@ -1,0 +1,1 @@
+sudo installer -pkg "/Volumes/RackAttack Editor/Installer RackAttack Editor.pkg" -target / && killall -9 AudioComponentRegistrar 2>/dev/null; echo "RackAttack Editor est installé."

@@ -1,7 +1,8 @@
 # Publishing a version (same steps as OXIde): set VERSION in CMakeLists.txt, write
 # RELEASE_NOTES.md, merge into main, then on GitHub: Actions > release > Run workflow (on main).
 # This builds and tests on a Mac, and creates a DRAFT release v<VERSION> with
-#   RackAttack-Editor-mac.dmg          for people (the web page links to it),
+#   RackAttack-Editor-mac.dmg          for people (the web page links to it): an installer
+#                                      (.pkg) and the bundles to drag, with the Terminal commands,
 #   RackAttack-Editor-mac.zip + .sha256 for the in-plugin updater.
 # Review it on GitHub and press "Publish release" (that also creates the tag): installed
 # plug-ins then offer the update (they only see published, non-prerelease releases).
@@ -66,7 +67,7 @@ jobs:
           (cd out && shasum -a 256 RackAttack-Editor-mac.zip > RackAttack-Editor-mac.zip.sha256)
           # the disk image people download from the web page
           python3 -m pip install --quiet --break-system-packages dmgbuild==1.6.7 || python3 -m pip install --quiet dmgbuild==1.6.7
-          tools/dmg/make_dmg.sh pkg out/RackAttack-Editor-mac.dmg
+          tools/dmg/make_dmg.sh pkg out/RackAttack-Editor-mac.dmg "$VERSION"
 
       - name: Create the draft release
         if: env.SKIP != '1'

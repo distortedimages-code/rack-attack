@@ -1,0 +1,8 @@
+#!/bin/bash
+# RackAttack Editor's installer (VST3): an older copy in the user's own VST3 folder would hide this one.
+USER_NOW=$(stat -f%Su /dev/console 2>/dev/null || true)
+if [ -n "$USER_NOW" ] && [ "$USER_NOW" != "root" ]; then
+    HOME_NOW=$(dscl . -read "/Users/$USER_NOW" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+    [ -n "$HOME_NOW" ] && rm -rf "$HOME_NOW/Library/Audio/Plug-Ins/VST3/RackAttack Editor.vst3"
+fi
+exit 0

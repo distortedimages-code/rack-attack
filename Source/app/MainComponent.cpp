@@ -19,6 +19,13 @@ void MainComponent::Light::paint (juce::Graphics& g)
         t = "SIMULATION";
     }
     auto r = getLocalBounds();
+    {
+        // too narrow (an update button next to it): the short version
+        const auto f = px::text (24.0f);
+        if (juce::GlyphArrangement::getStringWidth (f, t) > (float) (getWidth() - 42))
+            t = t.upToFirstOccurrenceOf (juce::String::fromUTF8 (" \xe2\x80\x94"), false, false)
+                 .replace ("RackAttack connect", "Connect");
+    }
     g.setColour (px::cell);
     g.fillRect (r);
     px::frameRect (g, r, simulation ? px::yellow : px::frame, 2);
@@ -142,6 +149,7 @@ MainComponent::MainComponent (AppContext& c)
     measureWizard.stopSequencer = [this] { ctx.sequencer.stop(); };
     measureWizard.settings = [this] { return &ctx.settings(); };
     toolsPage.openMeasure = [this] { showMeasure(); };
+    toolsPage.installUpdate = [this] { showUpdateDialog(); };
     toolsPage.loadMeasures = [this] { chooseMeasures(); };
     toolsPage.forgetMeasures = [this] { ctx.forgetMeasures(); };
     toolsPage.measuresSource = [this] { return ctx.measuresSource(); };
@@ -250,6 +258,10 @@ void MainComponent::runAudit()
         check (names[i]);
     }
     showPage (0);
+    updateButton.setButtonText ("Mettre à jour"_fr);
+    updateButton.setVisible (true);
+    check ("Mise à jour disponible");
+    updateButton.setVisible (false);
     journalButton.setToggleState (true, juce::sendNotification);
     check ("Journal ouvert");
     journalButton.setToggleState (false, juce::sendNotification);
@@ -326,9 +338,10 @@ void MainComponent::wizardFinished (bool connected)
 void MainComponent::refreshUpdate()
 {
     auto& up = ctx.updater;
-    bool show = up.getState() == Updater::State::Available || up.getState() == Updater::State::Installed;
-    updateButton.setButtonText (up.getState() == Updater::State::Installed ? "Redémarre ton logiciel"_fr
-                                                                           : "Mise à jour "_fr + up.getRelease().version);
+    bool show = up.getState() == Updater::State::Available || up.getState() == Updater::State::Installed
+             || juce::SystemStats::getEnvironmentVariable ("RA_FAKE_UPDATE", {}) == "1";     // screenshots
+    updateButton.setButtonText (up.getState() == Updater::State::Installed ? "Redémarrer"_fr : "Mettre à jour"_fr);
+    updateButton.setTooltip (up.getStatusText());
     updateButton.setVisible (show);
     resized();
 }
@@ -453,21 +466,31 @@ void MainComponent::resized()
     wizard.setBounds (r);
     measureWizard.setBounds (r);
 
+    // the top bar: the page buttons as wide as their names, then from the right the journal,
+    // the zoom, the update when there is one, and the light gets what is left
     auto top = r.removeFromTop (56).reduced (12, 10);
-    top.removeFromLeft (200);
+    top.removeFromLeft (184);
+    auto widthOf = [this, &top] (juce::TextButton& b)
+    {
+        const auto f = lookAndFeel.getTextButtonFont (b, top.getHeight() - 3);
+        return juce::roundToInt (juce::GlyphArrangement::getStringWidth (f, b.getButtonText())) + 30;
+    };
     for (auto* b : pageButtons)
     {
-        b->setBounds (top.removeFromLeft (b->getButtonText().length() > 6 ? 140 : 90));
+        b->setBounds (top.removeFromLeft (juce::jmax (72, widthOf (*b))));
         top.removeFromLeft (6);
     }
+    top.removeFromLeft (4);
     journalButton.setBounds (top.removeFromRight (88));
     top.removeFromRight (8);
     zoomButton.setBounds (top.removeFromRight (76));
     top.removeFromRight (8);
-    light.setBounds (top.removeFromRight (270));
-    top.removeFromRight (10);
     if (updateButton.isVisible())
-        updateButton.setBounds (top.removeFromRight (200));
+    {
+        updateButton.setBounds (top.removeFromRight (juce::jmin (widthOf (updateButton), top.getWidth() - 150)));
+        top.removeFromRight (8);
+    }
+    light.setBounds (top);
 
     auto bottom = r.removeFromBottom (34).reduced (12, 4);
     bar.setBounds (bottom.removeFromRight (360));

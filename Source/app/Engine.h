@@ -111,6 +111,7 @@ public:
     // input's thread. Set before the input is opened.
     std::function<void (const juce::MidiMessage&)> onIncomingNote;
     void resendSoundDump (int sound);               // the sound as last read, unchanged
+    int freeTunedChannel (int exceptSound) const;   // a MIDI channel no sound listens to (not the global one); 0 = none
     bool hasSoundDump (int sound) const;
 
     // Player (1 ms thread)

@@ -10,6 +10,11 @@
 
 namespace ui
 {
+    // The window is laid out once at this size, on a 4-pixel grid, and zoomed as a whole
+    // in steps of 25 %: every 4-pixel block then covers a whole number of screen pixels.
+    constexpr int designWidth = 1360, designHeight = 848;
+    constexpr float zoomSteps[] = { 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f };
+
     // The retro pixel palette (see Pixel.h): black, white, red for "live" and
     // problems, yellow-orange for locks and warnings.
     const juce::Colour background (0xff000000);
@@ -158,6 +163,170 @@ namespace ui
             setColour (juce::Label::textColourId, c);
             setText (t, juce::dontSendNotification);
         }
+    };
+
+    // A name shortened to fit a narrow box: common abbreviations first, then cut.
+    inline juce::String fitName (const juce::String& name, const juce::Font& f, int room)
+    {
+        auto w = [&f] (const juce::String& t) { return juce::GlyphArrangement::getStringWidth (f, t); };
+        if (w (name) <= (float) room)
+            return name;
+        static const char* const pairs[][2] = {
+            { "Stereo ", "St " }, { "Mono ", "M " }, { "Velocity", "Velo" }, { "Modwheel", "MWheel" }, { "Pressure", "Press" },
+            { "Keytrack", "KeyTr" }, { "Triangle", "Tri" }, { "HH Closed", "HH Cl" }, { "HH Open", "HH Op" },
+            { "One Shot", "1Shot" }, { "Ext Mono", "Ext M" }, { "Random", "Rand" }, { "Global", "Glob" }, { "Bypass", "Byp" },
+        };
+        auto t = name;
+        for (auto& p : pairs)
+            t = t.replace (p[0], p[1]);
+        while (t.isNotEmpty() && w (t) > (float) room)
+            t = t.dropLastCharacters (1);
+        return t;
+    }
+
+    // The Son page's cells, drawn in pixels like the main page. A name, then a knob and
+    // its value (drag up or down, Shift for fine steps, double-click: the middle), or a
+    // list (click), and for a modulation its source under it.
+    struct Cell : public juce::Component
+    {
+        Cell (const juce::String& n, std::vector<std::string> list = {}) : name (n)
+        {
+            for (auto& c : list)
+                choices.add (juce::String::fromUTF8 (c.c_str()));
+        }
+
+        void addSource (std::vector<std::string> names)
+        {
+            for (auto& c : names)
+                sources.add (juce::String::fromUTF8 (c.c_str()));
+            hasSource = true;
+        }
+
+        void setValue (int v)       { if (v != value) { value = v; repaint(); } }
+        void setSource (int v)      { if (v != source) { source = v; repaint(); } }
+
+        std::function<void (int)> onChange, onSource;
+
+        void paint (juce::Graphics& g) override
+        {
+            auto r = getLocalBounds().reduced (2);
+            const bool hot = isMouseOver (true) || dragging;
+            const auto nameFont = px::text (15.0f);
+            px::drawText (g, fitName (name, nameFont, r.getWidth()), r.removeFromTop (14), juce::Justification::centred,
+                          nameFont, hot ? px::white : px::grey);
+            if (hasSource)
+            {
+                sourceBox = r.removeFromBottom (20);
+                drawBox (g, sourceBox, sources[source], true);
+                r.removeFromBottom (2);
+            }
+            if (! choices.isEmpty())
+            {
+                listBox = r.withSizeKeepingCentre (r.getWidth(), 24);
+                drawBox (g, listBox, choices[value].isNotEmpty() ? choices[value] : juce::String (value), false);
+                return;
+            }
+            const auto valueFont = px::text (22.0f);
+            auto valueRow = r.removeFromBottom (18);
+            auto knobArea = r.withSizeKeepingCentre (juce::jmin (r.getWidth(), r.getHeight()), juce::jmin (r.getWidth(), r.getHeight()));
+            px::knob (g, knobArea, (float) value / 127.0f, hot ? px::white : juce::Colour (0xffd8d8d8), knobArea.getWidth() >= 44 ? 3 : 2);
+            px::drawText (g, juce::String (value), valueRow, juce::Justification::centred, valueFont, px::white);
+        }
+
+        void mouseDown (const juce::MouseEvent& e) override
+        {
+            if (hasSource && sourceBox.contains (e.getPosition()))
+            {
+                showMenu (sources, source, sourceBox, onSource);
+                return;
+            }
+            if (! choices.isEmpty())
+            {
+                showMenu (choices, value, listBox, onChange);
+                return;
+            }
+            dragging = true;
+            startValue = value;
+            startY = e.getPosition().y;
+        }
+
+        void mouseDrag (const juce::MouseEvent& e) override
+        {
+            if (! dragging)
+                return;
+            const float perPixel = e.mods.isShiftDown() ? 0.15f : 0.6f;
+            const int v = juce::jlimit (0, 127, startValue + juce::roundToInt ((float) (startY - e.getPosition().y) * perPixel));
+            if (v != value)
+            {
+                value = v;
+                if (onChange) onChange (v);
+                repaint();
+            }
+        }
+
+        void mouseUp (const juce::MouseEvent&) override       { dragging = false; repaint(); }
+        void mouseEnter (const juce::MouseEvent&) override    { repaint(); }
+        void mouseExit (const juce::MouseEvent&) override     { repaint(); }
+        void mouseDoubleClick (const juce::MouseEvent& e) override
+        {
+            if (choices.isEmpty() && ! (hasSource && sourceBox.contains (e.getPosition())))
+            {
+                value = 64;
+                if (onChange) onChange (value);
+                repaint();
+            }
+        }
+        void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w) override
+        {
+            if (! choices.isEmpty())
+                return;
+            const int v = juce::jlimit (0, 127, value + (w.deltaY > 0 ? 1 : w.deltaY < 0 ? -1 : 0));
+            if (v != value)
+            {
+                value = v;
+                if (onChange) onChange (v);
+                repaint();
+            }
+        }
+
+        juce::String name;
+
+    private:
+        void drawBox (juce::Graphics& g, juce::Rectangle<int> b, const juce::String& shown, bool small)
+        {
+            g.setColour (px::cell);
+            g.fillRect (b);
+            px::frameRect (g, b, px::frame, 2);
+            const auto f = px::text (small ? 16.0f : 18.0f);
+            auto t = b.reduced (5, 0);
+            g.setColour (px::dim);
+            g.fillRect (t.getRight() - 6, t.getCentreY() - 1, 6, 2);
+            g.fillRect (t.getRight() - 4, t.getCentreY() + 1, 2, 2);
+            t.removeFromRight (8);
+            px::drawText (g, fitName (shown, f, t.getWidth()), t, juce::Justification::centredLeft, f, px::white);
+        }
+
+        void showMenu (const juce::StringArray& items, int current, juce::Rectangle<int> b, std::function<void (int)> then)
+        {
+            juce::PopupMenu m;
+            for (int i = 0; i < items.size(); ++i)
+                m.addItem (i + 1, items[i], true, i == current);
+            m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (localAreaToGlobal (b)),
+                             [safe = juce::Component::SafePointer<Cell> (this), then, isSource = &items == &sources] (int r)
+            {
+                if (safe == nullptr || r <= 0)
+                    return;
+                if (isSource) safe->source = r - 1;
+                else safe->value = r - 1;
+                if (then) then (r - 1);
+                safe->repaint();
+            });
+        }
+
+        juce::StringArray choices, sources;
+        bool hasSource = false, dragging = false;
+        int value = 0, source = 0, startValue = 0, startY = 0;
+        juce::Rectangle<int> sourceBox, listBox;
     };
 
     inline void styleBig (juce::TextButton& b, bool primary = false)

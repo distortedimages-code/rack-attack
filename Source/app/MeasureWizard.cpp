@@ -544,6 +544,12 @@ void MeasureWizard::start()
 
 void MeasureWizard::demo (const juce::String& what)
 {
+    if (isBusy())
+    {
+        if (live != nullptr) live->stop = true;
+        if (sim != nullptr) sim->stop = true;
+        worker.stopThread (5000);
+    }
     trial = what != "live";
     openAudio();
     if (what == "live")
@@ -581,6 +587,8 @@ void MeasureWizard::close()
 //==============================================================================
 void MeasureWizard::openAudio()
 {
+    if (isBusy())
+        return;                 // the rigs are in use
     signal = Signal::none;
     toneMax = {};
     if (trial)
@@ -639,20 +647,7 @@ float MeasureWizard::level (int channel)
 
 int MeasureWizard::freeChannel() const
 {
-    std::array<bool, 18> used {};
-    const int global = engine.channel.load();
-    used[(size_t) juce::jlimit (0, 17, global)] = true;
-    const auto& kit = engine.getKit();
-    for (int s = 0; s < 23; ++s)
-        if (kit.hasSound (s))
-        {
-            const int c = kit.soundValue (s, 0x58);
-            used[(size_t) juce::jlimit (0, 17, c == 17 ? global : c)] = true;
-        }
-    for (int c = 16; c >= 1; --c)
-        if (! used[(size_t) c])
-            return c;
-    return 0;
+    return engine.freeTunedChannel (23);
 }
 
 void MeasureWizard::withKit (std::function<void()> then)
@@ -1089,7 +1084,7 @@ void MeasureWizard::resized()
             ghost.setBounds (r);
             measureReal.setBounds (buttons.removeFromLeft (300));
             buttons.removeFromLeft (12);
-            tryIt.setBounds (buttons.removeFromLeft (330));
+            tryIt.setBounds (buttons.removeFromLeft (364));
             break;
         }
         case Screen::audio:

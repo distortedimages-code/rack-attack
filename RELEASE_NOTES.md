@@ -1,11 +1,11 @@
-**RackAttack Editor 0.5** : le RackAttack en logiciel, et une mesure guidée pour qu'il sonne comme une vraie machine.
+**RackAttack Editor 0.5.1** : une fenêtre qui tient d'un bloc, un accès rapide au son, et des corrections.
 
-- **Mode simulation** : pas de RackAttack sous la main ? Le plug-in en joue un en logiciel, par sa sortie audio. Même architecture que la machine (2 oscillateurs avec FM, ring, crack, filtre multimode avec drive, 2 enveloppes, 2 LFO, 4 effets : chorus, flanger, phaser, overdrive, delay, mod delay, reverb, lo-fi) et mêmes messages : le séquenceur, l'éditeur et les verrous marchent pareil. Bouton dans le branchement guidé, ou *Outils → Mode simulation*. Un kit de démo est prêt à jouer.
-- **Mesurer mon RackAttack** (*Outils*) : avec la machine branchée en MIDI et ses sorties sur ta carte son, le plug-in lui fait jouer des sons de test pendant environ 5 minutes et en tire un fichier de mesures : hauteurs, volumes, enveloppes et leurs formes, filtre, résonance, LFO, crack, et un enregistrement des cymbales.
-  - Avant de commencer : un vu-mètre et un son test pour être sûr que le son arrive bien, puis deux cases à cocher (enceintes coupées, mains loin de la machine).
-  - Pendant la mesure : « NE TOUCHE PAS À LA MACHINE », le fantôme qui mesure des objets sur un tapis roulant, et quelques conseils pour patienter. Si quelqu'un touche la machine, tout se met en pause et la partie en cours recommence.
-  - Le son 24 du kit sert de cobaye ; il est remis comme avant à la fin, rien n'est enregistré dans la machine.
-  - Le fichier `.ramesure` (dans *Documents/RackAttack/Mesures*) s'envoie à qui veut ; *Outils → Charger des mesures…* fait alors sonner son simulateur comme cette machine. Il contient des enregistrements des sons de la machine : garde-le pour toi.
-- **Essai sans machine** : l'assistant de mesure peut tourner sur le simulateur, en accéléré, pour voir comment ça se passe.
+- **Accès rapide** sur la page Séquenceur : au-dessus des onglets du son, une rangée de 8 réglages toujours visibles (Pitch, Cutoff, Résonance, Attack, Decay, Release, Volume…). Elle s'adapte au son : Crack Speed et Length pour un clap, profondeur de la chute de hauteur pour un kick, Drive et type de filtre pour du bruit ou des cymbales, FM, Transpose… Une petite étiquette dit pourquoi un réglage est proposé. Les verrous marchent dessus comme ailleurs.
+- **« Accorde mon son ! »** dans l'accès rapide : le son joue les notes du séquenceur (mode NOTES) à leur hauteur. La case règle son *Tuned Channel* sur un canal libre ; décochée, elle le remet sur Off.
+- **Page Son** : tout tient dans la fenêtre, sans défiler. Le front panel est rangé en quatre colonnes, et chaque modulation a sa source juste sous son potard.
+- **Taille de la fenêtre verrouillée** : l'interface est dessinée à une seule taille, sur une grille de 4 pixels, et un bouton **zoom** en haut (75 à 200 %) l'agrandit d'un bloc. Plus aucun texte ne déborde, et les pixels restent nets.
+- Le journal s'ouvre par-dessus la page au lieu de la rétrécir.
+- **Corrigé** : arrêter la lecture juste après un pas verrouillé laissait la machine sur la valeur verrouillée au redémarrage.
+- **Corrigé** (simulateur) : les réglages des effets étaient décalés d'un cran (sur la reverb, Decay réglait le pré-délai).
 
 Pour garder un réglage de son, toujours **Shift + Store** sur la machine.

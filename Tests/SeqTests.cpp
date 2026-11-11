@@ -169,6 +169,28 @@ int main()
         }
         CHECK (puts == 2 && offs >= 1);
         CHECK (! st.isRunning());
+
+        // stopped on the locked step, while the next step (which puts the sound back) is
+        // already planned: the putting back is dropped with the plan, so the stop must
+        // put the locked values back itself
+        Player late;
+        ev.clear();
+        late.render (p, ctx, 0.0, 2.0 - 1.5 * lead, lead, ev);     // step 8 (ppq 2.0) planned, its put-backs included
+        ev.clear();
+        late.stop (ctx, 1.5, ev);
+        int back = 0;
+        for (auto& e : ev)
+            if (e.kind == Event::Kind::parameter && ((e.address == 0x27 && e.value == 64) || (e.address == 0x30 && e.value == 0)))
+                ++back;
+        CHECK (back == 2);
+
+        // and the next start begins with the sound's own values
+        ev.clear();
+        late.render (p, ctx, 0.0, 0.5, lead, ev);
+        bool params = false;
+        for (auto& e : ev)
+            params = params || e.kind == Event::Kind::parameter;
+        CHECK (notesOn (ev).size() == 1 && ! params);
     }
 
     // Conditions and probability

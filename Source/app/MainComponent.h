@@ -27,6 +27,10 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    // The zoom of the whole window (the editor applies it), remembered.
+    std::function<void (float)> onZoom;
+    float getZoom() const              { return zoom; }
+
 private:
     struct Light : public juce::Component
     {
@@ -61,6 +65,8 @@ private:
             light.repaint();
     }
 
+    void showZoomMenu();
+    void runAudit();
     void showPage (int index);
     void showWizard();
     void showMeasure();
@@ -88,10 +94,19 @@ private:
     int page = 0;
 
     Light light;
-    juce::TextButton updateButton, journalButton { "Journal" };
+    juce::TextButton updateButton, journalButton { "Journal" }, zoomButton;
+    float zoom = 1.0f;
     bool journalOpen = false;
     juce::StringArray journalLines;    // the last lines, put on screen only while the journal is open
     bool journalDirty = false;
+    struct Backing : public juce::Component       // under the journal, which opens over the page
+    {
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (px::black);
+            px::dither (g, getLocalBounds().removeFromLeft (3), px::faint, 3);
+        }
+    } journalBacking;
     juce::TextEditor journal, noteField;
     juce::TextButton noteButton { "Noter" }, zipButton { "Préparer le zip"_fr }, folderButton { "Dossier" };
 

@@ -26,15 +26,15 @@ private:
     struct Param
     {
         int address;
-        ui::Knob* knob = nullptr;
-        ui::Choice* choice = nullptr;
+        ui::Cell* cell = nullptr;
+        int source = -1;                                     // the address of its modulation source
     };
 
     struct Content : public juce::Component
     {
         juce::OwnedArray<ui::Card> cards;
-        std::vector<std::vector<juce::Component*>> cells;   // per card
-        int layout (int width);                              // places everything, returns the height
+        std::vector<std::vector<std::vector<ui::Cell*>>> cells;   // per card, per row
+        void layout (int width);                              // the four columns of the front panel
     };
 
     void kitChanged (const ra::Kit::Change&) override;
@@ -55,7 +55,6 @@ private:
     ui::StatusLine status;
     ra::Bytes clipboard;
 
-    juce::Viewport viewport;
     Content content;
     juce::OwnedArray<juce::Component> controls;
     std::vector<Param> params;

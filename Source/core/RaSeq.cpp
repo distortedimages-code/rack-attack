@@ -298,6 +298,8 @@ void Player::reset()
     next.fill (-1);
     for (auto& l : locked)
         l.clear();
+    for (auto& l : touched)
+        l.clear();
     sounding.clear();
 }
 
@@ -382,8 +384,13 @@ void Player::renderTrack (int t, const Pattern& p, const Context& ctx, double un
                              params[k].first, params[k].second });
         auto& held = locked[(size_t) t];
         held.clear();
+        auto& sent = touched[(size_t) t];
         for (auto& l : s.locks)
+        {
             held.push_back (l.address);
+            if (std::find (sent.begin(), sent.end(), l.address) == sent.end())
+                sent.push_back (l.address);
+        }
 
         int channel = ctx.channel, note = ctx.baseNote + t;
         if (tr.mode == Mode::notes && ctx.tunedChannel[(size_t) t] >= 1 && ctx.tunedChannel[(size_t) t] <= 16)
@@ -425,8 +432,14 @@ void Player::stop (const Context& ctx, double atPpq, std::vector<Event>& out)
     }
     for (int t = 0; t < numTracks; ++t)
         if (ctx.soundKnown[(size_t) t])
-            for (auto address : locked[(size_t) t])
+        {
+            auto addresses = touched[(size_t) t];
+            for (auto a : locked[(size_t) t])
+                if (std::find (addresses.begin(), addresses.end(), a) == addresses.end())
+                    addresses.push_back (a);
+            for (auto address : addresses)
                 out.push_back ({ Event::Kind::parameter, atPpq, t, 0, 0, 0, address, ctx.sound[(size_t) t][address] });
+        }
     reset();
 }
 }

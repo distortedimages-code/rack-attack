@@ -3,7 +3,11 @@
 
 namespace
 {
-    constexpr int cellW = 80, cellH = 104;
+    constexpr int cellW = 80, cellH = 104;   // the Kit and Effets pages
+}
+
+namespace
+{
 
     using Def = ui::ParamDef;
     using SectionDef = ui::SectionDef;
@@ -44,40 +48,90 @@ namespace
 //==============================================================================
 // SON
 
-int SoundPage::Content::layout (int width)
+namespace
 {
-    int x = 0, y = 0, rowHeight = 0;
-    const int gap = 10;
+    // The Son page: the front panel in four columns, every setting at once. A modulation
+    // amount carries its source under it.
+    struct Spot { int address; const char* label; int source; };
+    struct Box { const char* title; std::vector<std::vector<Spot>> rows; };
 
-    for (int c = 0; c < cards.size(); ++c)
+    const std::vector<std::vector<Box>>& soundColumns()
     {
-        auto* card = cards[c];
-        auto& rows = cells[(size_t) c];
-        auto* def = &soundSections()[(size_t) c];
-
-        int maxCols = 0;
-        for (auto& r : def->rows) maxCols = std::max (maxCols, (int) r.size());
-        int w = maxCols * cellW + 16;
-        int h = card->titleHeight() + (int) def->rows.size() * cellH + 8;
-
-        if (x > 0 && x + w > width)
-        {
-            x = 0;
-            y += rowHeight + gap;
-            rowHeight = 0;
-        }
-        card->setBounds (x, y, w, h);
-
-        size_t n = 0;
-        for (size_t r = 0; r < def->rows.size(); ++r)
-            for (size_t i = 0; i < def->rows[r].size(); ++i)
-                if (n < rows.size())
-                    rows[n++]->setBounds (8 + (int) i * cellW, card->titleHeight() + (int) r * cellH, cellW, cellH);
-
-        x += w + gap;
-        rowHeight = std::max (rowHeight, h);
+        static const std::vector<std::vector<Box>> columns {
+            { { "Oscillateur 1", { { { 0x01, "Shape", -1 }, { 0x02, "Pitch", -1 }, { 0x03, "Detune", -1 }, { 0x04, "Start", -1 }, { 0x09, "FM", -1 } },
+                                   { { 0x05, "Pitch Mod", 0x07 }, { 0x06, "Pitch Ctrl", 0x08 }, { 0x0A, "FM Mod", 0x0C }, { 0x0B, "FM Ctrl", 0x0D } } } },
+              { "Filtre",        { { { 0x26, "Type", -1 }, { 0x27, "Cutoff", -1 }, { 0x28, "Resonance", -1 }, { 0x29, "Drive", -1 }, { 0x2A, "Keytrack", -1 } },
+                                   { { 0x2B, "Mod 1", 0x2D }, { 0x2C, "Ctrl 1", 0x2E }, { 0x2F, "Mod 2", 0x31 }, { 0x30, "Ctrl 2", 0x32 } } } } },
+            { { "Oscillateur 2", { { { 0x10, "Shape", -1 }, { 0x11, "Pitch", -1 }, { 0x12, "Detune", -1 }, { 0x13, "Start", -1 } },
+                                   { { 0x14, "Pitch Mod", 0x16 }, { 0x15, "Pitch Ctrl", 0x17 } } } },
+              { "Mix / Crack",   { { { 0x1A, "Osc 1", -1 }, { 0x1B, "Osc 2", -1 }, { 0x1C, "Ringmod", -1 }, { 0x1D, "Crack", -1 } },
+                                   { { 0x24, "Crack Spd", -1 }, { 0x25, "Crack Len", -1 }, { 0x1E, "Osc 2 Mod", 0x20 }, { 0x1F, "Osc 2 Ctrl", 0x21 } } } } },
+            { { "Ampli",         { { { 0x35, "Volume", -1 }, { 0x3A, "Pan", -1 }, { 0x6C, "Pattern", -1 } },
+                                   { { 0x36, "Vol Mod", 0x38 }, { 0x37, "Vol Ctrl", 0x39 }, { 0x3B, "Pan Mod", 0x3D }, { 0x3C, "Pan Ctrl", 0x3E } } } },
+              { "Sortie",        { { { 0x55, "Dry Out", -1 }, { 0x56, "FX", -1 }, { 0x57, "FX Send", -1 }, { 0x5E, "XOR", -1 } },
+                                   { { 0x58, "Tuned Chn", -1 }, { 0x59, "Transpose", -1 }, { 0x5A, "Low Key", -1 }, { 0x5B, "High Key", -1 } } } } },
+            { { "Enveloppe 1",   { { { 0x3F, "Attack", -1 }, { 0x40, "Decay", -1 }, { 0x41, "Sustain", -1 }, { 0x42, "Release", -1 }, { 0x43, "Shape", -1 } } } },
+              { "Enveloppe 2",   { { { 0x45, "Attack", -1 }, { 0x46, "Decay", -1 }, { 0x47, "Sustain", -1 }, { 0x48, "Release", -1 }, { 0x49, "Shape", -1 } } } },
+              { "LFO 1",         { { { 0x4B, "Speed", -1 }, { 0x4C, "Shape", -1 }, { 0x4D, "Sync", -1 }, { 0x4E, "One Shot", -1 } } } },
+              { "LFO 2",         { { { 0x4F, "Speed", -1 }, { 0x50, "Shape", -1 }, { 0x51, "Sync", -1 }, { 0x52, "Mod", -1 }, { 0x53, "Mod Src", -1 } } } } },
+        };
+        return columns;
     }
-    return y + rowHeight + 4;
+
+    bool isChoice (int address)
+    {
+        for (auto& section : soundSections())
+            for (auto& row : section.rows)
+                for (auto& d : row)
+                    if (d.address == address)
+                        return d.choice;
+        return ! ra::valueNames (ra::Object::sound, address).empty();
+    }
+
+    constexpr int spotW = 68, knobRowH = 100, sourceRowH = 128, boxTitleH = 24, boxPad = 8;
+}
+
+void SoundPage::Content::layout (int width)
+{
+    const auto& columns = soundColumns();
+    std::vector<int> widths;
+    int total = 0;
+    for (auto& column : columns)
+    {
+        int cols = 1;
+        for (auto& box : column)
+            for (auto& row : box.rows)
+                cols = juce::jmax (cols, (int) row.size());
+        widths.push_back (cols * spotW + 2 * boxPad);
+        total += widths.back();
+    }
+    const int gap = juce::jmax (8, (width - total) / juce::jmax (1, (int) columns.size() - 1));
+
+    int x = 0, card = 0;
+    for (size_t c = 0; c < columns.size(); ++c)
+    {
+        int y = 0;
+        for (auto& box : columns[c])
+        {
+            auto& rows = cells[(size_t) card];
+            int h = boxTitleH;
+            for (size_t r = 0; r < box.rows.size(); ++r)
+            {
+                bool sources = false;
+                for (auto& spot : box.rows[r])
+                    sources = sources || spot.source >= 0;
+                const int rowH = sources ? sourceRowH : knobRowH;
+                for (size_t i = 0; i < rows[r].size(); ++i)
+                    rows[r][i]->setBounds (boxPad + (int) i * spotW, h, spotW, rowH);
+                h += rowH;
+            }
+            h += boxPad;
+            cards[card]->setBounds (x, y, widths[c], h);
+            y += h + 12;
+            ++card;
+        }
+        x += widths[c] + gap;
+    }
 }
 
 SoundPage::SoundPage (Engine& e, Library& l) : engine (e), library (l)
@@ -148,42 +202,35 @@ SoundPage::SoundPage (Engine& e, Library& l) : engine (e), library (l)
 
     addAndMakeVisible (status);
 
-    // the controls, built from the section table
-    for (auto& section : soundSections())
-    {
-        auto* card = content.cards.add (new ui::Card (juce::String::fromUTF8 (section.title)));
-        content.addAndMakeVisible (card);
-        content.cells.emplace_back();
-
-        for (auto& row : section.rows)
-            for (auto& d : row)
+    // the controls, built from the front panel's columns
+    const auto sources = [] (int address) { return ra::valueNames (ra::Object::sound, address); };
+    for (auto& column : soundColumns())
+        for (auto& box : column)
+        {
+            auto* card = content.cards.add (new ui::Card (juce::String::fromUTF8 (box.title)));
+            content.addAndMakeVisible (card);
+            content.cells.emplace_back();
+            for (auto& row : box.rows)
             {
-                Param p { d.address };
-                juce::Component* c = nullptr;
-                if (d.choice)
+                content.cells.back().emplace_back();
+                for (auto& spot : row)
                 {
-                    auto* ch = new ui::Choice (d.label, ra::valueNames (ra::Object::sound, d.address));
-                    ch->onChange = [this, a = d.address] (int v) { engine.setSoundParameter (sound, a, v); };
-                    p.choice = ch;
-                    c = ch;
+                    auto* cell = new ui::Cell (spot.label, isChoice (spot.address) ? ra::valueNames (ra::Object::sound, spot.address)
+                                                                                 : std::vector<std::string>());
+                    cell->onChange = [this, a = spot.address] (int v) { engine.setSoundParameter (sound, a, v); };
+                    if (spot.source >= 0)
+                    {
+                        cell->addSource (sources (spot.source));
+                        cell->onSource = [this, a = spot.source] (int v) { engine.setSoundParameter (sound, a, v); };
+                    }
+                    controls.add (cell);
+                    card->addAndMakeVisible (cell);
+                    content.cells.back().back().push_back (cell);
+                    params.push_back ({ spot.address, cell, spot.source });
                 }
-                else
-                {
-                    auto* k = new ui::Knob (d.label);
-                    k->onChange = [this, a = d.address] (int v) { engine.setSoundParameter (sound, a, v); };
-                    p.knob = k;
-                    c = k;
-                }
-                controls.add (c);
-                card->addAndMakeVisible (c);
-                content.cells.back().push_back (c);
-                params.push_back (p);
             }
-    }
-
-    viewport.setViewedComponent (&content, false);
-    viewport.setScrollBarsShown (true, false);
-    addAndMakeVisible (viewport);
+        }
+    addAndMakeVisible (content);
 
     engine.addListener (this);
     selectSound (0);
@@ -206,9 +253,9 @@ void SoundPage::refresh()
                    + " / " + shortShape (kit.soundValue (sound, 0x10)), juce::dontSendNotification);
     for (auto& p : params)
     {
-        int v = kit.soundValue (sound, p.address);
-        if (p.knob != nullptr)   p.knob->setValue (v);
-        if (p.choice != nullptr) p.choice->setValue (v);
+        p.cell->setValue (kit.soundValue (sound, p.address));
+        if (p.source >= 0)
+            p.cell->setSource (kit.soundValue (sound, p.source));
     }
 }
 
@@ -276,12 +323,11 @@ void SoundPage::resized()
     copy.setBounds (buttons.removeFromLeft (80)); buttons.removeFromLeft (4);
     paste.setBounds (buttons.removeFromLeft (80));
 
-    r.removeFromTop (6);
+    r.removeFromTop (4);
     status.setBounds (r.removeFromTop (24));
-    r.removeFromTop (6);
-    viewport.setBounds (r);
-    int w = r.getWidth() - viewport.getScrollBarThickness() - 2;
-    content.setSize (w, content.layout (w));
+    r.removeFromTop (8);
+    content.setBounds (r);
+    content.layout (r.getWidth());
 }
 
 //==============================================================================
@@ -875,7 +921,7 @@ void LibraryPage::resized()
     auto bottom = c.removeFromBottom (34);
     if (saveKit.isVisible())
     {
-        saveKit.setBounds (bottom.removeFromLeft (220));
+        saveKit.setBounds (bottom.removeFromLeft (264));
     }
     else
     {
@@ -885,10 +931,11 @@ void LibraryPage::resized()
         bottom.removeFromLeft (4);
         saveCancel.setBounds (bottom.removeFromLeft (80));
     }
-    openFolder.setBounds (bottom.removeFromRight (150));
+    openFolder.setBounds (bottom.removeFromRight (176));
     c.removeFromBottom (8);
     sendButton.setBounds (c.removeFromBottom (34).removeFromLeft (260));
     c.removeFromBottom (8);
     files.setBounds (c);
     emptyHint.setBounds (c.reduced (20));
+    emptyHint.getProperties().set ("overlay", true);     // written over the empty list, on purpose
 }

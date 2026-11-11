@@ -223,6 +223,32 @@ int main()
         }
     }
 
+    // Reverb: Predelay (4th setting, byte 05) holds it back; Decay (3rd, byte 04) doesn't
+    {
+        auto wet = [] (int decay, int predelay)
+        {
+            Synth syn;
+            syn.prepare (sr);
+            syn.setGlobalChannel (1);
+            auto s = plainSound();
+            s[0x41] = 0; s[0x40] = 10;                       // a click
+            s[0x55] = 0; s[0x57] = 127; s[0x56] = 0;
+            syn.setSound (0, s.data());
+            std::array<std::uint8_t, fxBytes> fx {};
+            fx.fill (64);
+            fx[0] = 7; fx[1] = 1; fx[4] = (std::uint8_t) decay; fx[5] = (std::uint8_t) predelay;
+            syn.setEffect (0, fx.data());
+            note (syn, 1, 36, 127);
+            auto x = run (syn, 0.6);
+            return std::make_pair (rms (x, (size_t) (sr * 0.06), (size_t) (sr * 0.25)), rms (x, (size_t) (sr * 0.33), (size_t) (sr * 0.55)));
+        };
+        const auto now = wet (127, 0), held = wet (127, 127), shortTail = wet (0, 0);
+        std::printf ("reverb: at once %.5f, predelay %.5f then %.5f, short decay %.5f\n", now.first, held.first, held.second, shortTail.first);
+        CHECK (held.first < now.first * 0.3);
+        CHECK (held.second > held.first * 3.0);
+        CHECK (shortTail.first > now.first * 0.3);
+    }
+
     // The noise and the imitated metals make sound
     {
         for (int shape : { 5, 6, 7, 8 })

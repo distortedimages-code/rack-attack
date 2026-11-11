@@ -39,10 +39,23 @@ void MainComponent::Light::paint (juce::Graphics& g)
     px::drawText (g, t, r.withTrimmedLeft (34).withTrimmedRight (8), juce::Justification::centredLeft, px::text (24.0f), px::white);
 }
 
+namespace
+{
+    // the open editors: the newest one's look is the default, so that windows of their own (right-click
+    // menus, dialogs) look like the app too; in a plugin, it is this plugin's JUCE alone
+    std::vector<px::Look*>& openLooks()
+    {
+        static std::vector<px::Look*> looks;
+        return looks;
+    }
+}
+
 MainComponent::MainComponent (AppContext& c)
     : ctx (c), session (c.session), engine (c.engine), library (c.library)
 {
     setLookAndFeel (&lookAndFeel);
+    openLooks().push_back (&lookAndFeel);
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
 
     pages = { &seqPage, &kitPage, &soundPage, &effectsPage, &libraryPage, &toolsPage };
     const juce::String names[numPages] = { "Séquenceur"_fr, "Kit", "Son", "Effets", "Bibliothèque"_fr, "Outils" };
@@ -159,6 +172,9 @@ MainComponent::MainComponent (AppContext& c)
 
     setSize (ui::designWidth, ui::designHeight);
     showPage (juce::SystemStats::getEnvironmentVariable ("RA_PAGE", "0").getIntValue());
+    if (juce::SystemStats::getEnvironmentVariable ("RA_MENU", {}) == "1")       // screenshots of a menu
+        juce::Timer::callAfterDelay (900, [safe = juce::Component::SafePointer<SeqPage> (&seqPage)]
+                                     { if (safe != nullptr) safe->demoOptions(); });
     startTimer (250);
 
     ctx.start();   // the first time a window opens: ports of last time, then find the unit
@@ -192,6 +208,10 @@ MainComponent::~MainComponent()
     ctx.updater.changes.removeChangeListener (this);
     engine.removeListener (this);
     setLookAndFeel (nullptr);
+    auto& looks = openLooks();
+    looks.erase (std::remove (looks.begin(), looks.end(), &lookAndFeel), looks.end());
+    if (&juce::LookAndFeel::getDefaultLookAndFeel() == &lookAndFeel)
+        juce::LookAndFeel::setDefaultLookAndFeel (looks.empty() ? nullptr : looks.back());
 }
 
 void MainComponent::showPage (int index)

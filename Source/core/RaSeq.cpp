@@ -378,8 +378,19 @@ void Player::renderTrack (int t, const Pattern& p, const Context& ctx, double un
     const double swingShift = 2.0 * stepPpq * (std::max (50, std::min (75, (int) p.swing)) / 100.0 - 0.5);
 
     auto& n = next[(size_t) t];
+    auto& counted = nextSpeed[(size_t) t];
     if (n < 0)
+    {
         n = (std::int64_t) std::ceil (startPpq * spb - 1e-9);
+        counted = spb;
+    }
+    else if (counted != spb)
+    {
+        // the track's speed changed while playing: the same moment, counted in the new steps (else it
+        // would wait, or catch up, as many steps as it played so far, out of time with the others)
+        n = (std::int64_t) std::ceil ((double) n / counted * spb - 1e-9);
+        counted = spb;
+    }
 
     for (int guard = 0; guard < 4096; ++guard)
     {

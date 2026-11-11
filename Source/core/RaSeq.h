@@ -156,6 +156,7 @@ private:
     bool running = false;
     double startPpq = 0.0;
     std::array<std::int64_t, numTracks> next {};          // absolute step to plan next
+    std::array<double, numTracks> nextSpeed {};           // the steps per beat `next` is counted in
     std::array<std::vector<std::uint8_t>, numTracks> locked {};   // addresses holding a locked value
     // every address a lock was sent for since the start: on a stop, the unit may hold one
     // even when the plan already put it back (the putting back, planned ahead, is dropped)

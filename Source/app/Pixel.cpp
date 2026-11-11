@@ -432,6 +432,99 @@ void Look::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
     frameRect (g, { 0, 0, width, height }, white, 2);
 }
 
+namespace
+{
+    // a small arrow of square pixels, pointing right (or up / down)
+    void pixelArrow (juce::Graphics& g, juce::Point<int> tip, int dx, int dy, juce::Colour c)
+    {
+        g.setColour (c);
+        for (int k = 0; k < 4; ++k)
+        {
+            if (dx != 0)
+                g.fillRect (tip.x - dx * k * 2 - (dx > 0 ? 2 : 0), tip.y - k * 2, 2, 2 + k * 4);
+            else
+                g.fillRect (tip.x - k * 2, tip.y - dy * k * 2 - (dy > 0 ? 2 : 0), 2 + k * 4, 2);
+        }
+    }
+}
+
+void Look::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area, bool isSeparator, bool isActive,
+                              bool isHighlighted, bool isTicked, bool hasSubMenu, const juce::String& itemText,
+                              const juce::String& shortcutKeyText, const juce::Drawable* icon, const juce::Colour* textColour)
+{
+    if (isSeparator)
+    {
+        g.setColour (faint);
+        for (int x = area.getX() + 10; x < area.getRight() - 10; x += 6)
+            g.fillRect (x, area.getCentreY() - 1, 2, 2);
+        return;
+    }
+
+    auto r = area.reduced (2, 1);
+    const bool lit = isHighlighted && isActive;
+    if (lit)
+    {
+        g.setColour (white);
+        g.fillRect (r);
+    }
+    auto ink = ! isActive ? faint : lit ? black : (textColour != nullptr ? *textColour : white);
+
+    auto in = r.reduced (10, 0);
+    auto mark = in.removeFromLeft (16);
+    if (isTicked)           // a square, yellow like what's chosen on the unit's screen
+    {
+        g.setColour (lit ? black : yellow);
+        g.fillRect (juce::Rectangle<int> (8, 8).withCentre (mark.getCentre()));
+    }
+    else if (icon != nullptr)
+        icon->drawWithin (g, mark.toFloat().reduced (1.0f), juce::RectanglePlacement::centred, 1.0f);
+    in.removeFromLeft (6);
+
+    if (hasSubMenu)
+    {
+        pixelArrow (g, { in.getRight() - 2, in.getCentreY() }, 1, 0, lit ? black : grey);
+        in.removeFromRight (16);
+    }
+    if (shortcutKeyText.isNotEmpty())
+    {
+        const auto f = text (20.0f);
+        const int w = juce::GlyphArrangement::getStringWidthInt (f, shortcutKeyText) + 4;
+        drawText (g, shortcutKeyText, in.removeFromRight (w), juce::Justification::centredRight, f, lit ? black : dim);
+        in.removeFromRight (12);
+    }
+    drawText (g, itemText, in, juce::Justification::centredLeft, getPopupMenuFont(), ink);
+}
+
+void Look::drawPopupMenuSectionHeader (juce::Graphics& g, const juce::Rectangle<int>& area, const juce::String& title)
+{
+    // the cards' inverted title: a white band, black capitals
+    auto band = area.reduced (2, 0).withTrimmedTop (area.getHeight() - 26).withTrimmedBottom (2);
+    g.setColour (white);
+    g.fillRect (band);
+    drawText (g, title.toUpperCase(), band.reduced (12, 0), juce::Justification::centredLeft, label (11.0f), black);
+}
+
+void Look::getIdealPopupMenuItemSize (const juce::String& itemText, bool isSeparator, int standardMenuItemHeight,
+                                      int& idealWidth, int& idealHeight)
+{
+    if (isSeparator)
+    {
+        idealWidth = 50;
+        idealHeight = 12;
+        return;
+    }
+    idealHeight = standardMenuItemHeight > 0 ? juce::jmax (standardMenuItemHeight, 30) : 30;
+    // wide enough for the text, the tick, a sub-menu arrow, and the capitals of a section title
+    idealWidth = juce::jmax (juce::GlyphArrangement::getStringWidthInt (getPopupMenuFont(), itemText),
+                             juce::GlyphArrangement::getStringWidthInt (label (11.0f), itemText.toUpperCase()) * 4 / 5) + 64;
+}
+
+void Look::drawPopupMenuUpDownArrow (juce::Graphics& g, int width, int height, bool isScrollUpArrow)
+{
+    g.fillAll (black);
+    pixelArrow (g, { width / 2 - 1, isScrollUpArrow ? height / 2 - 4 : height / 2 + 4 }, 0, isScrollUpArrow ? -1 : 1, white);
+}
+
 void Look::drawScrollbar (juce::Graphics& g, juce::ScrollBar&, int x, int y, int width, int height, bool vertical,
                           int thumbStart, int thumbSize, bool over, bool down)
 {

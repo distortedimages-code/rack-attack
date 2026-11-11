@@ -210,6 +210,9 @@ void SeqPage::toggleSelection (int step)
         selection.push_back (step);
 }
 
+const juce::String SeqPage::initTrackText = "INIT PISTE";
+const juce::String SeqPage::initAllText = juce::String::fromUTF8 ("INIT SÉQUENCE");
+
 int SeqPage::playingStep (Division d, int len, double ppq)
 {
     if (ppq < 0.0 || len <= 0)
@@ -337,11 +340,18 @@ void SeqPage::layout()
     {
         auto in = seqPanel.reduced (16, 12);
         auto t = in.removeFromTop (40);
-        nameBox = t.removeFromLeft (juce::jmin (330, t.getWidth() / 4));
+        // INIT PISTE and INIT SÉQUENCE at the right end, in reach without opening OPTIONS
+        const auto initFont = px::label (12.0f);
+        initAllBox = t.removeFromRight (textWidth (initFont, initAllText) + 28).reduced (0, 3);
+        t.removeFromRight (6);
+        initTrackBox = t.removeFromRight (textWidth (initFont, initTrackText) + 28).reduced (0, 3);
+        t.removeFromRight (16);
+        const int tabW = 104, headerFixed = 2 * (tabW + 6) + 10 + 138 + 134 + 102 + 136;
+        nameBox = t.removeFromLeft (juce::jlimit (160, 330, t.getWidth() - headerFixed - 10));
         t.removeFromLeft (10);
         for (auto& tab : modeTabs)
         {
-            tab = t.removeFromLeft (124).reduced (0, 3);
+            tab = t.removeFromLeft (tabW).reduced (0, 3);
             t.removeFromLeft (6);
         }
         t.removeFromLeft (10);
@@ -396,6 +406,8 @@ SeqPage::Hit SeqPage::zoneAt (juce::Point<int> p) const
         if (modeTabs[(size_t) i].contains (p)) return { Zone::mode, i };
     if (lengthBox.contains (p))   return { Zone::length, 0 };
     if (optionsBox.contains (p))  return { Zone::options, 0 };
+    if (initTrackBox.contains (p)) return { Zone::initTrack, 0 };
+    if (initAllBox.contains (p))  return { Zone::initAll, 0 };
     if (divisionBox.contains (p)) return { Zone::division, 0 };
     if (muteBox.contains (p))     return { Zone::mute, 0 };
     for (int i = 0; i < 16; ++i)
@@ -1007,6 +1019,17 @@ void SeqPage::paintSequencer (juce::Graphics& g, const Track& tr, double ppq)
         in.removeFromRight (12);
         px::drawText (g, "OPTIONS", in, juce::Justification::centred, px::label (12.0f), hot ? px::white : px::grey);
     }
+    for (auto [b, z, label] : { std::tuple { initTrackBox, Zone::initTrack, initTrackText },
+                                std::tuple { initAllBox, Zone::initAll, initAllText } })
+    {
+        const bool hot = hover.zone == z;
+        const bool pressed = drag.hit.zone == z;
+        g.setColour (pressed ? px::red : px::cell);
+        g.fillRect (b);
+        if (! pressed)
+            px::frameRect (g, b, hot ? px::red : px::frame, 2);
+        px::drawText (g, label, b, juce::Justification::centred, px::label (12.0f), pressed ? px::black : hot ? px::white : px::grey);
+    }
 
     paintSteps (g, tr, playing);
     paintMiniMap (g, tr, playing);
@@ -1584,6 +1607,8 @@ void SeqPage::mouseDown (const juce::MouseEvent& e)
             break;
         case Zone::mute:       seq.edit ([&] (Pattern& p) { auto& m = p.tracks[(size_t) track].mute; m = ! m; }); break;
         case Zone::options:    showOptions(); break;
+        case Zone::initTrack:  initTracks (false); break;
+        case Zone::initAll:    initTracks (true); break;
         case Zone::miniMap:
         {
             const int i = juce::jlimit (0, maxSteps - 1, (e.getPosition().x - miniMap.getX()) * maxSteps / juce::jmax (1, miniMap.getWidth()));
@@ -1746,7 +1771,8 @@ void SeqPage::mouseDrag (const juce::MouseEvent& e)
             break;
         }
         case Zone::none: case Zone::play: case Zone::voice: case Zone::section: case Zone::listen: case Zone::tune:
-        case Zone::mode: case Zone::division: case Zone::mute: case Zone::options: case Zone::miniMap: case Zone::clearSelection:
+        case Zone::mode: case Zone::division: case Zone::mute: case Zone::options: case Zone::initTrack: case Zone::initAll:
+        case Zone::miniMap: case Zone::clearSelection:
             break;
     }
     repaint();
@@ -1799,7 +1825,8 @@ void SeqPage::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelD
             setParam (h.index, shownValue (tr, h.index) + dir);     // which keeps the value up
             break;
         case Zone::none: case Zone::play: case Zone::voice: case Zone::section: case Zone::listen: case Zone::mode: case Zone::tune:
-        case Zone::length: case Zone::division: case Zone::mute: case Zone::options: case Zone::miniMap: case Zone::step: case Zone::clearSelection:
+        case Zone::length: case Zone::division: case Zone::mute: case Zone::options: case Zone::initTrack: case Zone::initAll:
+        case Zone::miniMap: case Zone::step: case Zone::clearSelection:
             break;
     }
     repaint();
@@ -1898,6 +1925,24 @@ void SeqPage::keepForUndo (const juce::String& what)
     undoWhat = what;
 }
 
+void SeqPage::initTracks (bool all)
+{
+    // the steps emptied, 16 steps at 1/16 in steps mode; the names (and the tempo) stay. OPTIONS > Annuler brings it back
+    keepForUndo (all ? fr ("init séquence") : fr ("init piste"));
+    const int t = track;
+    seq.edit ([&] (Pattern& p)
+    {
+        for (int i = 0; i < numTracks; ++i)
+            if (all || i == t)
+                ra::seq::resetTrack (p.tracks[(size_t) i]);
+    });
+    selection.clear();
+    showToast (all ? fr ("SÉQUENCE INITIALISÉE") : fr ("PISTE INITIALISÉE"), px::red);
+    startWipe();
+    addBurst ((all ? initAllBox : initTrackBox).getCentre(), px::red);
+    repaint();
+}
+
 void SeqPage::showOptions()
 {
     juce::String name;
@@ -1906,7 +1951,7 @@ void SeqPage::showOptions()
     m.addSectionHeader ("PISTE " + juce::String (track + 1).paddedLeft ('0', 2) + "  " + upper (name));
     m.addItem (1, fr ("Effacer les pas"));
     m.addItem (2, fr ("Effacer les verrous"));
-    m.addItem (3, fr ("Réinitialiser la piste (16 pas, 1/16)"));
+    m.addItem (3, fr ("Init piste : vide, 16 pas, 1/16"));
     juce::PopupMenu fill;
     fill.addItem (10, fr ("Un pas sur 2"));
     fill.addItem (11, fr ("Un pas sur 4"));
@@ -1916,10 +1961,10 @@ void SeqPage::showOptions()
     m.addItem (5, fr ("Décaler d'un pas vers la droite"));
     m.addItem (6, "Copier la piste");
     m.addItem (7, "Coller la piste", hasClipboard);
-    m.addSectionHeader ("PATTERN");
+    m.addSectionHeader (fr ("SÉQUENCE"));
     m.addItem (20, fr ("Effacer tous les pas"));
     m.addItem (21, fr ("Effacer tous les verrous"));
-    m.addItem (22, fr ("Réinitialiser le pattern (le tempo reste)"));
+    m.addItem (22, fr ("Init séquence : tout vide, 16 pas, 1/16 (le tempo reste)"));
     m.addSeparator();
     m.addItem (30, undo != nullptr ? fr ("Annuler : ") + undoWhat : fr ("Annuler"), undo != nullptr);
 
@@ -1946,8 +1991,7 @@ void SeqPage::showOptions()
                      self->showToast (fr ("PAS EFFACÉS"), px::red); break;
             case 2:  onTrack (fr ("effacer les verrous"), [] (Track& tr) { ra::seq::clearLocks (tr); });
                      self->showToast (fr ("VERROUS EFFACÉS"), px::yellow); break;
-            case 3:  onTrack (fr ("réinitialiser la piste"), [] (Track& tr) { ra::seq::resetTrack (tr); });
-                     self->showToast (fr ("PISTE RÉINITIALISÉE"), px::red); break;
+            case 3:  self->initTracks (false); break;
             case 4:  onTrack (fr ("décaler"), [] (Track& tr) { ra::seq::shiftSteps (tr, -1); }); self->showToast (fr ("<< DÉCALÉ")); break;
             case 5:  onTrack (fr ("décaler"), [] (Track& tr) { ra::seq::shiftSteps (tr, 1); }); self->showToast (fr ("DÉCALÉ >>")); break;
             case 6:
@@ -1970,8 +2014,7 @@ void SeqPage::showOptions()
                      self->showToast (fr ("TOUT EFFACÉ"), px::red); break;
             case 21: onAll (fr ("effacer tous les verrous"), [] (Track& tr) { ra::seq::clearLocks (tr); });
                      self->showToast (fr ("TOUS LES VERROUS EFFACÉS"), px::yellow); break;
-            case 22: onAll (fr ("réinitialiser le pattern"), [] (Track& tr) { ra::seq::resetTrack (tr); });
-                     self->showToast (fr ("PATTERN RÉINITIALISÉ"), px::red); break;
+            case 22: self->initTracks (true); break;
             case 30:
                 if (self->undo != nullptr)
                 {

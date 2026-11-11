@@ -362,6 +362,33 @@ int main()
         CHECK (r.tracks[0].length == 9);   // unchanged
     }
 
+    // a track's speed changed while playing: it carries on from where it is, in time with the others
+    {
+        Context ctx;
+        for (auto div : { Division::eighth, Division::thirtySecond, Division::sixteenthTriplet, Division::quarter })
+        {
+            Pattern p;
+            for (int i = 0; i < 16; ++i)
+                p.tracks[0].steps[(size_t) i].on = true;
+            Player pl;
+            std::vector<Event> ev;
+            for (double t = 0.0; t < 40.0; t += 0.25)          // 40 beats at 1/16
+                pl.render (p, ctx, t, t + 0.25, 0.0, ev);
+            p.tracks[0].division = div;
+            ev.clear();
+            pl.render (p, ctx, 40.0, 44.0, 0.0, ev);
+            const auto on = notesOn (ev);
+            const double step = 1.0 / stepsPerBeat (div);
+            CHECK (on.size() == (size_t) std::lround (4.0 / step));       // nothing missing, nothing caught up
+            bool onGrid = ! on.empty() && on.front().ppq >= 40.0 - 1e-9;
+            for (size_t k = 0; k < on.size(); ++k)
+                onGrid = onGrid && near (on[k].ppq, 40.0 + (double) k * step);
+            CHECK (onGrid);
+            if (! onGrid)
+                std::printf ("%s", describe (ev).c_str());
+        }
+    }
+
     if (failures == 0)
         std::printf ("SeqTests: all passed\n");
     else

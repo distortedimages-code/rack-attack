@@ -1222,7 +1222,17 @@ void SeqPage::showPopup (int slot, const Track& tr)
     popup.marker = locked && engine.getKit().hasSound (track)
                        ? (float) engine.getKit().soundValue (track, def.address) / (float) juce::jmax (1, maxV) : -1.0f;
     popup.anchor = paramBoxes[(size_t) slot];
-    popup.shownMs = nowMs();
+    touchPopup();
+}
+
+void SeqPage::touchPopup()
+{
+    // already up (being turned, or let go a moment ago): it stays as it is, without growing in again
+    const double now = nowMs();
+    if (! popup.up)
+        popup.openedMs = now;
+    popup.up = true;
+    popup.shownMs = now;
 }
 
 void SeqPage::addBurst (juce::Point<int> at, juce::Colour c)
@@ -1280,13 +1290,14 @@ void SeqPage::paintOverlays (juce::Graphics& g, double now)
     {
         const double t = now - popup.shownMs;
         const bool held = drag.hit.zone == Zone::param;
-        if (held || (t >= 0.0 && t < 900.0))
+        popup.up = popup.up && (held || (t >= 0.0 && t < 900.0));
+        if (popup.up)
         {
             const int w = 360, h = 150;
             auto box = juce::Rectangle<int> (w, h).withCentre ({ popup.anchor.getCentreX(), popup.anchor.getY() - h / 2 - 8 });
             box = box.constrainedWithin (getLocalBounds().reduced (8));
             // opens in two steps
-            const float open = stepped (juce::jmax (0.0, now - popup.shownMs + (held ? 1000.0 : 0.0)) / 80.0, 2);
+            const float open = stepped (juce::jmax (0.0, now - popup.openedMs) / 80.0, 2);
             auto shown = box.withSizeKeepingCentre (juce::roundToInt (w * juce::jmax (0.5f, open)), juce::roundToInt (h * juce::jmax (0.5f, open)));
             g.setColour (px::black);
             g.fillRect (shown);
@@ -1752,7 +1763,7 @@ void SeqPage::mouseUp (const juce::MouseEvent&)
         && slots[(size_t) drag.hit.index].choice)
         showChoices (drag.hit.index);
     if (drag.hit.zone == Zone::param)
-        popup.shownMs = nowMs();       // stays a moment, then dissolves
+        touchPopup();                  // stays a moment, then dissolves
     drag = {};
     repaint();
 }
@@ -1785,8 +1796,7 @@ void SeqPage::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelD
                 setTrigValue (h.index, trigValue (tr, h.index) + dir);
             break;
         case Zone::param:
-            setParam (h.index, shownValue (tr, h.index) + dir);
-            popup.shownMs = nowMs();
+            setParam (h.index, shownValue (tr, h.index) + dir);     // which keeps the value up
             break;
         case Zone::none: case Zone::play: case Zone::voice: case Zone::section: case Zone::listen: case Zone::mode: case Zone::tune:
         case Zone::length: case Zone::division: case Zone::mute: case Zone::options: case Zone::miniMap: case Zone::step: case Zone::clearSelection:

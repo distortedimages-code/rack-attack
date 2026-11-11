@@ -160,8 +160,11 @@ private:
         bool choice = false, centred = false;
         juce::Colour colour;
         juce::Rectangle<int> anchor;
-        double shownMs = -1e9;
+        double shownMs = -1e9;               // last touched: it dissolves 0.6 s after
+        double openedMs = -1e9;              // opened from nothing: the only time it grows in
+        bool up = false;                     // on screen, held or dissolving
     } popup;
+    void touchPopup();
     struct Burst { juce::Point<int> at; double startMs; juce::Colour colour; };
     std::vector<Burst> bursts;
     struct Toast { juce::String text; juce::Colour colour; double startMs = -1e9; } toast;

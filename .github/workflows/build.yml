@@ -1,0 +1,34 @@
+# Builds and tests RackAttack Editor on GitHub's Macs at each push: no Mac tools needed
+# locally. The AU, VST3 and app are in the "Artifacts" of each run (Actions tab).
+name: build
+
+on:
+  push:
+    branches: [ "**" ]
+    paths-ignore: [ "docs/**", "**.md" ]
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release -j 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Package
+        run: |
+          ART=build/RackAttackEditor_artefacts/Release
+          mkdir -p pkg out
+          for b in "AU/RackAttack Editor.component" "VST3/RackAttack Editor.vst3" "Standalone/RackAttack Editor.app"; do
+            codesign --force --deep --sign - "$ART/$b"
+            cp -R "$ART/$b" pkg/
+          done
+          ditto -c -k pkg out/RackAttack-Editor-mac.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RackAttack-Editor-mac
+          path: out/RackAttack-Editor-mac.zip

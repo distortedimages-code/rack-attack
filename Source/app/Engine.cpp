@@ -40,7 +40,7 @@ namespace
 
     juce::String programChangeHelp()
     {
-        return "Le RackAttack est resté sur le même programme : vérifie Rx PrgChg = On (Global/Utility) "
+        return "Le RackAttack est resté sur le même programme : vérifie Rx PrgChg = On (Global/Utility) "_fr
                "et le canal (Outils)."_fr;
     }
 

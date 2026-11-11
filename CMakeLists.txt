@@ -5,7 +5,10 @@ if(APPLE)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 endif()
 
-project(RackAttack VERSION 0.2.0 LANGUAGES C CXX)
+project(RackAttack VERSION 0.3.0 LANGUAGES C CXX)
+
+# GitHub repository whose releases the plug-in checks for updates (public releases).
+set(RA_UPDATE_REPO "distortedimages-code/rack-attack" CACHE STRING "owner/repo checked for updates (empty = no update check)")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,17 +32,29 @@ target_compile_features(ra_core PUBLIC cxx_std_17)
 set_target_properties(ra_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 #==============================================================================
-# RackAttack Editor: the app (front panel, kit, library, test tools)
-juce_add_gui_app(RackAttackEditor
-    PRODUCT_NAME "RackAttack Editor"
+# RackAttack Editor: AU, VST3 and the app (standalone)
+juce_add_plugin(RackAttackEditor
     COMPANY_NAME "distortedimages"
+    PRODUCT_NAME "RackAttack Editor"
     BUNDLE_ID com.distortedimages.rackattackeditor
-    VERSION ${PROJECT_VERSION})
+    IS_SYNTH TRUE
+    NEEDS_MIDI_INPUT TRUE
+    NEEDS_MIDI_OUTPUT FALSE
+    IS_MIDI_EFFECT FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+    COPY_PLUGIN_AFTER_BUILD FALSE
+    PLUGIN_MANUFACTURER_CODE Dimg
+    PLUGIN_CODE Ratk
+    AU_MAIN_TYPE kAudioUnitType_MusicDevice
+    VST3_CATEGORIES Instrument Tools
+    FORMATS AU VST3 Standalone)
 
 juce_generate_juce_header(RackAttackEditor)
 
-target_sources(RackAttackEditor PRIVATE
-    Source/app/Main.cpp
+set(RA_APP_SOURCES
+    Source/plugin/PluginProcessor.cpp
+    Source/plugin/Updater.cpp
+    Source/app/AppContext.cpp
     Source/app/MainComponent.cpp
     Source/app/ConnectWizard.cpp
     Source/app/Pages.cpp
@@ -48,19 +63,25 @@ target_sources(RackAttackEditor PRIVATE
     Source/app/Library.cpp
     Source/app/Session.cpp)
 
-target_compile_definitions(RackAttackEditor PRIVATE
+set(RA_DEFINITIONS
     RA_VERSION="${PROJECT_VERSION}"
+    RA_UPDATE_REPO="${RA_UPDATE_REPO}")
+
+target_sources(RackAttackEditor PRIVATE ${RA_APP_SOURCES})
+
+target_compile_definitions(RackAttackEditor PUBLIC
+    ${RA_DEFINITIONS}
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:RackAttackEditor,JUCE_PRODUCT_NAME>"
-    JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:RackAttackEditor,JUCE_VERSION>"
+    JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
 target_link_libraries(RackAttackEditor
     PRIVATE
         ra_core
-        juce::juce_gui_extra
+        juce::juce_audio_utils
         juce::juce_audio_devices
+        juce::juce_cryptography
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
@@ -92,4 +113,18 @@ if(RA_BUILD_TESTS)
     add_test(NAME EngineTests COMMAND EngineTests)
     set_tests_properties(EngineTests PROPERTIES
         ENVIRONMENT "HOME=${CMAKE_CURRENT_BINARY_DIR}/test-home")
+
+    # Update checker: version compare, GitHub answer parsing, checksum, bundle replacement
+    juce_add_console_app(UpdaterTests PRODUCT_NAME "UpdaterTests")
+    juce_generate_juce_header(UpdaterTests)
+    target_sources(UpdaterTests PRIVATE Tests/UpdaterTests.cpp Source/plugin/Updater.cpp)
+    target_compile_definitions(UpdaterTests PRIVATE ${RA_DEFINITIONS} JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(UpdaterTests PRIVATE
+        juce::juce_core
+        juce::juce_events
+        juce::juce_data_structures
+        juce::juce_cryptography
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+    add_test(NAME UpdaterTests COMMAND UpdaterTests)
 endif()

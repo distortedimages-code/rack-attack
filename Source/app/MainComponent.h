@@ -1,26 +1,24 @@
-// The window: page buttons and the connection light at the top, the pages, a
-// journal that can be shown on the right, a status bar, and the connection
-// assistant over everything when needed.
+// The window: page buttons, the update button and the connection light at the top, the
+// pages, a journal that can be shown on the right, a status bar, and the connection
+// assistant over everything when needed. Everything it shows lives in the AppContext.
 
 #pragma once
 
 #include <JuceHeader.h>
 
+#include "AppContext.h"
 #include "ConnectWizard.h"
-#include "FakeRackAttack.h"
-#include "Engine.h"
-#include "Library.h"
 #include "Pages.h"
-#include "Session.h"
 #include "ToolsPage.h"
 
 class MainComponent : public juce::Component,
                       private Engine::Listener,
                       private ConnectWizard::Host,
+                      private juce::ChangeListener,
                       private juce::Timer
 {
 public:
-    MainComponent();
+    explicit MainComponent (AppContext&);
     ~MainComponent() override;
 
     void paint (juce::Graphics&) override;
@@ -43,39 +41,42 @@ private:
     void taskFinished (const juce::String& task, bool ok, const juce::String& message) override;
 
     // ConnectWizard::Host
-    juce::String currentInput() override    { return inId; }
-    juce::String currentOutput() override   { return outId; }
-    void chooseInput (const juce::String& identifier) override;
-    void chooseOutput (const juce::String& identifier) override;
+    juce::String currentInput() override    { return ctx.getInput(); }
+    juce::String currentOutput() override   { return ctx.getOutput(); }
+    void chooseInput (const juce::String& identifier) override    { ctx.chooseInput (identifier); }
+    void chooseOutput (const juce::String& identifier) override   { ctx.chooseOutput (identifier); }
     void wizardFinished (bool connected) override;
 
+    void changeListenerCallback (juce::ChangeBroadcaster*) override   { refreshUpdate(); }
     void timerCallback() override   { flushJournal(); }
+
     void showPage (int index);
     void showWizard();
-    void saveSettings();
+    void refreshUpdate();
+    void showUpdateDialog();
+    void flushJournal();
+
+    AppContext& ctx;
+    Session& session;
+    Engine& engine;
+    Library& library;
 
     juce::LookAndFeel_V4 lookAndFeel;
-    Session session;
-    Engine engine { session };
-    Library library;
-    std::unique_ptr<juce::PropertiesFile> settings;
-    juce::String inId, outId;
 
     KitPage kitPage { engine };
     SoundPage soundPage { engine, library };
     EffectsPage effectsPage { engine };
     LibraryPage libraryPage { engine, library, [this] { return soundPage.getSelectedSound(); } };
-    ToolsPage toolsPage { engine, session, [this] { saveSettings(); } };
+    ToolsPage toolsPage { engine, ctx.updater, [this] { ctx.saveSettings(); } };
     std::array<juce::Component*, 5> pages {};
     juce::OwnedArray<juce::TextButton> pageButtons;
     int page = 0;
 
     Light light;
-    juce::TextButton journalButton { "Journal" };
+    juce::TextButton updateButton, journalButton { "Journal" };
     bool journalOpen = false;
     juce::StringArray journalLines;    // the last lines, put on screen only while the journal is open
     bool journalDirty = false;
-    void flushJournal();
     juce::TextEditor journal, noteField;
     juce::TextButton noteButton { "Noter" }, zipButton { "Préparer le zip"_fr }, folderButton { "Dossier" };
 
@@ -84,7 +85,6 @@ private:
     juce::ProgressBar bar { progress };
 
     ConnectWizard wizard { engine, *this };
-    std::unique_ptr<FakeRackAttack> demo;   // RA_DEMO=1 only: a pretend unit, for checking the screens
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

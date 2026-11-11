@@ -21,7 +21,8 @@ void MainComponent::Light::paint (juce::Graphics& g)
     g.drawText (t, getLocalBounds().withTrimmedLeft (32).withTrimmedRight (10), juce::Justification::centredLeft);
 }
 
-MainComponent::MainComponent()
+MainComponent::MainComponent (AppContext& c)
+    : ctx (c), session (c.session), engine (c.engine), library (c.library)
 {
     lookAndFeel.setColourScheme (juce::LookAndFeel_V4::getDarkColourScheme());
     lookAndFeel.setColour (juce::ResizableWindow::backgroundColourId, ui::background);
@@ -34,13 +35,6 @@ MainComponent::MainComponent()
     lookAndFeel.setColour (juce::ComboBox::backgroundColourId, ui::panelLight);
     lookAndFeel.setColour (juce::ListBox::backgroundColourId, ui::panelLight);
     setLookAndFeel (&lookAndFeel);
-
-    juce::PropertiesFile::Options options;
-    options.applicationName = "RackAttack Editor";
-    options.folderName = "RackAttack";
-    options.filenameSuffix = ".settings";
-    options.osxLibrarySubFolder = "Application Support";
-    settings = std::make_unique<juce::PropertiesFile> (options);
 
     pages = { &kitPage, &soundPage, &effectsPage, &libraryPage, &toolsPage };
     const juce::String names[5] = { "Kit", "Son", "Effets", "Bibliothèque"_fr, "Outils" };
@@ -61,7 +55,12 @@ MainComponent::MainComponent()
     };
 
     light.onClick = [this] { showWizard(); };
+    light.state = engine.getConnection();
     addAndMakeVisible (light);
+
+    ui::styleBig (updateButton, true);
+    updateButton.onClick = [this] { showUpdateDialog(); };
+    addChildComponent (updateButton);
 
     journalButton.setClickingTogglesState (true);
     journalButton.onClick = [this]
@@ -94,8 +93,8 @@ MainComponent::MainComponent()
             zip.revealToUser();
         }
     };
-    for (auto* c : std::initializer_list<juce::Component*> { &journal, &noteField, &noteButton, &zipButton, &folderButton })
-        addChildComponent (c);
+    for (auto* comp : std::initializer_list<juce::Component*> { &journal, &noteField, &noteButton, &zipButton, &folderButton })
+        addChildComponent (comp);
 
     addAndMakeVisible (statusLine);
     bar.setColour (juce::ProgressBar::foregroundColourId, ui::accent);
@@ -104,55 +103,24 @@ MainComponent::MainComponent()
     addChildComponent (wizard);
 
     engine.addListener (this);
-
-    // settings
-    engine.deviceId = settings->getIntValue ("id", 0);
-    engine.channel = settings->getIntValue ("channel", 1);
-    engine.baseNote = settings->getIntValue ("baseNote", 36);
-    toolsPage.refreshSettings();
-    inId = settings->getValue ("in");
-    outId = settings->getValue ("out");
-    bool inOk = false, outOk = false;
-    for (auto& d : juce::MidiInput::getAvailableDevices())
-        if (d.identifier == inId) inOk = engine.openInput (inId).isEmpty();
-    for (auto& d : juce::MidiOutput::getAvailableDevices())
-        if (d.identifier == outId) outOk = engine.openOutput (outId).isEmpty();
-
-    engine.userNote ("RackAttack Editor "_fr + RA_VERSION + " sur " + juce::SystemStats::getOperatingSystemName());
+    ctx.updater.changes.addChangeListener (this);
 
     setSize (1400, 900);
-    showPage (0);
+    showPage (juce::SystemStats::getEnvironmentVariable ("RA_PAGE", "0").getIntValue());
     startTimer (250);
 
-    if (juce::SystemStats::getEnvironmentVariable ("RA_DEMO", {}) == "1")
-    {
-        demo = std::make_unique<FakeRackAttack>();
-        demo->engine = &engine;
-        engine.pauseScale = 0.1;
-        engine.setTestOutput ([this] (const juce::MidiMessage& m) { demo->receive (m); });
-        showPage (juce::SystemStats::getEnvironmentVariable ("RA_PAGE", "0").getIntValue());
-        if (juce::SystemStats::getEnvironmentVariable ("RA_WIZARD", {}) == "1")
-            showWizard();
-        else
-            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this)]
-            {
-                if (safe != nullptr) safe->engine.connect();
-            });
-    }
-    else if (settings->getBoolValue ("setupDone", false) && inOk && outOk)
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this)]
-        {
-            if (safe != nullptr) safe->engine.connect();
-        });
-    else
+    ctx.start();   // the first time a window opens: ports of last time, then find the unit
+    if (! ctx.isSetUp() || juce::SystemStats::getEnvironmentVariable ("RA_WIZARD", {}) == "1")
         showWizard();
+
+    refreshUpdate();
+    ctx.updater.checkIfDue();
 }
 
 MainComponent::~MainComponent()
 {
     stopTimer();
-    engine.stopPlayer();
-    engine.setTestOutput (nullptr);
+    ctx.updater.changes.removeChangeListener (this);
     engine.removeListener (this);
     setLookAndFeel (nullptr);
 }
@@ -174,37 +142,71 @@ void MainComponent::showWizard()
     wizard.start();
 }
 
-void MainComponent::chooseInput (const juce::String& identifier)
-{
-    inId = identifier;
-    engine.openInput (identifier);
-    saveSettings();
-}
-
-void MainComponent::chooseOutput (const juce::String& identifier)
-{
-    outId = identifier;
-    engine.openOutput (identifier);
-    saveSettings();
-}
-
 void MainComponent::wizardFinished (bool connected)
 {
     wizard.setVisible (false);
-    if (connected)
-        settings->setValue ("setupDone", true);
-    saveSettings();
+    ctx.setSetUp (connected);
     showPage (0);
 }
 
-void MainComponent::saveSettings()
+//==============================================================================
+// Updates
+
+void MainComponent::refreshUpdate()
 {
-    settings->setValue ("in", inId);
-    settings->setValue ("out", outId);
-    settings->setValue ("id", engine.deviceId.load());
-    settings->setValue ("channel", engine.channel.load());
-    settings->setValue ("baseNote", engine.baseNote.load());
-    settings->saveIfNeeded();
+    auto& up = ctx.updater;
+    bool show = up.getState() == Updater::State::Available || up.getState() == Updater::State::Installed;
+    updateButton.setButtonText (up.getState() == Updater::State::Installed ? "Redémarre ton logiciel"_fr
+                                                                           : "Mise à jour "_fr + up.getRelease().version);
+    updateButton.setVisible (show);
+    resized();
+}
+
+void MainComponent::showUpdateDialog()
+{
+    auto& up = ctx.updater;
+    const auto& rel = up.getRelease();
+    auto opts = juce::MessageBoxOptions().withAssociatedComponent (this);
+
+    if (up.getState() == Updater::State::Installed)
+    {
+        juce::AlertWindow::showAsync (opts.withIconType (juce::MessageBoxIconType::InfoIcon)
+                                          .withTitle ("Mise à jour installée"_fr).withMessage (up.getStatusText()).withButton ("OK"), nullptr);
+        return;
+    }
+    if (rel.version.isEmpty())
+        return;
+
+    auto notes = rel.notes.trim();
+    if (notes.length() > 1800)
+        notes = notes.substring (0, 1800) + "...";
+    const bool available = up.getState() == Updater::State::Available;
+   #if JUCE_MAC
+    const juce::String installText = "Installer maintenant";
+   #else
+    const juce::String installText = "Ouvrir la page de téléchargement"_fr;
+   #endif
+
+    auto box = opts.withIconType (juce::MessageBoxIconType::InfoIcon)
+                   .withTitle ("RackAttack Editor " + rel.version)
+                   .withMessage ((notes.isEmpty() ? "Pas de notes pour cette version."_fr : notes)
+                                 + (available ? "\n\nTu as la version "_fr + Updater::currentVersion()
+                                                    + ". La nouvelle remplace le plug-in et l'appli sur ce Mac ; "
+                                                      "macOS peut demander ton mot de passe. Quitte et rouvre ton logiciel ensuite."_fr
+                                              : juce::String()));
+    if (available)
+        box = box.withButton (installText).withButton ("Plus tard").withButton ("Ignorer cette version");
+    else
+        box = box.withButton ("OK");
+
+    juce::AlertWindow::showAsync (box, [safe = juce::Component::SafePointer<MainComponent> (this), available] (int r)
+    {
+        if (safe == nullptr || ! available)
+            return;
+        auto& u = safe->ctx.updater;
+        if (r == 1)      u.install();
+        else if (r == 3) u.skipThisVersion();
+    });
 }
 
 //==============================================================================
@@ -236,7 +238,7 @@ void MainComponent::connectionChanged (Engine::Connection c)
     light.repaint();
     if (c == Engine::Connection::connected)
     {
-        saveSettings();          // the Sysex ID and channel found
+        ctx.saveSettings();          // the Sysex ID and channel found
         toolsPage.refreshSettings();
     }
 }
@@ -276,20 +278,23 @@ void MainComponent::resized()
     top.removeFromLeft (140);
     for (auto* b : pageButtons)
     {
-        b->setBounds (top.removeFromLeft (b->getButtonText().length() > 6 ? 140 : 100));
+        b->setBounds (top.removeFromLeft (b->getButtonText().length() > 6 ? 130 : 90));
         top.removeFromLeft (6);
     }
     journalButton.setBounds (top.removeFromRight (90));
     top.removeFromRight (10);
-    light.setBounds (top.removeFromRight (280));
+    light.setBounds (top.removeFromRight (250));
+    top.removeFromRight (10);
+    if (updateButton.isVisible())
+        updateButton.setBounds (top.removeFromRight (200));
 
     auto bottom = r.removeFromBottom (34).reduced (12, 4);
     bar.setBounds (bottom.removeFromRight (360));
     bottom.removeFromRight (10);
     statusLine.setBounds (bottom);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &journal, &noteField, &noteButton, &zipButton, &folderButton })
-        c->setVisible (journalOpen);
+    for (auto* comp : std::initializer_list<juce::Component*> { &journal, &noteField, &noteButton, &zipButton, &folderButton })
+        comp->setVisible (journalOpen);
     if (journalOpen)
     {
         auto side = r.removeFromRight (420).reduced (8, 8);

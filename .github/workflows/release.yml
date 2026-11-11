@@ -1,50 +1,79 @@
-# Publishes a version: create a release (or push a tag) such as v0.2.0 on the
-# branch labo. The Mac app of the latest successful "app" build of the branch is
-# attached to it, so it can be downloaded without a GitHub account.
+# Publishing a version (same steps as OXIde): set VERSION in CMakeLists.txt, write
+# RELEASE_NOTES.md, merge into main, then on GitHub: Actions > release > Run workflow (on main).
+# This builds and tests on a Mac, and creates a DRAFT release v<VERSION> with
+#   RackAttack-Editor-mac.dmg          for people (the web page links to it),
+#   RackAttack-Editor-mac.zip + .sha256 for the in-plugin updater.
+# Review it on GitHub and press "Publish release" (that also creates the tag): installed
+# plug-ins then offer the update (they only see published, non-prerelease releases).
 name: release
 
 on:
   push:
     tags: [ "v*" ]
-  release:
-    types: [ published ]
+  workflow_dispatch:
 
 permissions:
   contents: write
-  actions: read
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
+  mac:
+    runs-on: macos-latest
     steps:
-      - name: Mac app of the latest successful build
+      - uses: actions/checkout@v4
+
+      - name: Check the version
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
-          RUN=$(gh run list --workflow app.yml --branch labo --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-          echo "build used: $RUN"
-          gh run download "$RUN" --name RackAttack-Editor-mac --dir out
-          ls -la out
-      - name: Pre-release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          cat > notes.md <<'NOTES'
-          Version de test de **RackAttack Editor** pour Mac (Apple Silicon et Intel, macOS 11 ou plus récent).
-
-          1. Télécharge `RackAttack-Editor-mac.zip` ci-dessous et double-clique dessus.
-          2. Glisse **RackAttack Editor** dans *Applications*.
-          3. Premier lancement : clic droit → *Ouvrir*. Si macOS refuse : *Réglages Système* → *Confidentialité et sécurité* → *Ouvrir quand même*.
-
-          L'appli ne sauvegarde rien dans la mémoire du RackAttack : pour garder un changement, **Shift + Store** sur la machine.
-          NOTES
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            # release made on the website: just attach the app
-            gh release upload "$GITHUB_REF_NAME" out/RackAttack-Editor-mac.zip --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" out/RackAttack-Editor-mac.zip \
-              --title "RackAttack Editor ${GITHUB_REF_NAME#v} (test)" \
-              --notes-file notes.md --prerelease --target "$GITHUB_SHA"
+          VER=$(sed -n 's/^project(RackAttack VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            # publishing a draft creates its tag, which lands here: nothing left to do
+            echo "Release $GITHUB_REF_NAME already exists: nothing to build."
+            echo "SKIP=1" >> "$GITHUB_ENV"; exit 0
           fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [ "${GITHUB_REF_NAME#v}" != "$VER" ]; then
+              echo "The tag $GITHUB_REF_NAME doesn't match VERSION $VER in CMakeLists.txt"; exit 1
+            fi
+          elif gh release view "v$VER" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "A release v$VER already exists: raise VERSION in CMakeLists.txt first"; exit 1
+          fi
+          echo "VERSION=$VER" >> "$GITHUB_ENV"
+
+      - name: Configure
+        if: env.SKIP != '1'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        if: env.SKIP != '1'
+        run: cmake --build build --config Release -j 4
+
+      - name: Test
+        if: env.SKIP != '1'
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        if: env.SKIP != '1'
+        run: |
+          ART=build/RackAttackEditor_artefacts/Release
+          mkdir -p pkg out
+          for b in "AU/RackAttack Editor.component" "VST3/RackAttack Editor.vst3" "Standalone/RackAttack Editor.app"; do
+            codesign --force --deep --sign - "$ART/$b"
+            cp -R "$ART/$b" pkg/
+          done
+          # the three bundles at the top of the zip, as the in-plugin updater expects
+          ditto -c -k pkg out/RackAttack-Editor-mac.zip
+          (cd out && shasum -a 256 RackAttack-Editor-mac.zip > RackAttack-Editor-mac.zip.sha256)
+          # the disk image people download from the web page
+          python3 -m pip install --quiet --break-system-packages dmgbuild==1.6.7 || python3 -m pip install --quiet dmgbuild==1.6.7
+          tools/dmg/make_dmg.sh pkg out/RackAttack-Editor-mac.dmg
+
+      - name: Create the draft release
+        if: env.SKIP != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES=RELEASE_NOTES.md
+          [ -f "$NOTES" ] || { echo "RackAttack Editor $VERSION" > /tmp/notes.md; NOTES=/tmp/notes.md; }
+          gh release create "v$VERSION" out/RackAttack-Editor-mac.dmg out/RackAttack-Editor-mac.zip out/RackAttack-Editor-mac.zip.sha256 \
+            --target "$GITHUB_SHA" --draft --title "RackAttack Editor $VERSION" --notes-file "$NOTES"

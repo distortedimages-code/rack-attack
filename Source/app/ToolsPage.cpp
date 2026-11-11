@@ -343,9 +343,18 @@ namespace
 }
 
 //==============================================================================
-ToolsPage::ToolsPage (Engine& e, Session&, std::function<void()> changed)
-    : engine (e), settingsChanged (std::move (changed))
+ToolsPage::ToolsPage (Engine& e, Updater& u, std::function<void()> changed)
+    : engine (e), updater (u), settingsChanged (std::move (changed))
 {
+    updateLabel.setColour (juce::Label::textColourId, ui::dim);
+    addAndMakeVisible (updateLabel);
+    addAndMakeVisible (checkButton);
+    addAndMakeVisible (autoCheck);
+    checkButton.onClick = [this] { updater.checkNow(); };
+    autoCheck.onClick = [this] { updater.setAutoCheck (autoCheck.getToggleState()); };
+    updater.changes.addChangeListener (this);
+    refreshUpdate();
+
     intro.setText ("Outils de test. Tu n'en as pas besoin pour jouer : ils servent à compléter la carte du protocole."_fr,
                    juce::dontSendNotification);
     intro.setColour (juce::Label::textColourId, ui::dim);
@@ -395,6 +404,7 @@ ToolsPage::ToolsPage (Engine& e, Session&, std::function<void()> changed)
 
 ToolsPage::~ToolsPage()
 {
+    updater.changes.removeChangeListener (this);
     stopTimer();
     engine.removeListener (this);
 }
@@ -405,6 +415,14 @@ void ToolsPage::refreshSettings()
     channelBox.setSelectedId (engine.channel.load(), juce::dontSendNotification);
     baseNote.setValue (engine.baseNote.load(), juce::dontSendNotification);
     baseName.setText (juce::MidiMessage::getMidiNoteName (engine.baseNote.load(), true, true, 3), juce::dontSendNotification);
+}
+
+void ToolsPage::refreshUpdate()
+{
+    updateLabel.setText ("RackAttack Editor " + Updater::currentVersion() + "   ·   "_fr + updater.getStatusText(), juce::dontSendNotification);
+    autoCheck.setToggleState (updater.getAutoCheck(), juce::dontSendNotification);
+    checkButton.setEnabled (updater.getState() != Updater::State::Disabled && updater.getState() != Updater::State::Checking
+                            && updater.getState() != Updater::State::Installing);
 }
 
 void ToolsPage::timerCallback()
@@ -431,6 +449,13 @@ void ToolsPage::resized()
     baseLabel.setBounds (top.removeFromLeft (100));     top.removeFromLeft (6);
     baseNote.setBounds (top.removeFromLeft (100));      top.removeFromLeft (6);
     baseName.setBounds (top.removeFromLeft (50));
+    r.removeFromTop (8);
+    auto up = r.removeFromTop (28);
+    checkButton.setBounds (up.removeFromLeft (200));
+    up.removeFromLeft (10);
+    autoCheck.setBounds (up.removeFromLeft (230));
+    up.removeFromLeft (10);
+    updateLabel.setBounds (up);
     r.removeFromTop (6);
     intro.setBounds (r.removeFromTop (24));
     r.removeFromTop (6);

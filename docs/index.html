@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RackAttack Editor</title>
+<style>
+  :root { --bg: #1b1e1c; --panel: #252a26; --text: #e9ede7; --dim: #97a197; --accent: #8cc63f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.55 -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 22px 64px; }
+  h1 { color: var(--accent); font-size: 40px; margin: 0 0 6px; letter-spacing: -0.5px; }
+  h2 { font-size: 22px; margin: 44px 0 12px; }
+  .lead { color: var(--dim); font-size: 19px; margin: 0 0 28px; }
+  .download { display: inline-block; background: var(--accent); color: #111; font-weight: 700; text-decoration: none;
+              padding: 15px 26px; border-radius: 10px; font-size: 18px; }
+  .download:hover { filter: brightness(1.08); }
+  .small { color: var(--dim); font-size: 14px; margin-top: 10px; }
+  ol { padding-left: 22px; }
+  li { margin: 8px 0; }
+  .card { background: var(--panel); border-radius: 12px; padding: 18px 22px; margin: 14px 0; }
+  code, kbd { background: #121412; border-radius: 5px; padding: 1px 6px; font-size: 15px; }
+  a { color: var(--accent); }
+  footer { color: var(--dim); font-size: 14px; margin-top: 56px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>RackAttack Editor</h1>
+  <p class="lead">Éditeur et bibliothèque pour le Waldorf RackAttack. Plug-in AU et VST3, et appli, pour Mac.</p>
+
+  <a class="download" href="https://github.com/distortedimages-code/rack-attack/releases/latest/download/RackAttack-Editor-mac.dmg">Télécharger pour Mac</a>
+  <p class="small">Toujours la dernière version · Mac Apple Silicon et Intel, macOS 11 ou plus récent ·
+    <a href="https://github.com/distortedimages-code/rack-attack/releases">toutes les versions</a></p>
+
+  <h2>Installer</h2>
+  <ol>
+    <li>Ouvre <code>RackAttack-Editor-mac.dmg</code>.</li>
+    <li>Glisse chaque élément sur le dossier à côté de lui : le <b>.component</b> sur <i>Components (AU)</i>, le <b>.vst3</b> sur <i>VST3</i>, l'<b>appli</b> sur <i>Applications</i>. macOS demande ton mot de passe.</li>
+    <li>Premier lancement de l'appli : <b>clic droit → Ouvrir</b>. Si macOS refuse : <i>Réglages Système → Confidentialité et sécurité → Ouvrir quand même</i>.</li>
+    <li>Dans ton logiciel (Live, Logic…), relance-le ou rescanne les plug-ins : <i>RackAttack Editor</i> se trouve dans les instruments.</li>
+  </ol>
+
+  <h2>Brancher le RackAttack</h2>
+  <div class="card">
+    Relie le <b>MIDI OUT</b> du RackAttack à l'entrée de ton interface MIDI, et son <b>MIDI IN</b> à la sortie.
+    À la première ouverture, l'appli te guide en trois écrans : les ports MIDI, deux réglages sur la machine
+    (<i>Global/Utility</i> : <code>Ctl. send = SysEx</code>, <code>receive = On</code>, <code>Rx PrgChg = On</code>), puis elle trouve le RackAttack toute seule.
+  </div>
+  <div class="card">
+    L'appli ne sauvegarde jamais rien dans la mémoire du RackAttack. Pour garder un changement : <kbd>Shift</kbd> + <kbd>Store</kbd> sur la machine.
+    Pour l'annuler : <kbd>Shift</kbd> + <kbd>Recall</kbd>.
+  </div>
+
+  <h2>Mises à jour</h2>
+  <p>Inutile de revenir ici : quand une nouvelle version sort, un bouton <b>Mise à jour</b> apparaît en haut du plug-in.
+    Un clic l'installe (macOS demande ton mot de passe), puis tu relances ton logiciel.</p>
+
+  <footer>
+    Le projet sur <a href="https://github.com/distortedimages-code/rack-attack">GitHub</a> ·
+    <a href="https://ko-fi.com/amnesy">Ko-fi</a> ·
+    Sans lien avec Waldorf Music.
+  </footer>
+</main>
+</body>
+</html>

@@ -292,6 +292,41 @@ Player::Player (std::uint32_t seed) : rng (seed)
     reset();
 }
 
+void clearSteps (Track& t)
+{
+    for (auto& s : t.steps)
+        s = Step();
+}
+
+void clearLocks (Track& t)
+{
+    for (auto& s : t.steps)
+        s.locks.clear();
+}
+
+void resetTrack (Track& t)
+{
+    auto name = t.name;
+    t = Track();
+    t.name = std::move (name);
+}
+
+void shiftSteps (Track& t, int by)
+{
+    const int n = std::max (1, std::min ((int) t.length, maxSteps));
+    by = ((by % n) + n) % n;
+    if (by != 0)
+        std::rotate (t.steps.begin(), t.steps.begin() + (n - by), t.steps.begin() + n);
+}
+
+void fillEvery (Track& t, int every)
+{
+    every = std::max (1, every);
+    const int n = std::max (1, std::min ((int) t.length, maxSteps));
+    for (int i = 0; i < n; ++i)
+        t.steps[(size_t) i].on = i % every == 0;
+}
+
 void Player::reset()
 {
     running = false;

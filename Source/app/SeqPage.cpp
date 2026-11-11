@@ -36,14 +36,8 @@ namespace
 
     juce::String noteName (int n)   { return juce::MidiMessage::getMidiNoteName (n, true, true, 3); }
 
-    // the value as shown: a choice by its name, a number as it is
-    juce::String valueText (int address, int value)
-    {
-        auto names = ra::valueNames (ra::Object::sound, address);
-        if (value >= 0 && value < (int) names.size())
-            return juce::String::fromUTF8 (names[(size_t) value].c_str());
-        return juce::String (value);
-    }
+    // the value as shown (ParamText.h)
+    juce::String valueText (int address, int value)   { return ui::valueText (address, value); }
 
     // a little play / stop icon in pixels
     void playIcon (juce::Graphics& g, juce::Rectangle<int> r, bool playing, juce::Colour c)
@@ -127,7 +121,7 @@ std::vector<SeqPage::Quick> SeqPage::quickFor (int s) const
     auto q = [] (int address, const char* label, bool choice, const char* why = "") { return Quick { { address, label, choice }, fr (why) }; };
 
     std::vector<Quick> list { q (0x02, "Pitch 1", false), q (0x11, "Pitch 2", false), q (0x27, "Cutoff", false),
-                              q (0x28, "Resonance", false), q (0x3F, "Attack", false), q (0x40, "Decay", false),
+                              q (0x28, "Reso", false), q (0x3F, "Attack", false), q (0x40, "Decay", false),
                               q (0x42, "Release", false), q (0x35, "Volume", false) };
     if (! kit.hasSound (s))
         return list;
@@ -146,8 +140,8 @@ std::vector<SeqPage::Quick> SeqPage::quickFor (int s) const
     const bool pitchDrops = v (0x05) != 64 && (v (0x07) == 0 || v (0x07) == 1);
     if (v (0x1D) > 0)
     {
-        list[6] = q (0x24, "Crack Spd", false, "CLAP");
-        list[7] = q (0x25, "Crack Len", false, "CLAP");
+        list[6] = q (0x24, "C.Speed", false, "CLAP");
+        list[7] = q (0x25, "C.Len", false, "CLAP");
     }
     else if (pitchDrops)
     {
@@ -158,7 +152,7 @@ std::vector<SeqPage::Quick> SeqPage::quickFor (int s) const
     else if (v (0x09) > 0)
         list[6] = q (0x09, "FM", false, "FM");
     else if (v (0x58) != 0)
-        list[6] = q (0x59, "Transpose", false, "NOTES");
+        list[6] = q (0x59, "Transp", false, "NOTES");
     return list;
 }
 
@@ -295,18 +289,18 @@ void SeqPage::layout()
             sectionTabs.push_back (t.removeFromLeft (tw));
             t.removeFromLeft (4);
         }
-        in.removeFromTop (12);
+        in.removeFromTop (14);
 
         // the quick access row: the essentials of this sound, and its tuning, in a band of its own
-        quickRow = in.removeFromTop (68);
-        in.removeFromTop (14);
+        quickRow = in.removeFromTop (72);
+        in.removeFromTop (16);
         {
-            auto q = quickRow.reduced (6, 6);
+            auto q = quickRow.reduced (8, 8);
             quickHeader = q.removeFromLeft (76);
-            q.removeFromLeft (10);
-            tuneBox = q.removeFromRight (196);
-            q.removeFromRight (10);
-            const int count = 8, gap = 8;
+            q.removeFromLeft (14);
+            tuneBox = q.removeFromRight (190);
+            q.removeFromRight (14);
+            const int count = 8, gap = 12;
             const float w = (float) (q.getWidth() - (count - 1) * gap) / (float) count;
             quickBoxes.clear();
             for (int i = 0; i < count; ++i)
@@ -356,6 +350,8 @@ void SeqPage::layout()
         divisionBox = t.removeFromLeft (128).reduced (0, 3);
         t.removeFromLeft (6);
         muteBox = t.removeFromLeft (96).reduced (0, 3);
+        t.removeFromLeft (6);
+        optionsBox = t.removeFromLeft (136).reduced (0, 3);
 
         in.removeFromTop (6 + 10);     // the playhead runs in the gap above the steps
         auto row = in.removeFromTop (stepsH);
@@ -399,6 +395,7 @@ SeqPage::Hit SeqPage::zoneAt (juce::Point<int> p) const
     for (int i = 0; i < 2; ++i)
         if (modeTabs[(size_t) i].contains (p)) return { Zone::mode, i };
     if (lengthBox.contains (p))   return { Zone::length, 0 };
+    if (optionsBox.contains (p))  return { Zone::options, 0 };
     if (divisionBox.contains (p)) return { Zone::division, 0 };
     if (muteBox.contains (p))     return { Zone::mute, 0 };
     for (int i = 0; i < 16; ++i)
@@ -749,9 +746,12 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
         const bool hot = hover.zone == Zone::param && hover.index == i;
         const bool dragging = drag.hit.zone == Zone::param && drag.hit.index == i;
 
-        g.setColour (dragging ? juce::Colour (0xff1c1c1c) : px::cell);
-        g.fillRect (b);
-        px::frameRect (g, b, locked ? px::yellow : (hot || dragging ? px::white : px::frame), 2);
+        if (! quick)
+        {
+            g.setColour (dragging ? juce::Colour (0xff1c1c1c) : px::cell);
+            g.fillRect (b);
+            px::frameRect (g, b, locked ? px::yellow : (hot || dragging ? px::white : px::frame), 2);
+        }
 
         juce::String text;
         juce::Colour colour = px::white;
@@ -771,6 +771,46 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
         {
             text = valueText (def.address, base);
             colour = locking ? px::dim : px::white;
+        }
+
+        if (quick)
+        {
+            // the quick row: black cells with the small ring knobs (not the bars of the section)
+            g.setColour (dragging ? juce::Colour (0xff1c1c1c) : px::black);
+            g.fillRect (b);
+            px::frameRect (g, b, locked ? px::yellow : (hot || dragging ? px::white : px::faint), 2);
+            auto in = b.reduced (8, 6);
+            if (! def.choice)
+            {
+                const int k = juce::jmin (in.getHeight(), 34);
+                auto knobArea = in.removeFromLeft (k).withSizeKeepingCentre (k, k);
+                const float marker = locked && known ? (float) base / (float) juce::jmax (1, maxV) : -1.0f;
+                px::knob (g, knobArea, (float) shown / (float) juce::jmax (1, maxV),
+                          locked ? px::yellow : (locking ? px::faint : (hot || dragging ? px::white : juce::Colour (0xffe0e0e0))),
+                          2, marker, {}, ui::isBipolar (def.address));
+                in.removeFromLeft (8);
+            }
+            auto nameRow = in.removeFromTop (16);
+            px::drawText (g, upper (fr (def.label)), nameRow, juce::Justification::centredLeft, px::text (19.0f),
+                          locked ? px::yellow : (hot || dragging ? px::white : px::grey));
+            if ((size_t) i < slotWhy.size() && slotWhy[(size_t) i].isNotEmpty())
+            {
+                // why it is offered for this sound: a small tag sitting on the cell's top edge
+                const auto f = px::label (7.0f);
+                const int tw = textWidth (f, slotWhy[(size_t) i]) + 8;
+                const juce::Rectangle<int> tag (b.getRight() - tw - 6, b.getY() - 6, tw, 12);
+                g.setColour (px::white);
+                g.fillRect (tag);
+                px::drawText (g, slotWhy[(size_t) i], tag, juce::Justification::centred, f, px::black);
+            }
+            px::drawText (g, text, in, juce::Justification::bottomRight, px::text (28.0f), colour);
+            if (def.choice)
+            {
+                g.setColour (hot ? px::white : px::dim);
+                g.fillRect (b.getX() + 10, b.getBottom() - 14, 8, 2);
+                g.fillRect (b.getX() + 12, b.getBottom() - 12, 4, 2);
+            }
+            continue;
         }
 
         auto in = b.reduced (8, 5);
@@ -804,7 +844,11 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
         {
             const int filled = juce::roundToInt (16.0 * shown / juce::jmax (1, maxV));
             const int marker = locked && known ? juce::jlimit (0, 15, juce::roundToInt (16.0 * base / juce::jmax (1, maxV))) : -1;
-            px::bar (g, bottom, 16, filled, locked ? px::yellow : (locking ? px::faint : px::white), marker);
+            const auto barColour = locked ? px::yellow : (locking ? px::faint : px::white);
+            if (ui::isBipolar (def.address))
+                px::barCentred (g, bottom, 16, (float) shown / 127.0f, barColour, marker);
+            else
+                px::bar (g, bottom, 16, filled, barColour, marker);
         }
     }
 
@@ -948,6 +992,20 @@ void SeqPage::paintSequencer (juce::Graphics& g, const Track& tr, double ppq)
         if (! tr.mute)
             px::frameRect (g, b, hover.zone == Zone::mute ? px::grey : px::frame, 2);
         px::drawText (g, "MUTE", b, juce::Justification::centred, px::label (13.0f), tr.mute ? px::black : px::grey);
+    }
+    {
+        auto b = optionsBox;
+        const bool hot = hover.zone == Zone::options;
+        g.setColour (px::cell);
+        g.fillRect (b);
+        px::frameRect (g, b, hot ? px::white : px::frame, 2);
+        auto in = b.reduced (12, 0);
+        g.setColour (hot ? px::white : px::dim);
+        const int ax = in.getRight() - 8, ay = in.getCentreY() - 2;
+        g.fillRect (ax, ay, 8, 2);
+        g.fillRect (ax + 2, ay + 2, 4, 2);
+        in.removeFromRight (12);
+        px::drawText (g, "OPTIONS", in, juce::Justification::centred, px::label (12.0f), hot ? px::white : px::grey);
     }
 
     paintSteps (g, tr, playing);
@@ -1159,6 +1217,7 @@ void SeqPage::showPopup (int slot, const Track& tr)
     popup.value = valueText (def.address, v);
     popup.position = (float) v / (float) juce::jmax (1, maxV);
     popup.choice = def.choice;
+    popup.centred = ui::isBipolar (def.address);
     popup.colour = locked ? px::yellow : px::white;
     popup.marker = locked && engine.getKit().hasSound (track)
                        ? (float) engine.getKit().soundValue (track, def.address) / (float) juce::jmax (1, maxV) : -1.0f;
@@ -1239,8 +1298,11 @@ void SeqPage::paintOverlays (juce::Graphics& g, double now)
                 if (! popup.choice)
                 {
                     auto barRow = in.removeFromBottom (16);
-                    px::bar (g, barRow, 24, juce::roundToInt (popup.position * 24.0f), popup.colour,
-                             popup.marker >= 0.0f ? juce::jlimit (0, 23, juce::roundToInt (popup.marker * 24.0f)) : -1);
+                    const int mk = popup.marker >= 0.0f ? juce::jlimit (0, 23, juce::roundToInt (popup.marker * 24.0f)) : -1;
+                    if (popup.centred)
+                        px::barCentred (g, barRow, 24, popup.position, popup.colour, mk);
+                    else
+                        px::bar (g, barRow, 24, juce::roundToInt (popup.position * 24.0f), popup.colour, mk);
                     in.removeFromBottom (6);
                 }
                 px::drawText (g, popup.value, in, juce::Justification::centredLeft,
@@ -1510,6 +1572,7 @@ void SeqPage::mouseDown (const juce::MouseEvent& e)
             });
             break;
         case Zone::mute:       seq.edit ([&] (Pattern& p) { auto& m = p.tracks[(size_t) track].mute; m = ! m; }); break;
+        case Zone::options:    showOptions(); break;
         case Zone::miniMap:
         {
             const int i = juce::jlimit (0, maxSteps - 1, (e.getPosition().x - miniMap.getX()) * maxSteps / juce::jmax (1, miniMap.getWidth()));
@@ -1672,7 +1735,7 @@ void SeqPage::mouseDrag (const juce::MouseEvent& e)
             break;
         }
         case Zone::none: case Zone::play: case Zone::voice: case Zone::section: case Zone::listen: case Zone::tune:
-        case Zone::mode: case Zone::division: case Zone::mute: case Zone::miniMap: case Zone::clearSelection:
+        case Zone::mode: case Zone::division: case Zone::mute: case Zone::options: case Zone::miniMap: case Zone::clearSelection:
             break;
     }
     repaint();
@@ -1726,7 +1789,7 @@ void SeqPage::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelD
             popup.shownMs = nowMs();
             break;
         case Zone::none: case Zone::play: case Zone::voice: case Zone::section: case Zone::listen: case Zone::mode: case Zone::tune:
-        case Zone::length: case Zone::division: case Zone::mute: case Zone::miniMap: case Zone::step: case Zone::clearSelection:
+        case Zone::length: case Zone::division: case Zone::mute: case Zone::options: case Zone::miniMap: case Zone::step: case Zone::clearSelection:
             break;
     }
     repaint();
@@ -1805,6 +1868,7 @@ void SeqPage::showVoiceMenu (int voice)
                 self->showToast (fr ("PISTE COLLÉE"));
                 break;
             case 5:
+                self->keepForUndo (fr ("effacer la piste"));
                 s.edit ([&] (Pattern& p) { auto name = p.tracks[(size_t) voice].name; p.tracks[(size_t) voice] = Track(); p.tracks[(size_t) voice].name = name; });
                 self->showToast (fr ("PISTE EFFACÉE"), px::red);
                 break;
@@ -1813,6 +1877,103 @@ void SeqPage::showVoiceMenu (int voice)
         }
         if (voice == self->track)
             self->selection.clear();
+        self->repaint();
+    });
+}
+
+void SeqPage::keepForUndo (const juce::String& what)
+{
+    undo = std::make_unique<Pattern>();
+    seq.read ([&] (const Pattern& p) { *undo = p; });
+    undoWhat = what;
+}
+
+void SeqPage::showOptions()
+{
+    juce::String name;
+    seq.read ([&] (const Pattern& p) { name = trackName (p.tracks[(size_t) track], track); });
+    juce::PopupMenu m;
+    m.addSectionHeader ("PISTE " + juce::String (track + 1).paddedLeft ('0', 2) + "  " + upper (name));
+    m.addItem (1, fr ("Effacer les pas"));
+    m.addItem (2, fr ("Effacer les verrous"));
+    m.addItem (3, fr ("Réinitialiser la piste (16 pas, 1/16)"));
+    juce::PopupMenu fill;
+    fill.addItem (10, fr ("Un pas sur 2"));
+    fill.addItem (11, fr ("Un pas sur 4"));
+    fill.addItem (12, fr ("Un pas sur 8"));
+    m.addSubMenu ("Remplir", fill);
+    m.addItem (4, fr ("Décaler d'un pas vers la gauche"));
+    m.addItem (5, fr ("Décaler d'un pas vers la droite"));
+    m.addItem (6, "Copier la piste");
+    m.addItem (7, "Coller la piste", hasClipboard);
+    m.addSectionHeader ("PATTERN");
+    m.addItem (20, fr ("Effacer tous les pas"));
+    m.addItem (21, fr ("Effacer tous les verrous"));
+    m.addItem (22, fr ("Réinitialiser le pattern (le tempo reste)"));
+    m.addSeparator();
+    m.addItem (30, undo != nullptr ? fr ("Annuler : ") + undoWhat : fr ("Annuler"), undo != nullptr);
+
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (localAreaToGlobal (optionsBox)),
+                     [safe = juce::Component::SafePointer<SeqPage> (this)] (int r)
+    {
+        auto* self = safe.getComponent();
+        if (self == nullptr || r == 0)
+            return;
+        const int t = self->track;
+        auto onTrack = [self, t] (const juce::String& what, std::function<void (Track&)> fn)
+        {
+            self->keepForUndo (what);
+            self->seq.edit ([&] (Pattern& p) { fn (p.tracks[(size_t) t]); });
+        };
+        auto onAll = [self] (const juce::String& what, std::function<void (Track&)> fn)
+        {
+            self->keepForUndo (what);
+            self->seq.edit ([&] (Pattern& p) { for (auto& tr : p.tracks) fn (tr); });
+        };
+        switch (r)
+        {
+            case 1:  onTrack (fr ("effacer les pas"), [] (Track& tr) { ra::seq::clearSteps (tr); });
+                     self->showToast (fr ("PAS EFFACÉS"), px::red); break;
+            case 2:  onTrack (fr ("effacer les verrous"), [] (Track& tr) { ra::seq::clearLocks (tr); });
+                     self->showToast (fr ("VERROUS EFFACÉS"), px::yellow); break;
+            case 3:  onTrack (fr ("réinitialiser la piste"), [] (Track& tr) { ra::seq::resetTrack (tr); });
+                     self->showToast (fr ("PISTE RÉINITIALISÉE"), px::red); break;
+            case 4:  onTrack (fr ("décaler"), [] (Track& tr) { ra::seq::shiftSteps (tr, -1); }); self->showToast (fr ("<< DÉCALÉ")); break;
+            case 5:  onTrack (fr ("décaler"), [] (Track& tr) { ra::seq::shiftSteps (tr, 1); }); self->showToast (fr ("DÉCALÉ >>")); break;
+            case 6:
+                self->seq.read ([&] (const Pattern& p) { self->clipboard = p.tracks[(size_t) t]; });
+                self->hasClipboard = true;
+                self->showToast (fr ("PISTE COPIÉE"));
+                break;
+            case 7:
+                onTrack (fr ("coller la piste"), [self] (Track& tr) { auto n = tr.name; tr = self->clipboard; tr.name = n; });
+                self->showToast (fr ("PISTE COLLÉE"));
+                break;
+            case 10: case 11: case 12:
+            {
+                const int every = r == 10 ? 2 : r == 11 ? 4 : 8;
+                onTrack (fr ("remplir"), [every] (Track& tr) { ra::seq::fillEvery (tr, every); });
+                self->showToast (fr ("REMPLI : 1 SUR ") + juce::String (every));
+                break;
+            }
+            case 20: onAll (fr ("effacer tous les pas"), [] (Track& tr) { ra::seq::clearSteps (tr); });
+                     self->showToast (fr ("TOUT EFFACÉ"), px::red); break;
+            case 21: onAll (fr ("effacer tous les verrous"), [] (Track& tr) { ra::seq::clearLocks (tr); });
+                     self->showToast (fr ("TOUS LES VERROUS EFFACÉS"), px::yellow); break;
+            case 22: onAll (fr ("réinitialiser le pattern"), [] (Track& tr) { ra::seq::resetTrack (tr); });
+                     self->showToast (fr ("PATTERN RÉINITIALISÉ"), px::red); break;
+            case 30:
+                if (self->undo != nullptr)
+                {
+                    auto back = std::move (self->undo);
+                    self->seq.edit ([&] (Pattern& p) { p = *back; });
+                    self->showToast (fr ("ANNULÉ"));
+                }
+                break;
+            default: break;
+        }
+        self->selection.clear();
+        self->startWipe();
         self->repaint();
     });
 }

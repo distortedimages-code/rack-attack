@@ -134,7 +134,30 @@ void bar (juce::Graphics& g, juce::Rectangle<int> r, int blocks, int filled, juc
     }
 }
 
-void knob (juce::Graphics& g, juce::Rectangle<int> area, float pos, juce::Colour on, int p, float marker, juce::Colour)
+void barCentred (juce::Graphics& g, juce::Rectangle<int> r, int blocks, float position, juce::Colour on, int marker, juce::Colour off)
+{
+    if (blocks <= 0)
+        return;
+    const int gap = r.getWidth() / blocks > 6 ? 3 : 2;
+    const float w = (float) (r.getWidth() + gap) / (float) blocks;
+    const float mid = (float) blocks * 0.5f, at = juce::jlimit (0.0f, 1.0f, position) * (float) blocks;
+    for (int b = 0; b < blocks; ++b)
+    {
+        const int x0 = r.getX() + juce::roundToInt ((float) b * w);
+        const int x1 = r.getX() + juce::roundToInt ((float) (b + 1) * w) - gap;
+        juce::Rectangle<int> block (x0, r.getY(), juce::jmax (1, x1 - x0), r.getHeight());
+        const float c = (float) b + 0.5f;
+        const bool lit = (c >= mid && c < at) || (c < mid && c >= at);
+        g.setColour (lit ? on : (b == marker ? grey : off));
+        g.fillRect (block);
+    }
+    // the middle
+    const int mx = r.getX() + juce::roundToInt (mid * w) - gap / 2 - 1;
+    g.setColour (grey);
+    g.fillRect (mx, r.getY() - 2, 2, r.getHeight() + 4);
+}
+
+void knob (juce::Graphics& g, juce::Rectangle<int> area, float pos, juce::Colour on, int p, float marker, juce::Colour, bool centred)
 {
     const int size = juce::jmin (area.getWidth(), area.getHeight());
     if (size < 12)
@@ -160,8 +183,12 @@ void knob (juce::Graphics& g, juce::Rectangle<int> area, float pos, juce::Colour
     {
         const float t = (float) i / (float) steps;
         const float a = a0 + (a1 - a0) * t;
-        put (r * std::sin (a), -r * std::cos (a), t <= pos + 1e-4f ? on : faint);
+        const bool lit = centred ? ((t >= 0.5f - 1e-4f && t <= pos + 1e-4f) || (t <= 0.5f + 1e-4f && t >= pos - 1e-4f))
+                                 : t <= pos + 1e-4f;
+        put (r * std::sin (a), -r * std::cos (a), lit ? on : faint);
     }
+    if (centred)
+        put (0.0f, -r - (float) p, grey, true);          // the middle, marked above the ring
 
     // where it stands: one square just inside the ring
     const float av = a0 + (a1 - a0) * pos;

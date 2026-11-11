@@ -7,6 +7,7 @@
 #include "../core/RaSysex.h"
 #include "Pixel.h"
 #include "Text.h"
+#include "ParamText.h"
 
 namespace ui
 {
@@ -217,6 +218,8 @@ namespace ui
         void setLabel (const juce::String& n)   { name = n; repaint(); }
 
         std::function<void (int)> onChange, onSource;
+        std::function<juce::String (int)> format;   // how the value reads (else the number)
+        bool centred = false;                       // an amount both ways from 64
 
         void paint (juce::Graphics& g) override
         {
@@ -242,8 +245,8 @@ namespace ui
             auto valueRow = r.removeFromBottom (20);
             const int k = juce::jmin (36, r.getWidth() - 8, r.getHeight() - 4);
             auto knobArea = r.withSizeKeepingCentre (k, k);
-            px::knob (g, knobArea, (float) value / 127.0f, hot ? px::white : juce::Colour (0xffe0e0e0), 3);
-            px::drawText (g, juce::String (value), valueRow, juce::Justification::centred, valueFont, px::white);
+            px::knob (g, knobArea, (float) value / 127.0f, hot ? px::white : juce::Colour (0xffe0e0e0), 3, -1.0f, {}, centred);
+            px::drawText (g, format ? format (value) : juce::String (value), valueRow, juce::Justification::centred, valueFont, px::white);
         }
 
         void mouseDown (const juce::MouseEvent& e) override

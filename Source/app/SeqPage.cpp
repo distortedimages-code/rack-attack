@@ -151,7 +151,7 @@ std::vector<SeqPage::Quick> SeqPage::quickFor (int s) const
     }
     else if (pitchDrops)
     {
-        list[6] = q (0x05, "Pitch Mod", false, "CHUTE");
+        list[6] = q (0x05, "P.Mod", false, "CHUTE");
         if (v (0x07) == 1)
             list[7] = q (0x46, "Decay 2", false, "CHUTE");
     }
@@ -295,13 +295,15 @@ void SeqPage::layout()
             sectionTabs.push_back (t.removeFromLeft (tw));
             t.removeFromLeft (4);
         }
-        in.removeFromTop (8);
+        in.removeFromTop (12);
 
-        // the quick access row: the essentials of this sound, and its tuning
-        quickRow = in.removeFromTop (58);
-        in.removeFromTop (10);
+        // the quick access row: the essentials of this sound, and its tuning, in a band of its own
+        quickRow = in.removeFromTop (68);
+        in.removeFromTop (14);
         {
-            auto q = quickRow;
+            auto q = quickRow.reduced (6, 6);
+            quickHeader = q.removeFromLeft (76);
+            q.removeFromLeft (10);
             tuneBox = q.removeFromRight (196);
             q.removeFromRight (10);
             const int count = 8, gap = 8;
@@ -695,6 +697,33 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
     viz::draw (g, vizBox, section, [this] (int address) { return shownValues[(size_t) (address & 0x7F)]; },
                anyLocked ? px::yellow : px::white, now);
 
+    // which page the screen shows, in a white tag at its top right
+    {
+        const auto name = upper (fr (ui::soundSections()[(size_t) section].tab));
+        const auto f = px::label (10.0f, true);
+        const int w = textWidth (f, name) + 16;
+        auto tag = juce::Rectangle<int> (vizBox.getRight() - w - 6, vizBox.getY() + 6, w, 20);
+        g.setColour (px::white);
+        g.fillRect (tag);
+        px::drawText (g, name, tag, juce::Justification::centred, f, px::black);
+    }
+
+    // the band of the quick access row (it stays while the section slides)
+    {
+        auto band = quickRow.translated (-slide, 0);
+        g.setColour (px::black);
+        g.fillRect (band);
+        px::dither (g, band.reduced (2), px::frame, 1);
+        px::frameRect (g, band, px::grey, 2);
+        auto head = quickHeader.translated (-slide, 0);
+        g.setColour (px::white);
+        g.fillRect (head);
+        auto lines = head.reduced (6, 8);
+        px::drawText (g, fr ("ACCÈS"), lines.removeFromTop (lines.getHeight() / 2), juce::Justification::centredLeft,
+                      px::label (9.0f, true), px::black);
+        px::drawText (g, "RAPIDE", lines, juce::Justification::centredLeft, px::label (9.0f, true), px::black);
+    }
+
     const auto& defs = slots;
     for (int i = 0; i < (int) defs.size() && i < (int) paramBoxes.size(); ++i)
     {
@@ -807,10 +836,84 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
         px::drawText (g, tuning, in, juce::Justification::centredLeft, px::text (22.0f), on ? px::white : px::dim);
     }
 
+    // the section's name over the screen, as on a pinball display
+    {
+        static const double slow = juce::jmax (1.0, juce::SystemStats::getEnvironmentVariable ("RA_SLOWMO", "1").getDoubleValue());
+        const double t = (now - titleStart) / 1000.0 / slow;     // RA_SLOWMO: slower, for screenshots
+        if (t >= 0.0 && t < 0.52)
+            paintSectionTitle (g, vizBox, upper (fr (ui::soundSections()[(size_t) section].tab)), t);
+    }
+
     // the wipe: a dither that clears in steps (the quick row stays)
     if (wt < 1.0)
         px::dither (g, soundPanel.reduced (6).withTop (quickRow.getBottom() + 4).translated (-slide, 0), px::panel,
                     3 - (int) (stepped (wt, 3) * 3.0f));
+}
+
+// A pinball display title: a white band rushes in from the right with speed streaks,
+// the name in black dots on it, a flash, then it breaks up in dithers. Half a second.
+void SeqPage::paintSectionTitle (juce::Graphics& g, juce::Rectangle<int> screen, const juce::String& name, double t)
+{
+    juce::Graphics::ScopedSaveState keep (g);
+    g.reduceClipRegion (screen);
+
+    const auto f = px::label (juce::jlimit (14.0f, 34.0f, (float) screen.getHeight() * 0.21f), true);
+    const int bandH = juce::roundToInt (f.getHeight() * 1.45f);
+    const int textW = textWidth (f, name);
+    const int y = screen.getCentreY() - bandH / 2;
+
+    // the dot matrix: a black grid over what is lit
+    auto dots = [&g] (juce::Rectangle<int> r)
+    {
+        g.setColour (px::black.withAlpha (0.55f));
+        for (int x = r.getX(); x < r.getRight(); x += 4)
+            g.fillRect (x, r.getY(), 1, r.getHeight());
+        for (int yy = r.getY(); yy < r.getBottom(); yy += 4)
+            g.fillRect (r.getX(), yy, r.getWidth(), 1);
+    };
+
+    if (t < 0.12)
+    {
+        // a plate rushes in from the right, speed streaks behind it
+        const float in = stepped (t / 0.12, 6);
+        const int plateW = textW + 48;
+        const int home = screen.getCentreX() - plateW / 2;
+        const auto plate = juce::Rectangle<int> (home + juce::roundToInt ((1.0f - in) * (float) (screen.getRight() - home)), y, plateW, bandH);
+        g.setColour (px::white);
+        const int rows[] = { 2, 7, 12, 17, 22 };
+        for (int k = 0; k < 5; ++k)
+        {
+            const int len = juce::roundToInt ((1.0f - in) * (float) screen.getWidth() * (0.7f - 0.1f * (float) k)) + 12;
+            g.fillRect (plate.getRight() + 4 + k * 5, plate.getY() + rows[k] * plate.getHeight() / 24, len, 2);
+        }
+        g.fillRect (plate);
+        px::drawText (g, name, plate, juce::Justification::centred, f, px::black);
+        dots (plate);
+        return;
+    }
+
+    const auto band = juce::Rectangle<int> (screen.getX(), y, screen.getWidth(), bandH);
+    if (t < 0.17)
+    {
+        // landed: a flash, the band across the screen
+        g.setColour (px::black);
+        g.fillRect (band);
+        px::frameRect (g, band, px::white, 3);
+        px::drawText (g, name, band, juce::Justification::centred, f, px::white);
+        return;
+    }
+    if (t < 0.38)
+    {
+        g.setColour (px::white);
+        g.fillRect (band);
+        px::drawText (g, name, band, juce::Justification::centred, f, px::black);
+        dots (band);
+        return;
+    }
+    // breaks up in dithers
+    const int level = 3 - (int) ((t - 0.38) / 0.14 * 3.0);
+    if (level > 0)
+        px::dither (g, band, px::white, level);
 }
 
 void SeqPage::paintSequencer (juce::Graphics& g, const Track& tr, double ppq)
@@ -1367,6 +1470,7 @@ void SeqPage::mouseDown (const juce::MouseEvent& e)
             {
                 section = drag.hit.index;
                 startWipe();
+                titleStart = nowMs();
             }
             break;
         case Zone::listen:     engine.playSound (track); break;

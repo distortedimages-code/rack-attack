@@ -86,7 +86,7 @@ private:
         int index;
         juce::Label number, shapes;
         juce::TextButton play, edit;
-        ui::Knob volume { "Volume" }, pan { "Pan" };
+        ui::Cell volume { "Volume" }, pan { "Pan" };
         std::unique_ptr<ui::Choice> out;
         bool selected = false;
     };
@@ -107,7 +107,7 @@ private:
     juce::TextEditor name;
     std::unique_ptr<ui::Choice> midiMode;
     std::array<std::unique_ptr<ui::Choice>, 3> triggerSound;
-    std::array<std::unique_ptr<ui::Knob>, 3> triggerVelocity;
+    std::array<std::unique_ptr<ui::Cell>, 3> triggerVelocity;
     juce::OwnedArray<Pad> pads;
     int selectedPad = 0;
 
@@ -133,7 +133,7 @@ private:
         EffectsPage& owner;
         int index;
         std::unique_ptr<ui::Choice> type, out;
-        juce::OwnedArray<ui::Knob> knobs;   // the 11 parameters, shown by type
+        juce::OwnedArray<ui::Cell> knobs;   // the 11 parameters, shown by type
     };
 
     void kitChanged (const ra::Kit::Change&) override;

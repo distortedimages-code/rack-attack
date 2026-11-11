@@ -43,8 +43,8 @@ namespace ui
     struct Card : public juce::Component
     {
         juce::String title;
-        bool inverted = false;            // the title on a white band (the Son page)
-        explicit Card (juce::String t = {}, bool white = false) : title (std::move (t)), inverted (white) {}
+        bool inverted = true;             // the title on a white band
+        explicit Card (juce::String t = {}, bool white = true) : title (std::move (t)), inverted (white) {}
 
         void paint (juce::Graphics& g) override
         {
@@ -214,6 +214,7 @@ namespace ui
 
         void setValue (int v)       { if (v != value) { value = v; repaint(); } }
         void setSource (int v)      { if (v != source) { source = v; repaint(); } }
+        void setLabel (const juce::String& n)   { name = n; repaint(); }
 
         std::function<void (int)> onChange, onSource;
 
@@ -222,7 +223,7 @@ namespace ui
             auto r = getLocalBounds().reduced (2);
             const bool hot = isMouseOver (true) || dragging;
             const auto nameFont = px::text (20.0f);
-            px::drawText (g, fitName (name, nameFont, r.getWidth()), r.removeFromTop (18), juce::Justification::centred,
+            px::drawText (g, fitName (upper (name), nameFont, r.getWidth()), r.removeFromTop (18), juce::Justification::centred,
                           nameFont, hot ? px::white : px::grey);
             r.removeFromTop (4);
             if (hasSource)

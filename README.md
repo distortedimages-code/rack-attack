@@ -4,7 +4,7 @@
 
 **Page de téléchargement** : https://distortedimages-code.github.io/rack-attack/
 
-## Ce que fait l'appli (version 0.5.2)
+## Ce que fait l'appli (version 0.5.3)
 
 - **Branchement guidé** en 3 écrans : les câbles et ports MIDI, deux réglages sur la machine, puis l'appli trouve le RackAttack toute seule (y compris son Sysex ID) et lit le kit en cours.
 - **Kit** : les 24 sons en pads (écouter, volume, pan, sortie), le programme (nom, mode MIDI, triggers A/B/C), changement de programme.

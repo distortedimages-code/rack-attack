@@ -353,6 +353,9 @@ ToolsPage::ToolsPage (Engine& e, Updater& u, std::function<void()> changed)
     addAndMakeVisible (checkButton);
     addAndMakeVisible (autoCheck);
     checkButton.onClick = [this] { updater.checkNow(); };
+    ui::styleBig (installButton, true);
+    installButton.onClick = [this] { if (installUpdate) installUpdate(); };
+    addChildComponent (installButton);
     addAndMakeVisible (simulationToggle);
     simulationToggle.setColour (juce::ToggleButton::textColourId, px::yellow);
     simulationToggle.onClick = [this]
@@ -441,6 +444,9 @@ void ToolsPage::refreshUpdate()
 {
     updateLabel.setText ("RackAttack Editor " + Updater::currentVersion() + "   ·   "_fr + updater.getStatusText(), juce::dontSendNotification);
     autoCheck.setToggleState (updater.getAutoCheck(), juce::dontSendNotification);
+    installButton.setVisible (updater.getState() == Updater::State::Available);
+    installButton.setButtonText ("Installer la "_fr + updater.getRelease().version);
+    resized();
     checkButton.setEnabled (updater.getState() != Updater::State::Disabled && updater.getState() != Updater::State::Checking
                             && updater.getState() != Updater::State::Installing);
 }
@@ -474,6 +480,11 @@ void ToolsPage::resized()
     checkButton.setBounds (up.removeFromLeft (200));
     up.removeFromLeft (10);
     autoCheck.setBounds (up.removeFromLeft (290));
+    if (installButton.isVisible())
+    {
+        up.removeFromLeft (10);
+        installButton.setBounds (up.removeFromLeft (180));
+    }
     up.removeFromLeft (10);
     updateLabel.setBounds (up);
     r.removeFromTop (6);

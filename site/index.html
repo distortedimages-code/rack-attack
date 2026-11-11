@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RackAttack Editor — l'éditeur du Waldorf RackAttack</title>
+<meta name="description" content="Éditeur, séquenceur et simulateur pour le Waldorf RackAttack. Mac : Audio Unit, VST3 et application. Gratuit.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/Silkscreen-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/VT323-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="bar">
+  <a class="logo" href="#haut" aria-label="RackAttack Editor, haut de page">RACK<i>·</i>ATTACK</a>
+  <nav>
+    <a href="#installer">Installer</a>
+    <a href="#brancher">Brancher</a>
+    <a href="#jouer">Jouer</a>
+    <a href="#mesurer">Mesurer</a>
+  </nav>
+  <a class="light" href="#telecharger"><b></b><span class="ver">v@VERSION@</span></a>
+</header>
+
+<main id="haut">
+
+<section class="hero" id="telecharger">
+  <canvas id="dmd" class="dmd" width="960" height="192" aria-label="RackAttack Editor" role="img"></canvas>
+  <p class="lead">L'éditeur du <b>Waldorf RackAttack</b>.<br>Séquenceur, sons, kits, effets. Et un simulateur quand la machine dort.</p>
+  <div class="get">
+    <a class="dl" id="dl" href="https://github.com/distortedimages-code/rack-attack/releases/latest/download/RackAttack-Editor-mac.dmg">
+      <span class="dl-arrow" aria-hidden="true">▼</span> Télécharger
+      <small id="dl-file">RackAttack-Editor-mac.dmg</small>
+    </a>
+    <ul class="specs">
+      <li><span class="ver">v@VERSION@</span></li><li>macOS 11+</li><li>Apple Silicon &amp; Intel</li><li>AU · VST3 · appli</li><li>gratuit</li>
+    </ul>
+  </div>
+  <figure class="screen">
+    <canvas class="peek" id="peek" width="80" height="96" aria-hidden="true"></canvas>
+    <img src="img/sequenceur-1360.webp" srcset="img/sequenceur-680.webp 680w, img/sequenceur-1360.webp 1360w"
+         sizes="(max-width: 1100px) 100vw, 1060px" width="1360" height="848"
+         alt="La page Séquenceur : 24 sons, l'accès rapide, l'écran du son, et 16 pas.">
+  </figure>
+</section>
+
+<!-- 01 INSTALLER ============================================================ -->
+<section class="mod" id="installer">
+  <h2><span>01 · Installer</span></h2>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-route="pkg">L'installeur</button>
+    <button role="tab" aria-selected="false" data-route="hand">À la main</button>
+  </div>
+
+  <div class="stage" id="scene" aria-hidden="true">
+    <div class="sc">
+      <div class="win dmgwin">
+        <div class="tb"><i></i><i></i><i></i>RackAttack Editor</div>
+        <div class="paper">
+          <div class="pnl p1"><em>LE PLUS SIMPLE</em></div>
+          <div class="pnl p2"><em>OU GLISSE CHAQUE ÉLÉMENT</em></div>
+          <div class="ic pkg" id="i-pkg"><b></b><span>Installer</span></div>
+          <div class="ic txt"><b></b><span>LISEZ-MOI</span></div>
+          <div class="ic comp" id="i-au"><b>AU</b><span>.component</span></div>
+          <div class="ic vst" id="i-vst"><b>VST3</b><span>.vst3</span></div>
+          <div class="ic app" id="i-app"><b></b><span>.app</span></div>
+          <div class="ic fold" id="f-au"><b></b><span>Components</span></div>
+          <div class="ic fold" id="f-vst"><b></b><span>VST3</span></div>
+          <div class="ic fold" id="f-app"><b></b><span>Applications</span></div>
+        </div>
+      </div>
+      <div class="win alert" id="alert">
+        <div class="ghosty" aria-hidden="true">?!</div>
+        <p>« Installer RackAttack Editor »<br>n'est pas signé par Apple.</p>
+        <span class="btn" id="alert-ok">Terminé</span>
+      </div>
+      <div class="stamp" id="stamp">INSTALLÉ !</div>
+      <div class="spot" id="spot"><span>⌘</span>+<span>ESPACE</span><div class="spotbar"><i></i><b id="spot-t"></b></div></div>
+      <div class="win term" id="term">
+        <div class="tb dark"><i></i><i></i><i></i>Terminal</div>
+        <pre id="term-t"></pre>
+      </div>
+      <div class="cursor" id="cur"></div>
+    </div>
+  </div>
+
+  <div class="route" data-route="pkg">
+    <ol class="steps-list">
+      <li><kbd>1</kbd>Ouvre le DMG. Quitte ton DAW.</li>
+      <li><kbd>2</kbd>Double-clic sur <b>Installer RackAttack Editor</b>. <small>« Personnaliser » = juste l'AU, le VST3 ou l'appli.</small></li>
+      <li><kbd>3</kbd>macOS refuse&nbsp;? <small>(Il n'aime pas ce qui n'est pas signé chez Apple.)</small> Ouvre le Terminal&nbsp;: <kbd class="k">⌘</kbd>+<kbd class="k">Espace</kbd>, tape <b>Terminal</b>, <kbd class="k">⏎</kbd>. Colle&nbsp;:
+        <div class="cmd"><code id="cmd-pkg">@INSTALLER_CMD@</code><button class="copy" data-copy="cmd-pkg">Copier</button></div>
+        <small>Puis ton mot de passe&nbsp;: rien ne s'affiche quand tu le tapes, c'est normal.</small></li>
+    </ol>
+  </div>
+
+  <div class="route" data-route="hand" hidden>
+    <ol class="steps-list">
+      <li><kbd>1</kbd>Ouvre le DMG. Quitte ton DAW.</li>
+      <li><kbd>2</kbd>Glisse chaque élément sur son dossier&nbsp;: <b>.component</b> → Components, <b>.vst3</b> → VST3, <b>.app</b> → Applications.</li>
+      <li><kbd>3</kbd>Ouvre le Terminal&nbsp;: <kbd class="k">⌘</kbd>+<kbd class="k">Espace</kbd>, tape <b>Terminal</b>, <kbd class="k">⏎</kbd>. Colle&nbsp;:
+        <div class="cmd"><code id="cmd-hand">@TERMINAL_CMD@</code><button class="copy" data-copy="cmd-hand">Copier</button></div>
+        <small>Mot de passe (invisible, c'est normal). Elle débloque l'AU et le VST3, puis fait valider l'AU.</small></li>
+    </ol>
+  </div>
+  <p class="done">Quand le Terminal dit <b class="y">RackAttack Editor est prêt.</b>, rouvre ton DAW. <small>Live ne le voit pas&nbsp;? Réglages › Plug-ins › Réanalyser.</small></p>
+</section>
+
+<!-- 02 BRANCHER ============================================================= -->
+<section class="mod" id="brancher">
+  <h2><span>02 · Brancher</span></h2>
+  <div class="stage cables" aria-hidden="true">
+    <svg viewBox="0 0 640 200" shape-rendering="crispEdges">
+      <!-- the Mac -->
+      <g class="mac">
+        <rect x="24" y="40" width="132" height="92" fill="#000" stroke="#fff" stroke-width="4"/>
+        <rect x="36" y="52" width="108" height="68" fill="#121212"/>
+        <rect x="44" y="60" width="44" height="8" fill="#fff"/><rect x="92" y="60" width="44" height="8" fill="#3a3a3a"/>
+        <rect x="44" y="76" width="8" height="8" fill="#fff"/><rect x="56" y="76" width="8" height="8" fill="#3a3a3a"/><rect x="68" y="76" width="8" height="8" fill="#fff"/><rect x="80" y="76" width="8" height="8" fill="#3a3a3a"/>
+        <rect x="92" y="76" width="8" height="8" fill="#fff"/><rect x="104" y="76" width="8" height="8" fill="#ff3b2f" class="blink"/><rect x="116" y="76" width="8" height="8" fill="#3a3a3a"/><rect x="128" y="76" width="8" height="8" fill="#ffb000"/>
+        <rect x="76" y="132" width="28" height="12" fill="#fff"/><rect x="56" y="144" width="68" height="6" fill="#fff"/>
+      </g>
+      <!-- the MIDI interface -->
+      <g>
+        <rect x="236" y="96" width="92" height="40" fill="#000" stroke="#9a9a9a" stroke-width="4"/>
+        <text x="282" y="122" class="lbl" text-anchor="middle">MIDI</text>
+        <rect x="156" y="112" width="80" height="4" fill="#6f6f6f"/>
+      </g>
+      <!-- the RackAttack, asleep or awake -->
+      <g class="rack">
+        <rect x="420" y="60" width="200" height="56" fill="#0a0a0a" stroke="#fff" stroke-width="4"/>
+        <rect x="430" y="70" width="10" height="10" fill="#9a9a9a"/><rect x="430" y="96" width="10" height="10" fill="#9a9a9a"/>
+        <rect x="600" y="70" width="10" height="10" fill="#9a9a9a"/><rect x="600" y="96" width="10" height="10" fill="#9a9a9a"/>
+        <text x="452" y="84" class="lbl s">RACKATTACK</text>
+        <rect x="452" y="92" width="60" height="14" fill="#121212" stroke="#3a3a3a" stroke-width="2"/>
+        <text x="458" y="104" class="lcd">SIM 04</text>
+        <circle cx="534" cy="99" r="7" fill="none" stroke="#fff" stroke-width="3"/><circle cx="556" cy="99" r="7" fill="none" stroke="#fff" stroke-width="3"/><circle cx="578" cy="99" r="7" fill="none" stroke="#fff" stroke-width="3"/>
+        <rect x="586" y="78" width="6" height="6" fill="#ff3b2f" class="blink"/>
+      </g>
+      <!-- the cables: OUT of the RackAttack to the interface's IN, the interface's OUT to its IN -->
+      <path d="M328 108 H372 V80 H420" class="cable"/>
+      <path d="M328 124 H388 V104 H420" class="cable"/>
+      <path d="M328 108 H372 V80 H420" class="bits out"/>
+      <path d="M420 104 H388 V124 H328" class="bits back"/>
+      <text x="374" y="70" class="lbl s y">→ IN</text>
+      <text x="374" y="148" class="lbl s r">← OUT</text>
+      <text x="96" y="182" class="lbl s" text-anchor="middle">TON MAC</text>
+      <text x="520" y="148" class="lbl s" text-anchor="middle">LA MACHINE</text>
+    </svg>
+  </div>
+  <ul class="facts">
+    <li><kbd>2</kbd>câbles MIDI&nbsp;: le <b>OUT</b> du RackAttack vers l'entrée de ton interface, son <b>IN</b> vers la sortie.</li>
+    <li><kbd>2</kbd>réglages sur la machine (Global/Utility)&nbsp;: <b>Ctl. send</b> sur SysEx, <b>receive</b> sur On · <b>Rx PrgChg</b> sur On.</li>
+    <li><kbd>1</kbd>assistant au premier lancement&nbsp;: il trouve la machine et lit son kit.</li>
+  </ul>
+</section>
+
+<!-- 03 JOUER ================================================================ -->
+<section class="mod" id="jouer">
+  <h2><span>03 · Jouer</span></h2>
+  <p class="intro">Essaie ici, c'est le même geste que dans l'appli. <small>(Avec le son&nbsp;!)</small></p>
+  <div class="toy" id="toy">
+    <div class="toy-head">
+      <button class="play" id="play"><i></i><span>Play</span></button>
+      <label class="bpm">BPM <input id="bpm" type="number" min="60" max="200" value="118"></label>
+      <div class="knobs">
+        <div class="knob" data-k="pitch" tabindex="0" title="Glisse vers le haut ou le bas"><svg viewBox="0 0 44 44"><circle class="track" cx="22" cy="22" r="17"/><path class="ring"/><rect class="mid" x="21" y="1" width="2" height="5"/><rect class="dot" width="4" height="4"/></svg><span>PITCH</span><b>0</b></div>
+        <div class="knob" data-k="decay" tabindex="0" title="Glisse vers le haut ou le bas"><svg viewBox="0 0 44 44"><circle class="track" cx="22" cy="22" r="17"/><path class="ring"/><rect class="dot" width="4" height="4"/></svg><span>DECAY</span><b>64</b></div>
+      </div>
+      <div class="opts">
+        <button class="optbtn" id="optbtn" aria-haspopup="true">Options ▾</button>
+        <div class="menu" id="menu" hidden>
+          <button data-op="fill4">Remplir 1 sur 4</button>
+          <button data-op="shift">Décaler →</button>
+          <button data-op="random">Au hasard</button>
+          <button data-op="clear">Effacer la piste</button>
+          <button data-op="clearall">Tout effacer</button>
+          <button data-op="undo">Annuler</button>
+        </div>
+      </div>
+    </div>
+    <div class="grid" id="grid"></div>
+    <p class="hint">clic = poser · glisser = peindre · <b>Maj + clic</b> = verrou <span class="yl">■</span> · le nom = choisir la piste</p>
+  </div>
+  <ul class="facts three">
+    <li><b>ACCÈS RAPIDE</b>Les bons réglages du son choisi, juste au-dessus des pas.</li>
+    <li><b>VERROUS</b>Un réglage différent sur un seul pas. Il revient tout seul après.</li>
+    <li><b>ACCORDE MON SON&nbsp;!</b>Coche, passe en <b>NOTES</b>, et la piste joue des mélodies.</li>
+  </ul>
+</section>
+
+<!-- 04 TRIFOUILLER ========================================================== -->
+<section class="mod" id="pages">
+  <h2><span>04 · Trifouiller</span></h2>
+  <div class="tabs" role="tablist" id="shots">
+    <button role="tab" aria-selected="true" data-shot="son">Son</button>
+    <button role="tab" aria-selected="false" data-shot="kit">Kit</button>
+    <button role="tab" aria-selected="false" data-shot="sequenceur">Séquenceur</button>
+  </div>
+  <figure class="screen small">
+    <div class="wipe" id="wipe"><span></span></div>
+    <img id="shot" src="img/son-1360.webp" width="1360" height="848" loading="lazy" decoding="async"
+         alt="La page Son : deux oscillateurs, l'ampli, deux enveloppes, le filtre, le mix et le crack, la sortie, deux LFO.">
+  </figure>
+  <p class="cap" id="shotcap">2 oscillateurs, 1 filtre, 2 enveloppes, 2 LFO. Tout à l'écran, en même temps.</p>
+</section>
+
+<!-- 05 SANS MACHINE ========================================================= -->
+<section class="mod" id="simulateur">
+  <h2><span>05 · Sans machine</span></h2>
+  <div class="sim">
+    <div class="sleep" aria-hidden="true">
+      <div class="rackpx"><i></i><i></i><i></i><b>Z</b><b>z</b><b>z</b></div>
+      <div class="simlight"><b></b>SIMULATION</div>
+    </div>
+    <p>RackAttack pas branché&nbsp;? L'appli passe en <b class="y">SIMULATION</b> et joue les sons elle-même. Pour composer dans le train, ou essayer avant d'acheter.</p>
+  </div>
+</section>
+
+<!-- 06 MESURER ============================================================== -->
+<section class="mod" id="mesurer">
+  <h2><span>06 · Mesurer</span></h2>
+  <div class="stage belt"><canvas id="ghosts" width="960" height="300" aria-hidden="true"></canvas></div>
+  <p class="intro">Tu as la machine&nbsp;? Aide le simulateur à lui ressembler.</p>
+  <ul class="facts">
+    <li><kbd>1</kbd>câble audio de la machine vers ton interface.</li>
+    <li><kbd>5</kbd>minutes&nbsp;: <b>Outils › Mesurer</b>. Le fantôme fait le reste. Toi, tu ne touches à rien.</li>
+    <li><kbd>1</kbd>fichier <b>.ramesure</b> dans Documents › RackAttack › Mesures. Envoie-le-nous, en privé&nbsp;: le simulateur s'améliore pour tout le monde.</li>
+  </ul>
+</section>
+
+<!-- 07 MISES À JOUR ========================================================= -->
+<section class="mod" id="maj">
+  <h2><span>07 · Mises à jour</span></h2>
+  <div class="upd" id="upd" aria-hidden="true">
+    <div class="minibar"><i class="lg">RACK·ATTACK</i><i>Séquenceur</i><i>Kit</i><i>Son</i><span class="ub" id="ub">Mettre à jour</span></div>
+    <div class="cursor" id="ucur"></div>
+  </div>
+  <p class="intro">Une nouvelle version&nbsp;? Un bouton jaune apparaît en haut. Un clic, c'est fait.</p>
+  <p class="cap">Tu as la 0.5.1 ou la 0.5.2&nbsp;? Installe une version plus récente une fois à la main, le bouton revient après.</p>
+</section>
+
+</main>
+
+<footer>
+  <p class="links"><a href="https://github.com/distortedimages-code/rack-attack">Code</a> · <a href="https://github.com/distortedimages-code/rack-attack/releases">Versions</a> · <a href="https://github.com/distortedimages-code/rack-attack/issues">Un souci&nbsp;?</a></p>
+  <p>Waldorf et RackAttack sont des marques de Waldorf Music. Ce projet indépendant n'est pas lié à Waldorf.<br>
+  Polices Silkscreen et VT323 sous licence SIL OFL (<a href="fonts/OFL-Silkscreen.txt">1</a>, <a href="fonts/OFL-VT323.txt">2</a>). Zéro pixel vert.</p>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>

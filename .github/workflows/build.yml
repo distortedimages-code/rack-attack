@@ -5,7 +5,7 @@ name: build
 on:
   push:
     branches: [ "**" ]
-    paths-ignore: [ "docs/**", "**.md" ]
+    paths-ignore: ["docs/**", "**.md", "site/**", ".github/workflows/site.yml"]
   workflow_dispatch:
 
 jobs:

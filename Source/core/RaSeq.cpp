@@ -488,4 +488,47 @@ void Player::stop (const Context& ctx, double atPpq, std::vector<Event>& out)
         }
     reset();
 }
+
+// The demo groove (demo mode, the web version): kicks, snares with a lock and a retrig,
+// hats, a 12-step shaker, a muted zap and a bass line in notes mode, at 124 BPM.
+void fillDemoPattern (Pattern& p)
+{
+    p.tempo = 124.0;
+    const char* names[] = { "Kick", "Kick 2", "Snare", "Clap", "Rim", "Hat fermé", "Hat ouvert", "Crash" };
+    for (int i = 0; i < 8; ++i)
+        p.tracks[(size_t) i].name = names[i];
+    p.tracks[20].name = "Basse";
+    for (int i : { 0, 4, 8, 12 })
+        p.tracks[0].steps[(size_t) i].on = true;
+    for (int i : { 4, 12, 15 })
+        p.tracks[2].steps[(size_t) i].on = true;
+    p.tracks[2].length = 64;
+    p.tracks[2].steps[15].velocity = 40;
+    p.tracks[2].steps[12].setLock (0x27, 98);
+    p.tracks[2].steps[12].setLock (0x29, 70);
+    p.tracks[2].steps[15].condA = 1;
+    p.tracks[2].steps[15].condB = 2;
+    p.tracks[2].steps[7].on = true;
+    p.tracks[2].steps[7].retrig = 3;
+    p.tracks[3].steps[12].on = true;
+    for (int i = 0; i < 16; i += 2)
+    {
+        p.tracks[5].steps[(size_t) i].on = true;
+        p.tracks[5].steps[(size_t) i].velocity = (std::uint8_t) (i % 4 == 0 ? 110 : 50);
+    }
+    p.tracks[5].steps[6].setLock (0x40, 96);
+    p.tracks[6].steps[6].on = p.tracks[6].steps[14].on = true;
+    p.tracks[13].length = 12;
+    for (int i : { 2, 5, 9 })
+        p.tracks[13].steps[(size_t) i].on = true;
+    p.tracks[16].mute = true;
+    p.tracks[16].steps[15].on = true;
+    p.tracks[20].mode = Mode::notes;
+    const int bass[][2] = { { 0, 36 }, { 3, 36 }, { 6, 43 }, { 10, 46 }, { 13, 48 } };
+    for (auto& b : bass)
+    {
+        p.tracks[20].steps[(size_t) b[0]].on = true;
+        p.tracks[20].steps[(size_t) b[0]].note = (std::uint8_t) b[1];
+    }
+}
 }

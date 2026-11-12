@@ -62,6 +62,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
 .dl:active { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--red); }
 .dl-arrow { display: inline-block; animation: hop .9s steps(2) infinite; }
 @keyframes hop { 50% { transform: translateY(4px); } }
+.try { font: 700 15px var(--silk); letter-spacing: 1px; text-transform: uppercase; text-decoration: none; border: 2px solid var(--white); padding: 9px 16px; }
+.try:hover { background: var(--white); color: var(--black); }
+.try.small { display: inline-block; margin-top: 14px; font-size: 12px; }
 .specs { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 0; margin: 0; padding: 0; color: var(--grey); font-size: 22px; }
 .specs li + li::before { content: '·'; margin: 0 10px; color: var(--faint); }
 

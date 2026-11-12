@@ -1,0 +1,356 @@
+// The web version's engine: the plug-in's model and player (ra.wasm, on this page), the simulator (the same
+// module, in an audio worklet), and Web MIDI for the real unit. Timing as in the plug-in's Sequencer: every
+// 20 ms the player plans a little ahead and each message gets its own time.
+
+const LOOKAHEAD = 0.12;          // seconds planned ahead (the plug-in: 40 ms; browsers' timers are rougher)
+const LEAD_MS = 4.2;             // a lock goes this far before its note (one SysEx on the cable)
+const START_TOLERANCE_MS = 15;
+
+export class Engine {
+  constructor () {
+    this.listeners = new Set();
+    this.playing = false;
+    this.hits = new Float64Array(24).fill(-1e9);       // when each voice last played (performance.now)
+    this.midi = { access: null, out: null, in: null, connected: false, reading: 0, device: 0x7f, channel: 1, error: '' };
+    this.sim = true;                                    // the simulator plays (no unit, or chosen)
+    this.audioReady = false;
+    this.outPeak = 0;
+  }
+
+  on (fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
+  emit (what) { for (const fn of this.listeners) fn(what); }
+
+  //============================================================================
+  async load (url) {
+    this.wasmBytes = await (await fetch(url)).arrayBuffer();
+    const inst = await WebAssembly.instantiate(this.wasmBytes, { wasi_snapshot_preview1: { fd_write: () => 0, fd_close: () => 0, fd_seek: () => 0 } });
+    this.x = inst.instance.exports;
+    this.x._initialize();
+    this.x.ra_model_init(3);
+    this.restore();
+  }
+
+  // memory helpers
+  scratch (n) { return new Uint8Array(this.x.memory.buffer, this.x.ra_scratch(), n).slice(); }
+  text (n) { return new TextDecoder().decode(this.scratch(n)); }
+  withBytes (bytes, fn) {
+    const p = this.x.ra_alloc(bytes.length);
+    new Uint8Array(this.x.memory.buffer, p, bytes.length).set(bytes);
+    try { return fn(p, bytes.length); } finally { this.x.ra_free(p); }
+  }
+  withString (s, fn) { const b = new TextEncoder().encode(s + '\0'); return this.withBytes(b, p => fn(p)); }
+
+  //============================================================================
+  // the kit
+  kitName () { return this.text(this.x.ra_kit_name()); }
+  sound (s, a) { return this.x.ra_sound_get(s, a); }
+  fx (e, a) { return this.x.ra_fx_get(e, a); }
+  paramName (a, object = 0) { return this.text(this.x.ra_param_name(object, a)); }
+  valueNames (a, object = 0) {
+    const key = object + ':' + a;
+    this.namesCache ||= new Map();
+    if (!this.namesCache.has(key)) this.namesCache.set(key, this.text(this.x.ra_value_names(object, a)).split('\n').filter(Boolean));
+    return this.namesCache.get(key);
+  }
+  paramMax (a) { const n = this.valueNames(a); return n.length ? n.length - 1 : 127; }
+
+  setSound (s, a, v) {
+    v = Math.max(0, Math.min(this.paramMax(a), Math.round(v)));
+    if (this.sound(s, a) === v) return;
+    const msg = this.scratch(this.x.ra_sound_set(s, a, v));
+    this.send(msg);
+    this.save();
+    this.emit('kit');
+  }
+
+  setFx (e, a, v) {
+    const msg = this.scratch(this.x.ra_fx_set(e, a, Math.max(0, Math.min(127, Math.round(v)))));
+    this.send(msg);
+    this.save();
+    this.emit('kit');
+  }
+
+  //============================================================================
+  // the pattern
+  tempo () { return this.x.ra_tempo(); }
+  setTempo (t) { this.anchor(); this.x.ra_set_tempo(t); this.edited(); }
+  swing () { return this.x.ra_swing(); }
+  setSwing (s) { this.x.ra_set_swing(s); this.edited(); }
+  track (t, f) { return this.x.ra_track_get(t, f); }
+  setTrack (t, f, v) { this.x.ra_track_set(t, f, v); this.edited(); }
+  trackName (t) { const n = this.text(this.x.ra_track_name(t)); return n || 'SON ' + String(t + 1).padStart(2, '0'); }
+  setTrackName (t, n) { this.withString(n, p => this.x.ra_track_set_name(t, p)); this.edited(); }
+  isOn (t, s) { return this.x.ra_track_is_on(t, s) === 1; }
+  step (t, s, f) { return this.x.ra_step_get(t, s, f); }
+  setStep (t, s, f, v) { this.x.ra_step_set(t, s, f, v); this.edited(); }
+  lock (t, s, a) { return this.x.ra_lock_get(t, s, a); }
+  locksAt (t, s) { const n = this.step(t, s, 9), out = []; for (let i = 0; i < n; ++i) out.push(this.x.ra_lock_address(t, s, i)); return out; }
+  setLock (t, s, a, v) { const ok = this.x.ra_lock_set(t, s, a, v) === 1; this.edited(); return ok; }
+  clearLock (t, s, a) { this.x.ra_lock_clear(t, s, a); this.edited(); }
+  trackOp (t, op, arg = 0) { this.x.ra_track_op(t, op, arg); this.edited(); }
+
+  patternBytes () { return this.scratch(this.x.ra_pattern_save()); }
+  loadPattern (bytes) { const ok = this.withBytes(bytes, (p, n) => this.x.ra_pattern_load(p, n)) === 1; if (ok) this.edited(); return ok; }
+
+  edited () { this.save(); this.emit('pattern'); }
+
+  // the browser keeps the pattern and the kit between visits
+  save () {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem('ra.pattern', b64(this.patternBytes()));
+        localStorage.setItem('ra.kit', b64(this.scratch(this.x.ra_kit_save())));
+      } catch (e) { /* private mode: nothing kept */ }
+    }, 300);
+  }
+  restore () {
+    try {
+      const p = localStorage.getItem('ra.pattern'), k = localStorage.getItem('ra.kit');
+      if (k) this.withBytes(unb64(k), (ptr, n) => this.x.ra_kit_load(ptr, n));
+      if (p) this.withBytes(unb64(p), (ptr, n) => this.x.ra_pattern_load(ptr, n));
+    } catch (e) { /* nothing kept */ }
+  }
+  resetAll () {
+    try { localStorage.removeItem('ra.pattern'); localStorage.removeItem('ra.kit'); } catch (e) {}
+    this.x.ra_model_init(3);
+    this.sendKitToSynth();
+    this.emit('kit'); this.emit('pattern');
+  }
+
+  //============================================================================
+  // sound: the simulator in an audio worklet (started by a tap: browsers want one)
+  async startAudio () {
+    if (this.audio) { if (this.audio.state !== 'running') await this.audio.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    // iPhone / iPad: play even with the silent switch on (it is an instrument)
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    this.audio = new AC({ latencyHint: 'interactive' });
+    const resumed = this.audio.resume().catch(() => {});      // still inside the tap that started it
+    await this.audio.audioWorklet.addModule('worklet.js');
+    this.node = new AudioWorkletNode(this.audio, 'ra-synth', { numberOfInputs: 0, outputChannelCount: [2], processorOptions: { wasm: this.wasmBytes } });
+    this.node.connect(this.audio.destination);
+    this.node.port.onmessage = (e) => { if (e.data.t === 'peak') this.outPeak = e.data.v; };
+    this.sendKitToSynth();
+    await resumed;
+    if (this.audio.state !== 'running') await this.audio.resume().catch(() => {});
+    this.audioReady = true;
+    this.emit('audio');
+  }
+
+  sendKitToSynth () {
+    if (!this.node) return;
+    const sounds = [], fx = [];
+    for (let i = 0; i < 24; ++i) sounds.push(this.scratch(this.x.ra_sound_data(i)));
+    for (let e = 0; e < 4; ++e) fx.push(this.scratch(this.x.ra_fx_data(e)));
+    this.node.port.postMessage({ t: 'kit', sounds, fx, channel: this.midi.channel, tempo: this.tempo() });
+  }
+
+  // a message for the unit and the simulator, now
+  send (msg) {
+    if (this.node && this.sim) this.node.port.postMessage({ t: 'midi', list: [{ at: -1, d: msg }] });
+    if (this.midi.out && this.midi.connected) try { this.midi.out.send(msg); } catch (e) { this.midiError(e); }
+  }
+
+  // a voice tapped: its note, on and off
+  audition (s, note = 60, velocity = 100) {
+    const k = this.x.ra_note_for(s, note), ch = k >> 8, n = k & 255;
+    this.send(new Uint8Array([0x90 | ch, n, velocity]));
+    setTimeout(() => this.send(new Uint8Array([0x80 | ch, n, 0])), 180);
+    this.hits[s] = performance.now();
+  }
+
+  //============================================================================
+  // the clock: audio time when there is sound, else the page's clock
+  now () { return this.audio && this.audioReady ? this.audio.currentTime : performance.now() / 1000; }
+
+  anchor () {
+    // a tempo change while playing: the beat continues from where it is
+    if (!this.playing) return;
+    const t = this.now();
+    this.anchorPpq = this.ppqAt(t);
+    this.anchorTime = t;
+  }
+  ppqAt (t) { return this.anchorPpq + (t - this.anchorTime) * this.tempo() / 60; }
+  timeOf (ppq) { return this.anchorTime + (ppq - this.anchorPpq) * 60 / this.tempo(); }
+
+  // the playhead for the screen, -1 stopped
+  playhead () {
+    if (!this.playing) return -1;
+    const lat = this.audio && this.sim ? (this.audio.outputLatency || this.audio.baseLatency || 0) : 0;
+    return Math.max(0, this.ppqAt(this.now() - lat));
+  }
+
+  async play () {
+    if (this.playing) return;
+    if (this.sim) await this.startAudio().catch(() => {});
+    this.x.ra_play_reset();
+    this.anchorTime = this.now() + 0.05;
+    this.anchorPpq = 0;
+    this.planned = this.anchorPpq - START_TOLERANCE_MS / 1000 * this.tempo() / 60;
+    this.playing = true;
+    this.lastTime = this.anchorTime;
+    this.tick();
+    this.timer = setInterval(() => this.tick(), 20);
+    this.emit('transport');
+  }
+
+  stop () {
+    if (!this.playing) return;
+    clearInterval(this.timer);
+    this.playing = false;
+    const at = this.ppqAt(this.now());
+    const ev = this.parse(this.x.ra_stop(at));
+    if (this.node) this.node.port.postMessage({ t: 'stop', list: ev.map(e => ({ at: -1, d: e.d })) });
+    // the unit: after what was already sent ahead
+    const when = Math.max(performance.now(), this.lastMidiStamp || 0) + 1;
+    if (this.midi.out && this.midi.connected) for (const e of ev) try { this.midi.out.send(e.d, when); } catch (err) { this.midiError(err); }
+    this.emit('transport');
+  }
+
+  toggle () { return this.playing ? this.stop() : this.play(); }
+
+  tick () {
+    if (!this.playing) return;
+    const until = this.ppqAt(this.now() + LOOKAHEAD);
+    const lead = LEAD_MS / 1000 * this.tempo() / 60;
+    const ev = this.parse(this.x.ra_plan(this.planned, until, lead));
+    this.planned = until;
+    if (!ev.length) return;
+    const list = [];
+    const audioNow = this.now(), pageNow = performance.now();
+    for (const e of ev) {
+      const at = Math.max(audioNow, this.timeOf(e.ppq));
+      list.push({ at: this.sim && this.audioReady ? at : -1, d: e.d });
+      const stamp = pageNow + (at - audioNow) * 1000;
+      if (this.midi.out && this.midi.connected) {
+        try { this.midi.out.send(e.d, stamp); } catch (err) { this.midiError(err); }
+        this.lastMidiStamp = Math.max(this.lastMidiStamp || 0, stamp);
+      }
+      if (e.kind === 1) {
+        const lat = this.audio && this.sim ? (this.audio.outputLatency || this.audio.baseLatency || 0) * 1000 : 0;
+        const track = e.track;
+        setTimeout(() => { this.hits[track] = performance.now(); }, Math.max(0, stamp - pageNow + lat));
+      }
+    }
+    if (this.node && this.sim) this.node.port.postMessage({ t: 'midi', list });
+  }
+
+  // timed records from ra_plan / ra_stop
+  parse (n) {
+    const bytes = this.scratch(this.x.ra_scratch_size());
+    const dv = new DataView(bytes.buffer);
+    const out = [];
+    let off = 0;
+    for (let i = 0; i < n; ++i) {
+      off = (off + 7) & ~7;
+      const ppq = dv.getFloat64(off, true), track = dv.getInt32(off + 8, true), kind = dv.getInt32(off + 12, true), size = dv.getInt32(off + 16, true);
+      out.push({ ppq, track, kind, d: bytes.slice(off + 20, off + 20 + size) });
+      off += 20 + size;
+    }
+    return out;
+  }
+
+  //============================================================================
+  // the real unit, through Web MIDI (Chrome, Edge, or an iPad app that adds it, such as Web MIDI Browser)
+  midiAvailable () { return !!navigator.requestMIDIAccess; }
+
+  async midiAccess () {
+    if (this.midi.access) return this.midi.access;
+    this.midi.access = await navigator.requestMIDIAccess({ sysex: true });
+    this.midi.access.onstatechange = () => this.emit('midi');
+    return this.midi.access;
+  }
+
+  ports () {
+    const a = this.midi.access;
+    if (!a) return { inputs: [], outputs: [] };
+    return { inputs: [...a.inputs.values()], outputs: [...a.outputs.values()] };
+  }
+
+  midiError (e) { this.midi.error = String(e && e.message || e); this.emit('midi'); }
+
+  // ports chosen: find the unit (its SysEx ID and channel), then read its kit
+  async connect (inId, outId) {
+    const a = await this.midiAccess();
+    this.disconnect();
+    this.midi.in = a.inputs.get(inId) || null;
+    this.midi.out = a.outputs.get(outId) || null;
+    this.midi.error = '';
+    if (!this.midi.in || !this.midi.out) { this.midi.error = 'Choisis une entrée et une sortie.'; this.emit('midi'); return false; }
+    try { localStorage.setItem('ra.midi', JSON.stringify({ inId, outId })); } catch (e) {}
+    this.midi.in.onmidimessage = (e) => this.incoming(e.data);
+    this.midi.status = 'Je cherche le RackAttack…';
+    this.emit('midi');
+    const global = await this.request(this.scratch(this.x.ra_msg_global_request()), d => this.withBytes(d, (p, n) => this.x.ra_parse_global(p, n)) >= 0, 1500);
+    if (!global) { this.midi.error = 'Pas de réponse : vérifie les deux câbles, et Ctl. send = SysEx sur la machine.'; this.midi.status = ''; this.emit('midi'); return false; }
+    const g = this.withBytes(global, (p, n) => this.x.ra_parse_global(p, n));
+    this.midi.device = g >> 8; this.midi.channel = g & 255;
+    this.x.ra_set_device(this.midi.device, this.midi.channel);
+    this.midi.connected = true;
+    this.sim = false;
+    if (this.node) this.node.port.postMessage({ t: 'off' });
+    await this.readKit();
+    return true;
+  }
+
+  async readKit () {
+    const asks = [this.scratch(this.x.ra_msg_program_request())];
+    for (let s = 0; s < 24; ++s) asks.push(this.scratch(this.x.ra_msg_sound_request(s)));
+    for (let e = 0; e < 4; ++e) asks.push(this.scratch(this.x.ra_msg_effect_request(e)));
+    let done = 0;
+    for (const ask of asks) {
+      this.midi.status = `Je lis le kit… ${done}/${asks.length}`;
+      this.emit('midi');
+      const got = await this.request(ask, d => d[0] === 0xf0 && d.length > 20, 800);
+      if (got) ++done;
+    }
+    this.midi.status = done === asks.length ? '' : `Kit lu en partie (${done}/${asks.length})`;
+    this.sendKitToSynth();
+    this.emit('kit'); this.emit('midi');
+  }
+
+  // sends a request, waits for the first answer that `accept` takes
+  request (msg, accept, timeout) {
+    return new Promise((resolve) => {
+      const t = setTimeout(() => { this.waiting = null; resolve(null); }, timeout);
+      this.waiting = (d) => { if (accept(d)) { clearTimeout(t); this.waiting = null; resolve(d); return true; } return false; };
+      try { this.midi.out.send(msg); } catch (e) { clearTimeout(t); this.waiting = null; this.midiError(e); resolve(null); }
+    });
+  }
+
+  incoming (d) {
+    if (d[0] === 0xf0) {
+      if (this.waiting) this.waiting(d);
+      // dumps and parameter changes from the unit (its knobs, when Ctl. send = SysEx): the screen follows
+      const what = this.withBytes(d, (p, n) => this.x.ra_kit_apply(p, n));
+      if (what) this.emit('kit');
+      return;
+    }
+    if ((d[0] & 0xf0) === 0x90 && d[2] > 0) {
+      for (let s = 0; s < 24; ++s) {
+        const k = this.x.ra_note_for(s, d[1]);
+        if ((k >> 8) === (d[0] & 15) && (k & 255) === d[1]) this.hits[s] = performance.now();
+      }
+    }
+  }
+
+  disconnect () {
+    if (this.midi.in) this.midi.in.onmidimessage = null;
+    this.midi.connected = false;
+    this.midi.in = this.midi.out = null;
+    this.sim = true;
+    this.x.ra_set_device(0x7f, 1);
+    this.emit('midi');
+  }
+
+  // back to the simulator's own kit
+  useSimulator () {
+    this.disconnect();
+    this.midi.channel = 1;
+    this.sendKitToSynth();
+  }
+}
+
+function b64 (bytes) { let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); }
+function unb64 (t) { const s = atob(t), b = new Uint8Array(s.length); for (let i = 0; i < s.length; ++i) b[i] = s.charCodeAt(i); return b; }

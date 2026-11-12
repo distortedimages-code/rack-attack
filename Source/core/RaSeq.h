@@ -108,6 +108,7 @@ void clearLocks (Track&);                     // the locks only
 void resetTrack (Track&);                     // like new (16 steps, 1/16, steps mode), the name kept
 void shiftSteps (Track&, int by);             // turns the steps of the active length (+1: one to the right)
 void fillEvery (Track&, int every);           // a trig every `every` steps over the active length, from the first
+void fillDemoPattern (Pattern&);              // the demo groove (demo mode, the web version)
 
 //==============================================================================
 // What the player needs to know about the unit and the kit.

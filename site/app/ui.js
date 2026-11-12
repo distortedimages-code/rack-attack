@@ -190,6 +190,8 @@ for (const [id, label] of [['seq', 'Séquenceur'], ['son', 'Son']]) {
 const light = el('div', 'light', top);
 el('b', '', light);
 const lightText = el('span', '', light);
+const audioKey = el('button', 'key', top, 'Audio');
+audioKey.addEventListener('click', audioDialog);
 const midiKey = el('button', 'key', top, 'MIDI');
 midiKey.addEventListener('click', midiDialog);
 const fullKey = el('button', 'key', top, 'Plein écran');
@@ -895,8 +897,9 @@ function frame () {
 //==============================================================================
 // MIDI: the real unit
 async function midiDialog () {
-  const old = stage.querySelector('.dlg'); if (old) { old.remove(); return; }
+  const old = stage.querySelector('.dlg'); if (old) { old.remove(); if (old.dataset.kind === 'midi') return; }
   const d = el('div', 'dlg', stage);
+  d.dataset.kind = 'midi';
   el('h2', '', d, 'MIDI · LA VRAIE MACHINE');
   const body = el('div', '', d);
   const close = () => d.remove();
@@ -937,6 +940,95 @@ async function midiDialog () {
   reset.addEventListener('click', () => { if (confirm('Effacer ta séquence et revenir au kit et au groove de départ ?')) { E.resetAll(); S.sel.clear(); render(); close(); } });
   const ok = el('button', 'key', row2, 'Fermer');
   ok.addEventListener('click', close);
+}
+
+//==============================================================================
+// audio: the output, its volume and latency, an input to hear the real unit through a sound card
+async function audioDialog () {
+  const old = stage.querySelector('.dlg'); if (old) { old.remove(); if (old.dataset.kind === 'audio') return; }
+  if (!E.audio) { try { await E.startAudio(); } catch (e) {} }
+  const d = el('div', 'dlg', stage);
+  d.dataset.kind = 'audio';
+  el('h2', '', d, 'AUDIO · ENTRÉE ET SORTIE');
+  const body = el('div', '', d);
+  const st = E.settings;
+  let devs = await E.devices().catch(() => ({ inputs: [], outputs: [] }));
+  const unnamed = list => list.length && list.every(x => !x.name || /^(Entrée|Sortie) \d/.test(x.name));
+
+  // the output
+  const outRow = el('label', '', body, 'SORTIE');
+  if (E.canChooseOutput() && devs.outputs.length) {
+    const s = el('select', '', outRow);
+    for (const o of [{ id: '', name: 'Celle du système' }, ...devs.outputs.filter(o => o.id !== 'default')]) {
+      const op = el('option', '', s, o.name); op.value = o.id; if ((st.sink || '') === o.id) op.selected = true;
+    }
+    s.addEventListener('change', () => E.setOutput(s.value).then(() => toast('Sortie : ' + s.selectedOptions[0].textContent)).catch(() => toast('Sortie refusée', 'red')));
+  } else el('span', 'note', outRow, 'celle du système (sur iPad : le centre de contrôle, ou la carte son branchée)');
+
+  const slider = (name, value, max, fmt, set) => {
+    const l = el('label', '', body, name);
+    const r = el('input', 'range', l); r.type = 'range'; r.min = 0; r.max = max; r.step = 0.01; r.value = value;
+    const v = el('span', 'rv', l, fmt(value));
+    r.addEventListener('input', () => { v.textContent = fmt(+r.value); set(+r.value); });
+    return r;
+  };
+  const pct = x => Math.round(x * 100) + ' %';
+  slider('VOLUME', st.volume ?? 1, 1.5, pct, v => E.setVolume(v));
+
+  // latency: a new audio context
+  const latRow = el('label', '', body, 'LATENCE');
+  const lat = el('select', '', latRow);
+  for (const [id, name] of [['interactive', 'Courte (pour jouer)'], ['balanced', 'Normale'], ['playback', 'Confortable (moins de craquements)']]) {
+    const op = el('option', '', lat, name); op.value = id; if ((st.latency || 'interactive') === id) op.selected = true;
+  }
+  const latInfo = el('span', 'rv', latRow);
+  const showLat = () => { latInfo.textContent = E.audio ? `${E.latencyMs()} ms · ${String(Math.round(E.audio.sampleRate / 100) / 10).replace(".", ",")} kHz` : ''; };
+  showLat();
+  lat.addEventListener('change', async () => { await E.setLatency(lat.value); showLat(); toast('Audio relancé'); });
+
+  // the input
+  el('div', 'sub', body, 'ENTRÉE : ENTENDRE LA VRAIE MACHINE');
+  const inRow = el('label', '', body, 'ENTRÉE');
+  const ins = el('select', '', inRow);
+  const fillInputs = () => {
+    ins.innerHTML = '';
+    for (const o of [{ id: '', name: 'Celle du système' }, ...devs.inputs.filter(o => o.id !== 'default')]) {
+      const op = el('option', '', ins, o.name); op.value = o.id; if ((st.input || '') === o.id) op.selected = true;
+    }
+  };
+  fillInputs();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) ins.disabled = true;
+  const allow = el('button', 'key', inRow, 'Autoriser');
+  allow.style.display = unnamed(devs.inputs) || !devs.inputs.length ? '' : 'none';
+  allow.addEventListener('click', async () => {
+    try { await E.askPermission(); devs = await E.devices(); fillInputs(); allow.style.display = 'none'; }
+    catch (e) { toast("Accès à l'entrée refusé", 'red'); }
+  });
+  ins.addEventListener('change', () => E.openInput(ins.value).catch(() => toast("Entrée refusée", 'red')));
+
+  const monRow = el('label', 'check', body);
+  const mon = el('input', '', monRow); mon.type = 'checkbox'; mon.checked = !!st.monitor;
+  el('span', '', monRow, "Écouter l'entrée dans la sortie");
+  mon.addEventListener('change', async () => {
+    if (mon.checked && !E.inputStream) { try { await E.openInput(ins.value); } catch (e) { mon.checked = false; toast("Entrée refusée", 'red'); return; } }
+    E.setMonitor(mon.checked);
+  });
+  slider('NIVEAU', st.inputGain ?? 1, 2, pct, v => E.setInputGain(v));
+  const vu = el('div', 'vu', body);
+  for (let i = 0; i < 24; ++i) el('i', '', vu);
+  el('p', 'small', body, "Branche la sortie de la RackAttack sur l'entrée de ta carte son. Avec le micro et les haut-parleurs de la tablette, ça larsène : casque ou carte son.");
+
+  const row = el('div', 'row', d);
+  const ok = el('button', 'key', row, 'Fermer');
+  const close = () => { cancelAnimationFrame(raf); d.remove(); };
+  ok.addEventListener('click', close);
+  let raf = 0;
+  const meterLoop = () => {
+    const p = E.inputPeak(), db = p > 0 ? 20 * Math.log10(p) : -90, lvl = p < 0 ? 0 : Math.max(0, Math.min(24, Math.round((db + 60) / 2.5)));
+    [...vu.children].forEach((b, i) => { b.className = i < lvl ? (i >= 21 ? 'hot' : 'on') : ''; });
+    raf = requestAnimationFrame(meterLoop);
+  };
+  meterLoop();
 }
 
 //==============================================================================

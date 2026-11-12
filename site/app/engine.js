@@ -13,6 +13,7 @@ export class Engine {
     this.hits = new Float64Array(24).fill(-1e9);       // when each voice last played (performance.now)
     this.midi = { access: null, out: null, in: null, connected: false, reading: 0, device: 0x7f, channel: 1, error: '' };
     this.sim = true;                                    // the simulator plays (no unit, or chosen)
+    this.loadSettings();
     this.audioReady = false;
     this.outPeak = 0;
   }
@@ -124,18 +125,121 @@ export class Engine {
     if (this.audio) { if (this.audio.state !== 'running') await this.audio.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     // iPhone / iPad: play even with the silent switch on (it is an instrument)
-    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
-    this.audio = new AC({ latencyHint: 'interactive' });
+    try { if (navigator.audioSession) navigator.audioSession.type = this.settings.monitor ? 'play-and-record' : 'playback'; } catch (e) {}
+    const opts = { latencyHint: this.settings.latency || 'interactive' };
+    if (this.settings.sink && 'setSinkId' in AC.prototype) opts.sinkId = this.settings.sink;
+    try { this.audio = new AC(opts); } catch (e) { delete opts.sinkId; this.audio = new AC(opts); }
     const resumed = this.audio.resume().catch(() => {});      // still inside the tap that started it
     await this.audio.audioWorklet.addModule('worklet.js');
     this.node = new AudioWorkletNode(this.audio, 'ra-synth', { numberOfInputs: 0, outputChannelCount: [2], processorOptions: { wasm: this.wasmBytes } });
-    this.node.connect(this.audio.destination);
+    // the simulator and the monitored input meet in the master volume
+    this.master = this.audio.createGain();
+    this.master.gain.value = this.settings.volume ?? 1;
+    this.node.connect(this.master);
+    this.master.connect(this.audio.destination);
     this.node.port.onmessage = (e) => { if (e.data.t === 'peak') this.outPeak = e.data.v; };
     this.sendKitToSynth();
     await resumed;
     if (this.audio.state !== 'running') await this.audio.resume().catch(() => {});
     this.audioReady = true;
+    if (this.settings.monitor || this.settings.input) this.openInput(this.settings.input).catch(() => {});
     this.emit('audio');
+  }
+
+  //============================================================================
+  // audio settings: output device, volume, latency, the input (to hear the real unit through an interface)
+  loadSettings () {
+    try { this.settings = JSON.parse(localStorage.getItem('ra.audio') || '{}'); } catch (e) { this.settings = {}; }
+  }
+  saveSettings () { try { localStorage.setItem('ra.audio', JSON.stringify(this.settings)); } catch (e) {} }
+
+  canChooseOutput () { const AC = window.AudioContext || window.webkitAudioContext; return !!AC && 'setSinkId' in AC.prototype; }
+
+  async devices () {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return { inputs: [], outputs: [] };
+    const all = await navigator.mediaDevices.enumerateDevices();
+    const named = (d, i, kind) => ({ id: d.deviceId, name: d.label || `${kind} ${i + 1}` });
+    return {
+      inputs: all.filter(d => d.kind === 'audioinput').map((d, i) => named(d, i, 'Entrée')),
+      outputs: all.filter(d => d.kind === 'audiooutput').map((d, i) => named(d, i, 'Sortie')),
+    };
+  }
+
+  // the browser shows device names once it may use an input
+  async askPermission () {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    s.getTracks().forEach(t => t.stop());
+  }
+
+  async setOutput (id) {
+    this.settings.sink = id; this.saveSettings();
+    if (this.audio && this.audio.setSinkId) await this.audio.setSinkId(id || '');
+  }
+
+  setVolume (v) {
+    this.settings.volume = v; this.saveSettings();
+    if (this.master) this.master.gain.setTargetAtTime(v, this.audio.currentTime, 0.02);
+  }
+
+  // a new latency needs a new audio context: the simulator restarts with the same kit
+  async setLatency (hint) {
+    this.settings.latency = hint; this.saveSettings();
+    if (!this.audio) return;
+    const was = this.playing;
+    if (was) this.stop();
+    this.closeInput();
+    try { await this.audio.close(); } catch (e) {}
+    this.audio = null; this.node = null; this.master = null; this.audioReady = false;
+    await this.startAudio();
+    if (was) await this.play();
+  }
+
+  latencyMs () {
+    if (!this.audio) return 0;
+    return Math.round(((this.audio.baseLatency || 0) + (this.audio.outputLatency || 0)) * 1000);
+  }
+
+  async openInput (id) {
+    if (!this.audio) return;
+    this.closeInput();
+    this.settings.input = id || ''; this.saveSettings();
+    const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: { ideal: 2 } };
+    if (id) audio.deviceId = { exact: id };
+    this.inputStream = await navigator.mediaDevices.getUserMedia({ audio });
+    this.inputNode = this.audio.createMediaStreamSource(this.inputStream);
+    this.inputGain = this.audio.createGain();
+    this.inputGain.gain.value = this.settings.monitor ? (this.settings.inputGain ?? 1) : 0;
+    this.inputMeter = this.audio.createAnalyser();
+    this.inputMeter.fftSize = 512;
+    this.inputNode.connect(this.inputMeter);
+    this.inputNode.connect(this.inputGain);
+    this.inputGain.connect(this.master);
+    this.emit('audio');
+  }
+
+  closeInput () {
+    if (this.inputStream) this.inputStream.getTracks().forEach(t => t.stop());
+    try { this.inputNode && this.inputNode.disconnect(); this.inputGain && this.inputGain.disconnect(); } catch (e) {}
+    this.inputStream = this.inputNode = this.inputGain = this.inputMeter = null;
+  }
+
+  setMonitor (on) {
+    this.settings.monitor = on; this.saveSettings();
+    try { if (navigator.audioSession) navigator.audioSession.type = on ? 'play-and-record' : 'playback'; } catch (e) {}
+    if (this.inputGain) this.inputGain.gain.setTargetAtTime(on ? (this.settings.inputGain ?? 1) : 0, this.audio.currentTime, 0.02);
+  }
+
+  setInputGain (v) {
+    this.settings.inputGain = v; this.saveSettings();
+    if (this.inputGain && this.settings.monitor) this.inputGain.gain.setTargetAtTime(v, this.audio.currentTime, 0.02);
+  }
+
+  inputPeak () {
+    if (!this.inputMeter) return -1;
+    const buf = this.peakBuf || (this.peakBuf = new Float32Array(512));
+    this.inputMeter.getFloatTimeDomainData(buf);
+    let p = 0; for (const v of buf) p = Math.max(p, Math.abs(v));
+    return p;
   }
 
   sendKitToSynth () {

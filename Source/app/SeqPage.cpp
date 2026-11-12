@@ -1117,13 +1117,10 @@ void SeqPage::paintSteps (juce::Graphics& g, const Track& tr, int playing)
                 px::dither (g, r.reduced (2), px::faint, 1);
         }
 
-        // the playhead leaves a short red trail; a wave runs when it stops
-        if (playing >= 0 && ! tr.mute && ! on)
-        {
-            const int back = ((playing - idx) % len + len) % len;
-            if (back == 1) px::dither (g, r.reduced (3), px::red, 2);
-            if (back == 2) px::dither (g, r.reduced (3), px::red, 1);
-        }
+        // the step being played turns red, under the red line (as in the web version: no trail behind,
+        // which read as the square lagging the line); a wave runs when it stops
+        if (idx == playing && ! tr.mute && ! on)
+            px::dither (g, r.reduced (3), px::red, 2);
         if (waveT >= 0.0 && waveT < 1.0)
         {
             const float pos = (float) waveT * 20.0f - 2.0f;

@@ -1,60 +1,72 @@
-# Publishing a version (same steps as OXIde): set VERSION in CMakeLists.txt, write
-# RELEASE_NOTES.md, merge into main, then on GitHub: Actions > release > Run workflow (on main).
-# This builds and tests on a Mac, and creates a DRAFT release v<VERSION> with
-#   RackAttack-Editor-mac.dmg          for people (the web page links to it): an installer
-#                                      (.pkg) and the bundles to drag, with the Terminal commands,
-#   RackAttack-Editor-mac.zip + .sha256 for the in-plugin updater.
-# Review it on GitHub and press "Publish release" (that also creates the tag): installed
-# plug-ins then offer the update (they only see published, non-prerelease releases).
+# Publishing a version, as for IMPAKT: raise VERSION in CMakeLists.txt, write RELEASE_NOTES.md, merge into main.
+# On that push, when there is no release v<VERSION> yet, this builds and tests on a Mac and publishes the release
+# v<VERSION> (GitHub creates the tag on that commit) with
+#   RackAttack-Editor-mac.dmg           for people (the site links to it): an installer (.pkg) and the bundles to drag,
+#                                       with the Terminal commands,
+#   RackAttack-Editor-mac.zip + .sha256 for the in-plugin updater: installed plug-ins then offer the update.
+# Any other push to main (same VERSION) stops at the check. Actions > release > Run workflow does the same by hand;
+# with "brouillon" ticked, the release stays a draft to look at before publishing it.
 name: release
 
 on:
   push:
-    tags: [ "v*" ]
+    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      brouillon:
+        description: "Brouillon (à publier à la main)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  mac:
-    runs-on: macos-latest
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      new: ${{ steps.ver.outputs.new }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Check the version
+      - name: Is it a new version?
+        id: ver
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VER=$(sed -n 's/^project(RackAttack VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-          if [ "$GITHUB_REF_TYPE" = "tag" ] && gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            # publishing a draft creates its tag, which lands here: nothing left to do
-            echo "Release $GITHUB_REF_NAME already exists: nothing to build."
-            echo "SKIP=1" >> "$GITHUB_ENV"; exit 0
+          [ -n "$VER" ] || { echo "No VERSION in CMakeLists.txt"; exit 1; }
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          # published or draft: either way, v$VER is taken
+          if gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName' | grep -qx "v$VER"; then
+            echo "new=no" >> "$GITHUB_OUTPUT"; echo "v$VER exists already: nothing to publish."
+          else
+            echo "new=yes" >> "$GITHUB_OUTPUT"; echo "v$VER is new: building and publishing it."
           fi
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            if [ "${GITHUB_REF_NAME#v}" != "$VER" ]; then
-              echo "The tag $GITHUB_REF_NAME doesn't match VERSION $VER in CMakeLists.txt"; exit 1
-            fi
-          elif gh release view "v$VER" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "A release v$VER already exists: raise VERSION in CMakeLists.txt first"; exit 1
-          fi
-          echo "VERSION=$VER" >> "$GITHUB_ENV"
+
+  mac:
+    needs: check
+    if: needs.check.outputs.new == 'yes'
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Configure
-        if: env.SKIP != '1'
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        if: env.SKIP != '1'
         run: cmake --build build --config Release -j 4
 
       - name: Test
-        if: env.SKIP != '1'
         run: ctest --test-dir build --output-on-failure
 
       - name: Package
-        if: env.SKIP != '1'
         run: |
           ART=build/RackAttackEditor_artefacts/Release
           mkdir -p pkg out
@@ -65,16 +77,16 @@ jobs:
           # the three bundles at the top of the zip, as the in-plugin updater expects
           ditto -c -k pkg out/RackAttack-Editor-mac.zip
           (cd out && shasum -a 256 RackAttack-Editor-mac.zip > RackAttack-Editor-mac.zip.sha256)
-          # the disk image people download from the web page
+          # the disk image people download from the site
           python3 -m pip install --quiet --break-system-packages dmgbuild==1.6.7 || python3 -m pip install --quiet dmgbuild==1.6.7
           tools/dmg/make_dmg.sh pkg out/RackAttack-Editor-mac.dmg "$VERSION"
 
-      - name: Create the draft release
-        if: env.SKIP != '1'
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
+          DRAFT: ${{ github.event_name == 'workflow_dispatch' && inputs.brouillon && '--draft' || '' }}
         run: |
           NOTES=RELEASE_NOTES.md
           [ -f "$NOTES" ] || { echo "RackAttack Editor $VERSION" > /tmp/notes.md; NOTES=/tmp/notes.md; }
           gh release create "v$VERSION" out/RackAttack-Editor-mac.dmg out/RackAttack-Editor-mac.zip out/RackAttack-Editor-mac.zip.sha256 \
-            --target "$GITHUB_SHA" --draft --title "RackAttack Editor $VERSION" --notes-file "$NOTES"
+            --target "$GITHUB_SHA" --title "RackAttack Editor $VERSION" --notes-file "$NOTES" $DRAFT

@@ -32,9 +32,9 @@ Ensuite, les mises à jour se font depuis le plug-in : un bouton **Mise à jour*
 ## Publier une version
 
 1. Monter `VERSION` dans `CMakeLists.txt` (`project(RackAttack VERSION x.y.z …)`) et écrire `RELEASE_NOTES.md`.
-2. Fusionner dans `main`.
-3. Sur GitHub : *Actions* → **release** → *Run workflow* (sur `main`). La version est construite, testée, et une **version brouillon** est créée avec le `.dmg`, le `.zip` et son contrôle.
-4. *Releases* → relire le brouillon → **Publish release**. Les plug-ins installés proposent alors la mise à jour.
+2. Fusionner dans `main`. C'est tout, comme pour IMPAKT : quand `main` porte une version qui n'est pas encore sortie, le workflow **release** la construit, la teste sur un Mac et la publie avec le `.dmg`, le `.zip` et son contrôle (GitHub crée le tag). Les plug-ins installés proposent alors la mise à jour.
+
+Pour regarder une version avant qu'elle sorte : *Actions* → **release** → *Run workflow* avec **Brouillon** coché, puis *Releases* → **Publish release**.
 
 ## Fichiers
 

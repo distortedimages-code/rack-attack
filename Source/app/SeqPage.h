@@ -71,7 +71,7 @@ private:
     void paintVoices (juce::Graphics&, const std::array<Voice, ra::seq::numTracks>&, double now, double ppq);
     void paintSound (juce::Graphics&, const ra::seq::Track&);
     void paintSequencer (juce::Graphics&, const ra::seq::Track&, double ppq);
-    void paintSteps (juce::Graphics&, const ra::seq::Track&, int playing);
+    void paintSteps (juce::Graphics&, const ra::seq::Track&, int playing, double ppq);
     void paintMiniMap (juce::Graphics&, const ra::seq::Track&, int playing);
     void paintTrigRow (juce::Graphics&, const ra::seq::Track&);
 

@@ -1031,7 +1031,7 @@ void SeqPage::paintSequencer (juce::Graphics& g, const Track& tr, double ppq)
         px::drawText (g, label, b, juce::Justification::centred, px::label (12.0f), pressed ? px::black : hot ? px::white : px::grey);
     }
 
-    paintSteps (g, tr, playing);
+    paintSteps (g, tr, playing, ppq);
     paintMiniMap (g, tr, playing);
 
     // hint or selection
@@ -1067,10 +1067,14 @@ void SeqPage::paintSequencer (juce::Graphics& g, const Track& tr, double ppq)
     paintTrigRow (g, tr);
 }
 
-void SeqPage::paintSteps (juce::Graphics& g, const Track& tr, int playing)
+void SeqPage::paintSteps (juce::Graphics& g, const Track& tr, int playing, double ppq)
 {
     const auto now = nowMs();
     const int len = tr.activeLength();
+    // where the playhead is inside its step, and how long a step lasts: the trail fades by the clock
+    const double spb = stepsPerBeat (tr.division);
+    const double frac = ppq >= 0.0 ? ppq * spb - std::floor (ppq * spb) : 0.0;
+    const double stepMs = 60000.0 / juce::jmax (1.0, seq.getTempo()) / spb;
     const auto trigs = tr.trigs();
     const double waveT = (now - stopWaveStart) / 360.0;
 
@@ -1117,10 +1121,22 @@ void SeqPage::paintSteps (juce::Graphics& g, const Track& tr, int playing)
                 px::dither (g, r.reduced (2), px::faint, 1);
         }
 
-        // the step being played turns red, under the red line (as in the web version: no trail behind,
-        // which read as the square lagging the line); a wave runs when it stops
-        if (idx == playing && ! tr.mute && ! on)
-            px::dither (g, r.reduced (3), px::red, 2);
+        // the step being played: the densest red, under the red line; behind it a short trail that
+        // fades in a few hundredths of a second; a wave runs when it stops
+        if (playing >= 0 && ! tr.mute && ! on)
+        {
+            const int back = ((playing - idx) % len + len) % len;
+            int level = 0;
+            if (back == 0)
+                level = 3;
+            else
+            {
+                const double since = (frac + back - 1) * stepMs;     // ms since this step ended
+                level = since < 45.0 ? 2 : since < 110.0 ? 1 : 0;
+            }
+            if (level > 0)
+                px::dither (g, r.reduced (3), px::red, level);
+        }
         if (waveT >= 0.0 && waveT < 1.0)
         {
             const float pos = (float) waveT * 20.0f - 2.0f;

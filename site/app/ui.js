@@ -861,7 +861,14 @@ function frame () {
     // the playhead of the open track
     const t = S.track, spb = [8, 4, 2, 1, 6, 3][E.track(t, FIELD.division)], len = E.track(t, FIELD.active);
     const cur = ppq >= 0 ? Math.floor(ppq * spb) % len : -1;
-    steps.forEach((s, i) => s.el.classList.toggle('now', S.stepPage * 16 + i === cur));
+    const frac = ppq >= 0 ? ppq * spb - Math.floor(ppq * spb) : 0, stepMs = 60000 / E.tempo() / spb;
+    steps.forEach((s, i) => {
+      const idx = S.stepPage * 16 + i, back = cur >= 0 ? ((cur - idx) % len + len) % len : -1;
+      const since = back > 0 ? (frac + back - 1) * stepMs : 1e9;     // ms since this step ended: a quick trail
+      s.el.classList.toggle('now', back === 0);
+      s.el.classList.toggle('t1', since < 45);
+      s.el.classList.toggle('t2', since >= 45 && since < 110);
+    });
     [...mini.children].forEach((g, p) => { for (let k = 0; k < 16; ++k) g.children[k].classList.toggle('now', p * 16 + k === cur); });
     for (let i = 0; i < 24; ++i) {
       const vs = [8, 4, 2, 1, 6, 3][E.track(i, FIELD.division)], vl = E.track(i, FIELD.active), c = ppq >= 0 ? Math.floor(ppq * vs) % vl : -1;

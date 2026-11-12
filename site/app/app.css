@@ -129,7 +129,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .step.on .velo { background: var(--dim); }
 .step.out { visibility: hidden; }
 .step.sel { outline: 3px solid var(--yellow); outline-offset: -3px; }
-.step.now:not(.on) { background-image: radial-gradient(var(--red) 1px, transparent 1.5px); background-size: 4px 4px; }
+/* the played step and its quick trail: the plug-in's dithers (Pixel.cpp: levels 3, 2, 1) */
+.step.now:not(.on) { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='2' height='2' fill='%23ff3b2f'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%23ff3b2f'/%3E%3C/svg%3E"); }
+.step.t1:not(.on) { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='2' height='2' fill='%23ff3b2f'/%3E%3C/svg%3E"); }
+.step.t2:not(.on) { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='2' height='2' fill='%23ff3b2f'/%3E%3C/svg%3E"); }
 .step.now::after { content: ''; position: absolute; left: -2px; right: -2px; bottom: -8px; height: 4px; background: var(--red); }
 
 .mini { left: 14px; top: 464px; width: 1294px; height: 12px; display: flex; gap: 4px; }

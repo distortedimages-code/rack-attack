@@ -81,4 +81,8 @@ private:
     std::array<bool, numSounds> soundRead {};
     std::array<bool, numEffects> effectRead {};
 };
+
+// The simulator's playable kit for program p (0..49): named "SIM 01".., 24 drum and
+// tuned sounds, reverb, delay, chorus and overdrive. Only sounds, effects and the name change.
+void fillDemoKit (Kit&, int program);
 }

@@ -1,12 +1,12 @@
 # RackAttack Editor's site on GitHub Pages (site/, built by site/build_site.py: the version and the disk image's two
-# Terminal commands are written in). Pages must be set to deploy from GitHub Actions (Settings > Pages > Source).
+# Terminal commands are written in), with the web version in site/app (its engine built here from Source/). Pages must be set to deploy from GitHub Actions (Settings > Pages > Source).
 # Not on a release: the github-pages environment only accepts main, and the page reads the latest version from GitHub.
 name: Site
 
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'tools/dmg/*-command.txt', 'CMakeLists.txt', '.github/workflows/site.yml']
+    paths: ['site/**', 'tools/dmg/*-command.txt', 'tools/web/**', 'Source/core/**', 'Source/sim/**', 'Source/web/**', 'CMakeLists.txt', '.github/workflows/site.yml']
   workflow_dispatch:
 
 permissions:
@@ -23,6 +23,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: The web version's engine (the plug-in's core and simulator in WebAssembly)
+        run: |
+          python3 -m pip install --quiet ziglang==0.17.1
+          tools/web/build_wasm.sh site/app/ra.wasm
+          node tools/web/test_wasm.mjs site/app/ra.wasm
       - name: Site
         run: python3 site/build_site.py site/out
       - uses: actions/configure-pages@v5

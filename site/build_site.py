@@ -24,6 +24,8 @@ values = {
 
 shutil.rmtree(OUT, ignore_errors=True)
 shutil.copytree(SITE, OUT, ignore=shutil.ignore_patterns('out', 'build_site.py', '__pycache__'))
+if not os.path.exists(os.path.join(OUT, 'app', 'ra.wasm')):
+    print('note: site/app/ra.wasm missing (tools/web/build_wasm.sh makes it): the web version will not start')
 page = os.path.join(OUT, 'index.html')
 text = read('site', 'index.html')
 for key, value in values.items():

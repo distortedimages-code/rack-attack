@@ -251,7 +251,7 @@ void SoundPage::selectSound (int s)
 
 void SoundPage::refresh()
 {
-    const auto& kit = engine.getKit();
+    const auto& kit = engine.getShownKit();     // the kit heard, or the end of the morph armed
     title.setText ("Son "_fr + ui::twoDigits (sound + 1) + "   " + shortShape (kit.soundValue (sound, 0x01))
                    + " / " + shortShape (kit.soundValue (sound, 0x10)), juce::dontSendNotification);
     for (auto& p : params)
@@ -476,7 +476,7 @@ void KitPage::fillPrograms()
 
 void KitPage::refreshPad (int i)
 {
-    const auto& kit = engine.getKit();
+    const auto& kit = engine.getShownKit();
     auto* p = pads[i];
     p->shapes.setText (shortShape (kit.soundValue (i, 0x01)) + " / " + shortShape (kit.soundValue (i, 0x10)), juce::dontSendNotification);
     p->volume.setValue (kit.soundValue (i, 0x35));
@@ -573,7 +573,7 @@ EffectsPage::Column::Column (EffectsPage& o, int i) : ui::Card ("FX" + juce::Str
 
 void EffectsPage::Column::refresh()
 {
-    const auto& kit = owner.engine.getKit();
+    const auto& kit = owner.engine.getShownKit();
     int t = kit.effectValue (index, 0x00);
     type->setValue (t);
     out->setValue (kit.effectValue (index, 0x01));
@@ -676,8 +676,8 @@ void LibraryPage::FileList::paintListBoxItem (int row, juce::Graphics& g, int w,
     g.drawText (item.group, w - 190, 0, 180, h, juce::Justification::centredRight);
 }
 
-LibraryPage::LibraryPage (Engine& e, Library& l, std::function<int()> sel)
-    : engine (e), library (l), selectedSound (std::move (sel))
+LibraryPage::LibraryPage (Engine& e, Library& l, MorphControl& m, std::function<int()> sel)
+    : engine (e), library (l), morph (m), selectedSound (std::move (sel))
 {
     addAndMakeVisible (machineCard);
     addAndMakeVisible (computerCard);
@@ -727,7 +727,7 @@ LibraryPage::LibraryPage (Engine& e, Library& l, std::function<int()> sel)
         confirmed = nullptr;
     };
 
-    for (auto* b : { &showKits, &showSounds })
+    for (auto* b : { &showKits, &showSounds, &showMorphs })
     {
         b->setClickingTogglesState (true);
         b->setRadioGroupId (2001);
@@ -764,6 +764,17 @@ LibraryPage::LibraryPage (Engine& e, Library& l, std::function<int()> sel)
     };
     saveKit.onClick = [this, showSave]
     {
+        if (morphsShown())
+        {
+            if (! morph.differs())
+            {
+                status.show ("A et B sont pareils : rien à morpher. Clic droit sur un kit : « Charger dans B »."_fr, ui::warning);
+                return;
+            }
+            saveName.setText (juce::String (engine.getKit().name()).trim() + " morph");
+            showSave (true);
+            return;
+        }
         if (! engine.getKit().isComplete())
         {
             status.show ("Le kit n'est pas encore lu en entier : branche le RackAttack ou « Relire » dans Kit."_fr, ui::warning);
@@ -775,6 +786,17 @@ LibraryPage::LibraryPage (Engine& e, Library& l, std::function<int()> sel)
     saveCancel.onClick = [showSave] { showSave (false); };
     saveOk.onClick = [this, showSave]
     {
+        if (morphsShown())
+        {
+            auto file = library.saveMorph (morph.preset(), saveName.getText());
+            showSave (false);
+            refreshFiles();
+            if (file.existsAsFile())
+                status.show ("Enregistré dans Mes morphs : "_fr + file.getFileNameWithoutExtension() + " (A, B et la position du fader)."_fr, ui::accent);
+            else
+                status.show ("Le morph n'a pas pu être enregistré."_fr, ui::bad);
+            return;
+        }
         auto file = library.saveKit (engine.getKit(), saveName.getText());
         showSave (false);
         showKits.setToggleState (true, juce::dontSendNotification);
@@ -812,15 +834,18 @@ void LibraryPage::askFirst (const juce::String& question, std::function<void()> 
 
 void LibraryPage::refreshFiles()
 {
-    bool kits = showKits.getToggleState();
-    items = kits ? library.kits() : library.sounds();
+    const bool kits = showKits.getToggleState(), morphs = morphsShown();
+    items = morphs ? library.morphs() : (kits ? library.kits() : library.sounds());
     files.updateContent();
     files.repaint();
-    emptyHint.setText (items.isEmpty() ? (kits ? "Aucun kit sur l'ordinateur pour l'instant. « Enregistrer le kit en cours » ou « Tout sauvegarder »."_fr
-                                              : "Aucun son enregistré pour l'instant. Page Son : « Enregistrer ce son »."_fr)
+    emptyHint.setText (items.isEmpty() ? (morphs ? "Aucun morph enregistré. Clic droit sur des kits : « Charger dans A », « Charger dans B », puis « Enregistrer le morph »."_fr
+                                          : kits ? "Aucun kit sur l'ordinateur pour l'instant. « Enregistrer le kit en cours » ou « Tout sauvegarder »."_fr
+                                                 : "Aucun son enregistré pour l'instant. Page Son : « Enregistrer ce son »."_fr)
                                        : juce::String(), juce::dontSendNotification);
-    sendButton.setButtonText (kits ? juce::String ("Envoyer au RackAttack")
-                                   : "Envoyer dans le son "_fr + ui::twoDigits (selectedSound() + 1));
+    sendButton.setButtonText (morphs ? juce::String ("Charger le morph")
+                                     : kits ? juce::String ("Envoyer au RackAttack")
+                                            : "Envoyer dans le son "_fr + ui::twoDigits (selectedSound() + 1));
+    saveKit.setButtonText (morphs ? juce::String ("Enregistrer le morph") : juce::String ("Enregistrer le kit en cours"));
 }
 
 void LibraryPage::sendSelected (int row)
@@ -836,6 +861,15 @@ void LibraryPage::sendSelected (int row)
         return;
     }
     auto& item = items.getReference (row);
+    if (item.isMorph)
+    {
+        auto data = Library::loadMorph (item.file);
+        if (data && morph.loadPreset (*data))
+            status.show ("Morph « "_fr + item.title + " » chargé : A, B et la position du fader."_fr, ui::accent);
+        else
+            status.show ("Ce fichier ne contient pas de morph lisible."_fr, ui::bad);
+        return;
+    }
     if (item.isSound)
     {
         if (auto data = Library::loadSound (item.file))
@@ -852,6 +886,78 @@ void LibraryPage::sendSelected (int row)
         {
             status.show ("Envoi du kit « "_fr + item.title + " »…"_fr, ui::dim);
             engine.sendKit (*kit);
+        }
+        else
+            status.show ("Ce fichier ne contient pas de kit lisible."_fr, ui::bad);
+    }
+}
+
+void LibraryPage::showFileMenu (int row)
+{
+    if (row < 0 || row >= items.size())
+        return;
+    files.selectRow (row);
+    const auto& item = items.getReference (row);
+    const auto slot = ui::twoDigits (selectedSound() + 1);
+    juce::PopupMenu m;
+    m.addSectionHeader (item.title.toUpperCase());
+    if (item.isMorph)
+        m.addItem (1, "Charger le morph (A, B et la position)"_fr);
+    else if (item.isSound)
+    {
+        m.addItem (1, "Envoyer dans le son "_fr + slot);
+        m.addSeparator();
+        m.addItem (2, "Charger dans A (son "_fr + slot + ")");
+        m.addItem (3, "Charger dans B (son "_fr + slot + ")");
+    }
+    else
+    {
+        m.addItem (1, "Envoyer au RackAttack"_fr);
+        m.addSeparator();
+        m.addItem (2, "Charger dans A"_fr);
+        m.addItem (3, "Charger dans B"_fr);
+    }
+    m.showMenuAsync (juce::PopupMenu::Options().withMousePosition(),
+                     [safe = juce::Component::SafePointer<LibraryPage> (this), row] (int r)
+    {
+        if (safe == nullptr) return;
+        if (r == 1) safe->sendSelected (row);
+        if (r == 2) safe->loadIntoMorph (row, MorphControl::Side::a);
+        if (r == 3) safe->loadIntoMorph (row, MorphControl::Side::b);
+    });
+}
+
+void LibraryPage::loadIntoMorph (int row, MorphControl::Side side)
+{
+    if (row < 0 || row >= items.size())
+        return;
+    if (! engine.getKit().isComplete())
+    {
+        status.show ("Le kit du RackAttack n'est pas encore lu : connecte-le d'abord (ou lance la simulation)."_fr, ui::warning);
+        return;
+    }
+    const auto& item = items.getReference (row);
+    if (item.isMorph)
+        return;
+    const juce::String end = side == MorphControl::Side::a ? "A" : "B";
+    if (item.isSound)
+    {
+        if (auto data = Library::loadSound (item.file))
+        {
+            const int slot = selectedSound();
+            morph.loadSound (side, slot, *data);
+            status.show ("« "_fr + item.title + " » est dans "_fr + end + " pour le son "_fr + ui::twoDigits (slot + 1)
+                         + ". Le fader Morph, en bas, va de A à B."_fr, ui::accent);
+        }
+        else
+            status.show ("Ce fichier ne contient pas de son lisible."_fr, ui::bad);
+    }
+    else
+    {
+        if (auto kit = Library::loadKit (item.file))
+        {
+            morph.loadKit (side, *kit);
+            status.show ("Kit « "_fr + item.title + " » dans "_fr + end + ". Le fader Morph, en bas, va de A à B."_fr, ui::accent);
         }
         else
             status.show ("Ce fichier ne contient pas de kit lisible."_fr, ui::bad);
@@ -922,6 +1028,8 @@ void LibraryPage::resized()
     showKits.setBounds (tabs.removeFromLeft (100));
     tabs.removeFromLeft (4);
     showSounds.setBounds (tabs.removeFromLeft (100));
+    tabs.removeFromLeft (4);
+    showMorphs.setBounds (tabs.removeFromLeft (100));
     c.removeFromTop (8);
     auto bottom = c.removeFromBottom (34);
     if (saveKit.isVisible())

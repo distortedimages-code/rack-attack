@@ -1,6 +1,7 @@
 // Tests of the SysEx core, against messages known to work with a real RackAttack.
 
 #include "../Source/core/RaKit.h"
+#include "../Source/core/RaMorph.h"
 #include "../Source/core/RaSysex.h"
 
 #include <cstdio>
@@ -170,6 +171,89 @@ int main()
         auto soundFile = Kit::soundToSyx (kit.soundData (5));
         auto soundBack = Kit::soundFromSyx (soundFile);
         CHECK (soundBack.has_value() && *soundBack == kit.soundData (5));
+    }
+
+    // Morph: two kits and a fader, as Microtonic's
+    {
+        Kit k1, k2;
+        fillDemoKit (k1, 0);
+        fillDemoKit (k2, 7);
+        k1.setSoundValue (2, 0x27, 20);  k2.setSoundValue (2, 0x27, 100);    // cutoff: a number
+        k1.setSoundValue (2, 0x01, 1);   k2.setSoundValue (2, 0x01, 3);      // shape: a list
+        k1.setEffectValue (0, 2, 10);    k2.setEffectValue (0, 2, 90);
+        Morph m;
+        m.reset (k1);
+        CHECK (! m.differs());
+        m.load (Morph::Side::b, k2);
+        CHECK (m.differs());
+        CHECK (Morph::isList (false, 0x01) && ! Morph::isList (false, 0x27));
+
+        m.setPosition (0.0);  CHECK (m.sound (2, 0x27) == 20);  CHECK (m.sound (2, 0x01) == 1);
+        m.setPosition (1.0);  CHECK (m.sound (2, 0x27) == 100); CHECK (m.sound (2, 0x01) == 3);
+        m.setPosition (0.25); CHECK (m.sound (2, 0x27) == 40);  CHECK (m.sound (2, 0x01) == 1);   // a list waits for half way
+        m.setPosition (0.5);  CHECK (m.sound (2, 0x27) == 60);  CHECK (m.sound (2, 0x01) == 3);
+        CHECK (m.effect (0, 2) == 50);
+
+        // editing in the middle: both ends move by as much, the blend lands on the value
+        m.editSound (2, 0x27, 70);
+        CHECK (m.sound (2, 0x27) == 70);
+        CHECK (m.end (Morph::Side::a, 2, 0x27) == 30 && m.end (Morph::Side::b, 2, 0x27) == 110);
+        // at a quarter: A moves three times as much as B
+        m.setPosition (0.25);
+        const int a0 = m.end (Morph::Side::a, 2, 0x27), b0 = m.end (Morph::Side::b, 2, 0x27);
+        m.editSound (2, 0x27, m.sound (2, 0x27) + 10);
+        const int da = m.end (Morph::Side::a, 2, 0x27) - a0, db = m.end (Morph::Side::b, 2, 0x27) - b0;
+        CHECK (da == 12 && db == 4);
+        // at an end, only that end
+        m.setPosition (0.0);
+        m.editSound (2, 0x28, 5);
+        CHECK (m.end (Morph::Side::a, 2, 0x28) == 5 && m.end (Morph::Side::b, 2, 0x28) == k2.soundValue (2, 0x28));
+        // a list edited between the ends: the end being heard
+        m.setPosition (0.75);
+        m.editSound (2, 0x01, 0);
+        CHECK (m.end (Morph::Side::b, 2, 0x01) == 0 && m.end (Morph::Side::a, 2, 0x01) == 1);
+
+        // the blend into a kit; save and back
+        Kit heard = k1;
+        m.blendInto (heard);
+        CHECK (heard.soundValue (2, 0x27) == m.sound (2, 0x27) && heard.effectValue (0, 2) == m.effect (0, 2));
+        CHECK (heard.name() == k1.name());
+        Morph back;
+        CHECK (back.restore (m.save()));
+        CHECK (back.position() == 0.75 && back.sound (2, 0x27) == m.sound (2, 0x27) && back.end (Morph::Side::a, 2, 0x28) == 5);
+        CHECK (! back.restore ({ 1, 2, 3 }));
+        // a sound loaded into one end, the ends swapped, the blend copied to an end
+        back.loadSound (Morph::Side::a, 5, k2.soundData (5));
+        CHECK (back.end (Morph::Side::a, 5, 0x27) == k2.soundValue (5, 0x27));
+        back.swap();
+        CHECK (back.end (Morph::Side::b, 5, 0x27) == k2.soundValue (5, 0x27));
+        const int heardBefore = back.sound (2, 0x27);
+        back.copyBlendTo (Morph::Side::a);
+        CHECK (back.end (Morph::Side::a, 2, 0x27) == heardBefore);
+        // the value already heard again (an echo of the unit): the ends stay where they are
+        back.load (Morph::Side::b, k2);
+        back.setPosition (0.3);
+        const int ea = back.end (Morph::Side::a, 2, 0x27), eb = back.end (Morph::Side::b, 2, 0x27);
+        back.editSound (2, 0x27, back.sound (2, 0x27));
+        CHECK (back.end (Morph::Side::a, 2, 0x27) == ea && back.end (Morph::Side::b, 2, 0x27) == eb);
+        // an effect loaded into one end
+        Bytes fx ((size_t) kEffectDataSize, 9);
+        back.loadEffect (Morph::Side::b, 1, fx);
+        CHECK (back.effectEnd (Morph::Side::b, 1, 3) == 9);
+        // one end edited alone (armed): heard in proportion to the fader
+        back.setSoundEnd (Morph::Side::a, 2, 0x27, 0);
+        back.setSoundEnd (Morph::Side::b, 2, 0x27, 100);
+        back.setPosition (0.25);
+        CHECK (back.sound (2, 0x27) == 25);
+        back.setSoundEnd (Morph::Side::a, 2, 0x27, 40);
+        CHECK (back.end (Morph::Side::b, 2, 0x27) == 100 && back.sound (2, 0x27) == 55);
+        // the MIDI routing stays the same in A and B
+        back.setSoundEnd (Morph::Side::a, 4, 0x5A, 30);
+        CHECK (back.end (Morph::Side::b, 4, 0x5A) == 30);
+        Kit routed = k2;
+        routed.setSoundValue (4, 0x5A, 90);
+        back.load (Morph::Side::b, routed);
+        CHECK (back.end (Morph::Side::b, 4, 0x5A) == 30 && back.end (Morph::Side::b, 4, 0x27) == k2.soundValue (4, 0x27));
     }
 
     if (failures == 0)

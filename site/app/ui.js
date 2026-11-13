@@ -218,6 +218,123 @@ for (const [id, label] of [['seq', 'Séquenceur'], ['son', 'Son']]) {
   b.addEventListener('click', () => showPage(id));
   pageKeys[id] = b;
 }
+// the morph fader (as the plug-in's): MORPH, A, the fader, B. A tap on A or B arms it (yellow): what is turned
+// then goes into that end only. Drag the fader (it glides there), double tap: half way; long press: the menu.
+const morphEl = el('div', 'morph', top);
+const morphName = el('span', 'mname', morphEl, 'MORPH');
+const morphA = el('button', 'mend', morphEl, 'A');
+const morphTrack = el('div', 'mtrack', morphEl);
+const morphFill = el('i', 'mfill', morphTrack);
+el('i', 'mmid', morphTrack);
+const morphHeard = el('i', 'mheard', morphTrack);
+const morphKnob = el('i', 'mknob', morphTrack);
+const morphB = el('button', 'mend', morphEl, 'B');
+for (const [b, side] of [[morphA, 0], [morphB, 1]]) {
+  b.addEventListener('click', () => {
+    const on = E.morphArmed() === side;
+    E.morphArm(on ? -1 : side);
+    const end = side ? 'B' : 'A';
+    if (!on) toast(`${end} armé : ce que tu tournes va dans ${end} seulement`, 'yellow');
+  });
+}
+{
+  let dragging = false, lastTap = 0, lp = 0, longDone = false;
+  const at = ev => { const r = morphTrack.getBoundingClientRect(); return (ev.clientX - r.left) / Math.max(1, r.width); };
+  morphTrack.addEventListener('pointerdown', ev => {
+    ev.preventDefault();
+    if (ev.button !== 0) return;               // a right click: the menu only
+    longDone = false;
+    lp = setTimeout(() => { longDone = true; dragging = false; morphMenu(); }, 650);
+    const now = performance.now();
+    if (now - lastTap < 320) { clearTimeout(lp); E.morphTo(0.5); lastTap = 0; return; }
+    lastTap = now;
+    dragging = true;
+    morphTrack.setPointerCapture(ev.pointerId);
+    E.morphTo(at(ev));
+  });
+  morphTrack.addEventListener('pointermove', ev => {
+    if (!dragging) return;
+    if (Math.abs(at(ev) - E.morphTarget) > 0.01) clearTimeout(lp);
+    E.morphTo(at(ev));
+  });
+  const end = () => { dragging = false; clearTimeout(lp); };
+  morphTrack.addEventListener('pointerup', end);
+  morphTrack.addEventListener('pointercancel', end);
+  morphEl.addEventListener('contextmenu', ev => { ev.preventDefault(); if (!longDone) morphMenu(); });
+}
+const GLIDES = [0, 50, 150, 300, 600, 1000, 2000];
+const glideText = ms => ms <= 0 ? 'Sans glide' : ms < 1000 ? `Glide ${ms} ms` : `Glide ${String(ms / 1000).replace('.', ',')} s`;
+function pickFile (accept) {
+  return new Promise(resolve => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = accept;
+    input.addEventListener('change', async () => resolve(input.files[0] ? new Uint8Array(await input.files[0].arrayBuffer()) : null));
+    input.click();
+  });
+}
+async function morphMenu () {
+  const box = boxOf(morphEl), x = box.x, y = box.y + box.h, armed = E.morphArmed(), differs = E.morphDiffers();
+  const id = await menu([{ header: 'Morph' },
+    { id: 'a', label: 'Aller à A' }, { id: 'mid', label: 'Au milieu' }, { id: 'b', label: 'Aller à B' }, { sep: 1 },
+    { id: 'armA', label: 'Éditer A seulement', ticked: armed === 0 }, { id: 'armB', label: 'Éditer B seulement', ticked: armed === 1 }, { sep: 1 },
+    { id: 'heardA', label: 'Le kit entendu dans A' }, { id: 'heardB', label: 'Le kit entendu dans B' },
+    { id: 'swap', label: 'Échanger A et B', disabled: !differs }, { id: 'flat', label: 'A = B : plus de morph', disabled: !differs }, { sep: 1 },
+    { id: 'demo', label: 'Un kit démo dans A ou B…' }, { id: 'syx', label: 'Un kit .syx dans A ou B…' }, { sep: 1 },
+    { id: 'save', label: 'Enregistrer le morph (fichier)', disabled: !differs }, { id: 'open', label: 'Ouvrir un morph…' }, { sep: 1 },
+    { id: 'glide', label: glideText(E.morphGlide()) + ' ▸' }], x, y);
+  const side = async (title) => menu([{ header: title }, { id: 0, label: 'Dans A' }, { id: 1, label: 'Dans B' }], x, y);
+  if (id === 'a') E.morphTo(0);
+  if (id === 'mid') E.morphTo(0.5);
+  if (id === 'b') E.morphTo(1);
+  if (id === 'armA' || id === 'armB') { const s = id === 'armA' ? 0 : 1; E.morphArm(armed === s ? -1 : s); }
+  if (id === 'heardA') E.morphCopyHeard(0);
+  if (id === 'heardB') E.morphCopyHeard(1);
+  if (id === 'swap') E.morphSwap();
+  if (id === 'flat') { E.morphFlatten(); toast('A = B : plus de morph'); }
+  if (id === 'demo') {
+    const s = await side('Kit démo');
+    if (s === null) return;
+    const items = [{ header: 'Kit démo dans ' + (s ? 'B' : 'A') }];
+    for (let k = 0; k < 12; ++k) items.push({ id: k + 1, label: 'Kit démo ' + two(k + 1) });
+    const k = await menu(items, x, y);
+    if (k) { E.morphLoadDemo(s, k - 1); toast(`Kit démo ${two(k)} dans ${s ? 'B' : 'A'}`); }
+  }
+  if (id === 'syx') {
+    const s = await side('Kit .syx');
+    if (s === null) return;
+    const bytes = await pickFile('.syx');
+    if (bytes) toast(E.morphLoadKit(s, bytes) ? `Kit dans ${s ? 'B' : 'A'}` : 'Ce fichier ne contient pas de kit lisible', E.morphDiffers() ? '' : 'red');
+  }
+  if (id === 'save') {
+    const url = URL.createObjectURL(new Blob([E.morphBytes()], { type: 'application/octet-stream' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = (E.kitName().trim() || 'kit') + ' morph.ramorph';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  if (id === 'open') {
+    const bytes = await pickFile('.ramorph');
+    if (bytes) toast(E.loadMorph(bytes) ? 'Morph chargé : A, B et la position' : 'Ce fichier ne contient pas de morph lisible', '');
+  }
+  if (id === 'glide') {
+    const g = await menu([{ header: 'Glide du fader' }, ...GLIDES.map(ms => ({ id: ms + 1, label: glideText(ms), ticked: E.morphGlide() === ms }))], x, y);
+    if (g) E.setMorphGlide(g - 1);
+  }
+  render();
+}
+function renderMorph () {
+  const p = E.morphPosition(), t = E.morphTarget ?? p, armed = E.morphArmed(), on = E.morphDiffers();
+  morphEl.classList.toggle('on', on);
+  morphEl.classList.toggle('armed', armed >= 0);
+  morphA.className = 'mend' + (armed === 0 ? ' arm' : p <= 0 ? ' at' : '');
+  morphB.className = 'mend' + (armed === 1 ? ' arm' : p >= 1 ? ' at' : '');
+  morphKnob.style.left = (t * 100) + '%';
+  morphHeard.style.left = (p * 100) + '%';
+  morphHeard.style.display = Math.abs(p - t) > 0.004 ? '' : 'none';
+  morphFill.style.width = on ? (p * 100) + '%' : '0';
+  stage.classList.toggle('armed', armed >= 0);
+}
+
 const light = el('div', 'light', top);
 el('b', '', light);
 const lightText = el('span', '', light);
@@ -704,7 +821,7 @@ function renderSon () {
 // drawing the state
 
 function render () {
-  renderTop(); renderHeader(); renderVoices(); renderSound(); renderSeq();
+  renderTop(); renderMorph(); renderHeader(); renderVoices(); renderSound(); renderSeq();
   if (S.page === 'son') renderSon();
 }
 
@@ -1127,6 +1244,7 @@ E.on(what => {
   if (what === 'transport') renderHeader();
   if (what === 'midi') renderTop();
   if (what === 'kit') { render(); }
+  if (what === 'morph') renderMorph();
 });
 
 // the first screen: a tap starts the sound

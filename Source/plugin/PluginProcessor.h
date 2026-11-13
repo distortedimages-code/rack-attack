@@ -8,11 +8,12 @@
 
 #include "../app/AppContext.h"
 
-class RackAttackProcessor : public juce::AudioProcessor
+class RackAttackProcessor : public juce::AudioProcessor,
+                            private juce::AudioProcessorParameter::Listener
 {
 public:
     RackAttackProcessor();
-    ~RackAttackProcessor() override = default;
+    ~RackAttackProcessor() override;
 
     AppContext& getContext()   { return context; }
 
@@ -41,7 +42,12 @@ public:
     void setStateInformation (const void*, int) override;
 
 private:
+    // the morph fader, for the host's automation
+    void parameterValueChanged (int, float value) override   { context.morph.setFromHost (value); }
+    void parameterGestureChanged (int, bool) override {}
+
     AppContext context;
+    juce::AudioParameterFloat* morphParameter = nullptr;
     double simRate = 0.0;     // the rate the simulator was prepared for (audio thread)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RackAttackProcessor)

@@ -11,6 +11,7 @@
 #include "Engine.h"
 #include "FakeRackAttack.h"
 #include "Library.h"
+#include "MorphControl.h"
 #include "Sequencer.h"
 #include "Session.h"
 #include "SimDevice.h"
@@ -53,6 +54,7 @@ public:
     Session session;
     Engine engine { session };
     Sequencer sequencer { engine };
+    MorphControl morph { engine };       // kits A and B and the fader between them
     Library library;
     Updater updater { [this]() -> juce::PropertiesFile& { return *settingsFile; } };
 

@@ -8,6 +8,7 @@
 #include "../Source/app/Sequencer.h"
 #include "../Source/app/FakeRackAttack.h"
 #include "../Source/app/Library.h"
+#include "../Source/app/MorphControl.h"
 #include "../Source/app/Session.h"
 #include "../Source/app/Text.h"
 
@@ -299,6 +300,114 @@ int main()
         std::printf ("following the DAW: %d kicks\n", kicks);
         CHECK (kicks == 4);
         engine.setTestOutput ([&fake] (const juce::MidiMessage& m) { fake.receive (m); });
+    }
+
+    // 10b. The morph: kit B loaded, the fader moved, the unit follows; edits land at the position; whole sounds
+    // that arrive go into the end heard (or both); the project's morph comes back
+    {
+        using Side = MorphControl::Side;
+        MorphControl morph (engine);
+        runFor (100);
+        CHECK (! morph.differs());
+        engine.setSoundParameter (2, 0x27, 20);            // at A, with A = B: A only
+        runFor (100);
+        CHECK (morph.differs() && morph.data().end (Side::a, 2, 0x27) == 20);
+        ra::Kit b = engine.getKit();
+        b.setSoundValue (2, 0x27, 100);
+        for (int a = 0; a < ra::kSoundDataSize; ++a)
+            b.setSoundValue (5, a, (engine.getKit().soundValue (5, a) + 40) % 128);
+        b.setEffectValue (1, 2, (engine.getKit().effectValue (1, 2) + 50) % 128);
+        morph.loadKit (Side::b, b);
+        runFor (300);
+        CHECK (fake.edit.soundValue (2, 0x27) == 20);       // A is still what is heard
+        morph.userMoved (1.0);
+        runFor (600);
+        CHECK (fake.edit.soundValue (2, 0x27) == 100);
+        {
+            // a whole sound as one dump, but for its MIDI routing, which stays
+            bool same = true;
+            for (int a = 0; a < ra::kSoundDataSize; ++a)
+                if (! ra::Morph::isKept (a) && fake.edit.soundValue (5, a) != b.soundValue (5, a))
+                    same = false;
+            CHECK (same);
+            CHECK (fake.edit.soundValue (5, 0x5A) == morph.data().end (Side::a, 5, 0x5A));
+        }
+        CHECK (fake.edit.effectValue (1, 2) == b.effectValue (1, 2));
+        morph.userMoved (0.5);
+        runFor (400);
+        CHECK (fake.edit.soundValue (2, 0x27) == 60);
+        engine.setSoundParameter (2, 0x27, 70);             // in the middle: both ends move
+        runFor (100);
+        CHECK (morph.data().end (Side::a, 2, 0x27) == 30 && morph.data().end (Side::b, 2, 0x27) == 110);
+        fake.answer (ra::soundParameter (5, 2, 0x28, 64));  // the unit's own knob, too
+        runFor (200);
+        CHECK (morph.data().sound (2, 0x28) == 64);
+
+        // a sound sent from the library in the middle: into both ends
+        ra::Bytes data ((size_t) ra::kSoundDataSize, 0);
+        for (int a = 0; a < ra::kSoundDataSize; ++a)
+            data[(size_t) a] = (std::uint8_t) ((a * 7 + 3) % 100);
+        engine.sendSound (data, 7);
+        CHECK (waitTask (out, "sendSound", 5000));
+        runFor (200);
+        CHECK (morph.data().end (Side::a, 7, 0x27) == data[0x27] && morph.data().end (Side::b, 7, 0x27) == data[0x27]);
+        morph.userMoved (0.0);
+        runFor (500);
+        CHECK (fake.edit.soundData (7) == data);
+        CHECK (fake.edit.soundValue (2, 0x27) == 30);
+
+        // the project: saved, the morph gone, then back from the project
+        const auto saved = morph.toString();
+        CHECK (saved.isNotEmpty());
+        morph.flatten();
+        CHECK (! morph.differs() && morph.toString().isEmpty());
+        morph.fromString (saved);
+        runFor (300);
+        CHECK (morph.differs() && morph.data().end (Side::b, 2, 0x27) == 110);
+        morph.userMoved (1.0);
+        runFor (600);
+        CHECK (fake.edit.soundValue (2, 0x27) == 110);
+
+        // a program chosen at B: it goes into B, A keeps its kit
+        engine.selectProgram (3);
+        CHECK (waitTask (out, "kit", 10000));
+        runFor (300);
+        CHECK (morph.data().end (Side::b, 7, 0x27) == engine.getKit().soundValue (7, 0x27));
+        CHECK (morph.data().end (Side::a, 7, 0x27) == data[0x27]);
+        CHECK (morph.getPosition() >= 1.0);
+
+        // A armed at B: an edit goes into A alone, the unit keeps B; the pages see A
+        morph.arm (Side::a);
+        const int heardB = fake.edit.soundValue (2, 0x29);
+        engine.setSoundParameter (2, 0x29, 7);
+        runFor (300);
+        CHECK (morph.data().end (Side::a, 2, 0x29) == 7);
+        CHECK (morph.data().end (Side::b, 2, 0x29) == heardB);
+        CHECK (fake.edit.soundValue (2, 0x29) == heardB && engine.getKit().soundValue (2, 0x29) == heardB);
+        CHECK (engine.getShownKit().soundValue (2, 0x29) == 7);
+        // the unit's own knob, too: into A, and the unit goes back to what the fader makes of it
+        fake.answer (ra::soundParameter (5, 2, 0x2A, 99));
+        runFor (300);
+        CHECK (morph.data().end (Side::a, 2, 0x2A) == 99 && fake.edit.soundValue (2, 0x2A) == morph.data().end (Side::b, 2, 0x2A));
+        // the glide: half way only after a while
+        morph.setGlideMs (300);
+        morph.userMoved (0.0);
+        runFor (60);
+        CHECK (morph.getPosition() > 0.05 && morph.getPosition() < 0.95);
+        runFor (700);
+        CHECK (morph.getPosition() <= 0.0);
+        CHECK (fake.edit.soundValue (2, 0x29) == 7);
+        morph.arm ({});
+        CHECK (engine.getShownKit().soundValue (2, 0x29) == engine.getKit().soundValue (2, 0x29));
+
+        // a morph preset: saved, then back
+        const auto preset = morph.preset();
+        morph.flatten();
+        CHECK (! morph.differs());
+        CHECK (morph.loadPreset (preset));
+        runFor (300);
+        CHECK (morph.differs() && morph.data().end (Side::a, 2, 0x29) == 7);
+        std::printf ("morph: ok\n");
     }
 
     // 11. The unit goes quiet: the connection shows it

@@ -31,7 +31,8 @@ Library::Library (juce::File rootFolder)
                                        : rootFolder),
       kitsFolder (root.getChildFile ("Kits")),
       soundsFolder (root.getChildFile ("Sons")),
-      backupsFolder (root.getChildFile ("Sauvegardes"))
+      backupsFolder (root.getChildFile ("Sauvegardes")),
+      morphsFolder (root.getChildFile ("Morphs"))
 {
 }
 
@@ -55,6 +56,31 @@ juce::Array<Library::Item> Library::sounds() const
     for (auto& f : syxFiles (soundsFolder))
         items.add ({ f, f.getFileNameWithoutExtension(), "Mes sons", true });
     return items;
+}
+
+juce::Array<Library::Item> Library::morphs() const
+{
+    juce::Array<Item> items;
+    auto files = morphsFolder.findChildFiles (juce::File::findFiles, false, "*.ramorph");
+    files.sort();
+    for (auto& f : files)
+        items.add ({ f, f.getFileNameWithoutExtension(), "Mes morphs", false, true });
+    return items;
+}
+
+juce::File Library::saveMorph (const std::vector<std::uint8_t>& preset, const juce::String& name) const
+{
+    morphsFolder.createDirectory();
+    auto file = morphsFolder.getNonexistentChildFile (safeName (name), ".ramorph", true);
+    return file.replaceWithData (preset.data(), preset.size()) ? file : juce::File();
+}
+
+std::optional<std::vector<std::uint8_t>> Library::loadMorph (const juce::File& file)
+{
+    auto data = read (file);
+    if (data.size() < 10)
+        return std::nullopt;
+    return std::vector<std::uint8_t> (data.begin(), data.end());
 }
 
 juce::File Library::saveKit (const ra::Kit& kit, const juce::String& name) const

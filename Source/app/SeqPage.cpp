@@ -123,7 +123,7 @@ void SeqPage::timerCallback()
 
 std::vector<SeqPage::Quick> SeqPage::quickFor (int s) const
 {
-    const auto& kit = engine.getKit();
+    const auto& kit = engine.getShownKit();
     auto v = [&] (int address) { return kit.hasSound (s) ? kit.soundValue (s, address) : 64; };
     auto q = [] (int address, const char* label, bool choice, const char* why = "") { return Quick { { address, label, choice }, fr (why) }; };
 
@@ -681,7 +681,7 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
     }
 
     // the values shown move towards the real ones: the picture stretches
-    const auto& kit = engine.getKit();
+    const auto& kit = engine.getShownKit();
     const bool known = kit.hasSound (track);
     const bool locking = ! selection.empty();
     auto target = [&] (int address) -> float
@@ -1267,8 +1267,8 @@ void SeqPage::showPopup (int slot, const Track& tr)
     popup.choice = def.choice;
     popup.centred = ui::isBipolar (def.address);
     popup.colour = locked ? px::yellow : px::white;
-    popup.marker = locked && engine.getKit().hasSound (track)
-                       ? (float) engine.getKit().soundValue (track, def.address) / (float) juce::jmax (1, maxV) : -1.0f;
+    popup.marker = locked && engine.getShownKit().hasSound (track)
+                       ? (float) engine.getShownKit().soundValue (track, def.address) / (float) juce::jmax (1, maxV) : -1.0f;
     popup.anchor = paramBoxes[(size_t) slot];
     touchPopup();
 }
@@ -1386,7 +1386,7 @@ int SeqPage::paramMax (int address) const
 int SeqPage::shownValue (const Track& tr, int slot) const
 {
     const auto& def = slots[(size_t) slot];
-    int v = engine.getKit().hasSound (track) ? engine.getKit().soundValue (track, def.address) : 0;
+    int v = engine.getShownKit().hasSound (track) ? engine.getShownKit().soundValue (track, def.address) : 0;
     if (! selection.empty())
         if (auto* l = tr.steps[(size_t) selection.front()].findLock (def.address))
             v = l->value;
@@ -1403,7 +1403,7 @@ void SeqPage::setParam (int slot, int value)
         stickyQuick = { track, slot - (int) params().size(), def };
     if (selection.empty())
     {
-        if (engine.getKit().hasSound (track) && engine.getKit().soundValue (track, def.address) != value)
+        if (engine.getShownKit().hasSound (track) && engine.getShownKit().soundValue (track, def.address) != value)
             engine.setSoundParameter (track, def.address, value);
     }
     else

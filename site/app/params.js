@@ -17,7 +17,7 @@ export const SECTIONS = [
     [[0x2B, 'Mod 1'], [0x2D, 'Mod Src', 1], [0x2C, 'Ctrl 1'], [0x2E, 'Ctrl Src', 1]],
     [[0x2F, 'Mod 2'], [0x31, 'Mod Src', 1], [0x30, 'Ctrl 2'], [0x32, 'Ctrl Src', 1]]] },
   { title: 'Ampli', tab: 'Ampli', rows: [
-    [[0x35, 'Volume'], [0x3A, 'Pan'], [0x6C, 'Pattern', 1]],
+    [[0x35, 'Volume'], [0x3A, 'Pan']],
     [[0x36, 'Vol Mod'], [0x38, 'Mod Src', 1], [0x37, 'Vol Ctrl'], [0x39, 'Ctrl Src', 1]],
     [[0x3B, 'Pan Mod'], [0x3D, 'Mod Src', 1], [0x3C, 'Pan Ctrl'], [0x3E, 'Ctrl Src', 1]]] },
   { title: 'Enveloppe 1', tab: 'Env 1', rows: [[[0x3F, 'Attack'], [0x40, 'Decay'], [0x41, 'Sustain'], [0x42, 'Release'], [0x43, 'Shape']]] },
@@ -25,7 +25,7 @@ export const SECTIONS = [
   { title: 'LFO 1', tab: 'LFO 1', rows: [[[0x4B, 'Speed'], [0x4C, 'Shape', 1], [0x4D, 'Sync', 1], [0x4E, 'One Shot', 1]]] },
   { title: 'LFO 2', tab: 'LFO 2', rows: [[[0x4F, 'Speed'], [0x50, 'Shape', 1], [0x51, 'Sync', 1], [0x52, 'Mod'], [0x53, 'Mod Src']]] },
   { title: 'Sortie', tab: 'Sortie', rows: [
-    [[0x55, 'Dry Out', 1], [0x56, 'FX', 1], [0x57, 'FX Send'], [0x5E, 'XOR', 1]],
+    [[0x55, 'Dry Out', 1], [0x56, 'FX', 1], [0x57, 'FX Send'], [0x5E, 'XOR', 1], [0x6C, 'Pattern int.', 1]],
     [[0x58, 'Tuned Chn', 1], [0x59, 'Transpose'], [0x5A, 'Low Key'], [0x5B, 'High Key']]] },
 ].map(s => ({ ...s, rows: s.rows.map(r => r.map(([a, label, choice]) => ({ a, label, choice: !!choice }))) }));
 
@@ -39,10 +39,11 @@ export const COLUMNS = [
                                      [[0x14, 'P.MOD', 0x16], [0x15, 'P.CTRL', 0x17]]] },
    { title: 'Mix / Crack', rows: [[[0x1A, 'OSC 1'], [0x1B, 'OSC 2'], [0x1C, 'RING'], [0x1D, 'CRACK']],
                                   [[0x24, 'C.SPEED'], [0x25, 'C.LEN'], [0x1E, 'O2 MOD', 0x20], [0x1F, 'O2 CTL', 0x21]]] }],
-  [{ title: 'Ampli', rows: [[[0x35, 'VOLUME'], [0x3A, 'PAN'], [0x6C, 'PATTERN']],
+  [{ title: 'Ampli', rows: [[[0x35, 'VOLUME'], [0x3A, 'PAN']],
                             [[0x36, 'V.MOD', 0x38], [0x37, 'V.CTRL', 0x39], [0x3B, 'PAN MOD', 0x3D], [0x3C, 'PAN CTL', 0x3E]]] },
    { title: 'Sortie', rows: [[[0x55, 'OUT'], [0x56, 'FX'], [0x57, 'SEND'], [0x5E, 'XOR']],
-                             [[0x58, 'TUNED'], [0x59, 'TRANSP'], [0x5A, 'LO KEY'], [0x5B, 'HI KEY']]] }],
+                             [[0x58, 'TUNED'], [0x59, 'TRANSP'], [0x5A, 'LO KEY'], [0x5B, 'HI KEY']],
+                             [[0x6C, 'PAT.INT']]] }],
   [{ title: 'Enveloppe 1', rows: [[[0x3F, 'ATTACK'], [0x40, 'DECAY'], [0x41, 'SUSTAIN'], [0x42, 'RELEASE'], [0x43, 'SHAPE']]] },
    { title: 'Enveloppe 2', rows: [[[0x45, 'ATTACK'], [0x46, 'DECAY'], [0x47, 'SUSTAIN'], [0x48, 'RELEASE'], [0x49, 'SHAPE']]] },
    { title: 'LFO 1', rows: [[[0x4B, 'SPEED'], [0x4C, 'SHAPE'], [0x4D, 'SYNC'], [0x4E, '1-SHOT']]] },
@@ -91,6 +92,15 @@ export function quickFor (v) {
   else if (v(0x09) > 0) list[6] = q(0x09, 'FM', false, 'FM');
   else if (v(0x58) !== 0) list[6] = q(0x59, 'Transp', false, 'NOTES');
   return list;
+}
+
+// a list value shortened to fit a small box, as the plug-in does (Widgets.h fitName)
+const SHORT = [['Stereo ', 'St '], ['Mono ', 'M '], ['Velocity', 'Velo'], ['Modwheel', 'MWheel'], ['Pressure', 'Press'], ['Keytrack', 'KeyTr'],
+  ['Triangle', 'Tri'], ['HH Closed', 'HH Cl'], ['HH Open', 'HH Op'], ['One Shot', '1Shot'], ['Ext Mono', 'Ext M'], ['Random', 'Rand'], ['Global', 'Glob'], ['Bypass', 'Byp']];
+export function fit (text, chars) {
+  if (text.length <= chars) return text;
+  for (const [a, b] of SHORT) text = text.replace(a, b);
+  return text.length <= chars ? text : text.slice(0, chars);
 }
 
 export const TRIGS = ['Vélo', 'Durée', 'Micro', 'Proba', 'Cond.', 'Retrig', 'Note'];

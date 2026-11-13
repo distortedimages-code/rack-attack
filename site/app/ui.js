@@ -1,6 +1,6 @@
 // The web version's screens: the Séquenceur and Son pages of the plug-in, drawn the same way, on the same engine.
 import { Engine } from './engine.js';
-import { SECTIONS, COLUMNS, isBipolar, valueText, noteName, DIVISIONS, CONDITIONS, quickFor, TRIGS } from './params.js';
+import { SECTIONS, COLUMNS, isBipolar, valueText, noteName, DIVISIONS, CONDITIONS, quickFor, TRIGS, fit as fitText } from './params.js';
 
 const E = new Engine();
 window.raEngine = E;   // for the console, and tests
@@ -627,9 +627,9 @@ function renderSon () {
   for (const o of sonCells) {
     const a = o.def.a, v = E.sound(S.track, a), names = E.valueNames(a), max = names.length ? Math.max(1, names.length - 1) : 127;
     setRing(o.ring, v / max, isBipolar(a));
-    o.val.textContent = valueText(a, v, names);
+    o.val.textContent = fitText(valueText(a, v, names), 6);
     o.el.classList.toggle('choice', names.length > 0);
-    if (o.src) o.src.textContent = valueText(o.srcDef.a, E.sound(S.track, o.srcDef.a), E.valueNames(o.srcDef.a));
+    if (o.src) o.src.textContent = fitText(valueText(o.srcDef.a, E.sound(S.track, o.srcDef.a), E.valueNames(o.srcDef.a)), 6);
   }
 }
 
@@ -676,7 +676,7 @@ function renderSound () {
     const sv = slotValue(def), max = E.paramMax(def.a);
     setRing(q.ring, sv.lv / Math.max(1, max), isBipolar(def.a));
     q.lab.textContent = upper(def.label);
-    q.val.textContent = valueText(def.a, sv.lv, E.valueNames(def.a));
+    q.val.textContent = fitText(valueText(def.a, sv.lv, E.valueNames(def.a)), 7);
     q.why.textContent = def.why; q.why.style.display = def.why ? '' : 'none';
     q.el.classList.toggle('lk', sv.locked);
   });
@@ -703,7 +703,7 @@ function renderSound () {
   }
   for (const o of paramBoxes) {
     const sv = slotValue(o.def), max = Math.max(1, E.paramMax(o.def.a)), f = sv.lv / max, i = o.bar.children[0];
-    o.val.textContent = valueText(o.def.a, sv.lv, E.valueNames(o.def.a));
+    o.val.textContent = fitText(valueText(o.def.a, sv.lv, E.valueNames(o.def.a)), 8);
     if (isBipolar(o.def.a)) { i.style.left = Math.min(f, 0.5) * 100 + '%'; i.style.width = Math.max(2, Math.abs(f - 0.5) * 100) + '%'; }
     else { i.style.left = '0'; i.style.width = f * 100 + '%'; }
     o.el.classList.toggle('lk', sv.locked);
@@ -828,6 +828,7 @@ function drawViz () {
   } else {
     label('SORTIE ' + valueText(0x55, v(0x55), E.valueNames(0x55)) + ' · FX ' + valueText(0x56, v(0x56), E.valueNames(0x56)), L, T + 20, '#fff');
     label('ENVOI ' + valueText(0x57, v(0x57)) + ' · XOR ' + valueText(0x5E, v(0x5E), E.valueNames(0x5E)), L, T + 50, '#fff');
+    if (v(0x6C)) label('PATTERN INTERNE : ' + valueText(0x6C, v(0x6C), E.valueNames(0x6C)), L, T + 110, '#ffb000');
     label('TUNED ' + valueText(0x58, v(0x58), E.valueNames(0x58)) + ' · TRANSP ' + valueText(0x59, v(0x59)), L, T + 80, '#fff');
   }
 }

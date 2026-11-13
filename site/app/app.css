@@ -97,7 +97,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .pbox { height: 46px; border: 2px solid var(--frame); background: var(--black); position: relative; padding: 2px 8px; cursor: ns-resize; touch-action: none; overflow: hidden; }
 .pbox:hover { border-color: var(--grey); }
 .pbox .lab { font: 700 10px var(--silk); color: var(--grey); letter-spacing: 1px; white-space: nowrap; }
-.pbox .val { position: absolute; right: 8px; bottom: 6px; font-size: 26px; line-height: 1; white-space: nowrap; }
+.pbox .val { position: absolute; right: 8px; bottom: 5px; font-size: 24px; line-height: 20px; white-space: nowrap; }
 .pbox .bar { position: absolute; left: 8px; right: 8px; bottom: 3px; height: 3px; background: radial-gradient(var(--faint) 1px, transparent 1.3px) 0 0 / 4px 3px; }
 .pbox .bar i { position: absolute; top: 0; bottom: 0; background: var(--white); }
 .pbox.choice { cursor: pointer; }

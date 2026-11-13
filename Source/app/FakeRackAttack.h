@@ -9,6 +9,7 @@
 #include <array>
 
 #include "Engine.h"
+#include "../core/RaFactory.h"
 
 namespace fake_detail
 {
@@ -110,11 +111,18 @@ struct FakeRackAttack
             case ra::cmd::SNDR: if (pl.size() == 3) answer (edit.soundDump (dev, pl[2])); break;
             case ra::cmd::EFXR: if (pl.size() == 3) answer (edit.effectDump (dev, pl[2])); break;
             case ra::cmd::PATR:
-                if (pl.size() == 3 && pl[1] == ra::kEditBuffer)
+                // the format of Waldorf's files (15 settings, 128 steps); an empty pattern for a sound without one
+                if (pl.size() == 3 && pl[1] == ra::kEditBuffer && pl[2] < 24)
                 {
-                    ra::Bytes d { ra::cmd::PATD, pl[1], pl[2] };
-                    d.resize (3 + 37, 0);
-                    answer (ra::build (dev, d));
+                    if (edit.hasPattern (pl[2]))
+                        answer (edit.patternDump (dev, pl[2]));
+                    else
+                    {
+                        ra::Bytes d { ra::cmd::PATD, pl[1], pl[2] };
+                        const auto empty = ra::InternalPattern().toData();
+                        d.insert (d.end(), empty.begin(), empty.end());
+                        answer (ra::build (dev, d));
+                    }
                 }
                 break;
             case ra::cmd::SNDP: ++soundParams; edit.apply (p); break;

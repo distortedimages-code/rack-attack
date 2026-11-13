@@ -368,6 +368,9 @@ ToolsPage::ToolsPage (Engine& e, Updater& u, std::function<void()> changed)
         addAndMakeVisible (b);
     measureButton.setColour (juce::TextButton::textColourOffId, px::yellow);
     measureButton.onClick = [this] { if (openMeasure) openMeasure(); };
+    addAndMakeVisible (compareButton);
+    compareButton.setTooltip ("Joue chaque son du kit en cours sur la machine et dans le simulateur, et compare (un kit d'usine, par exemple)."_fr);
+    compareButton.onClick = [this] { if (openCompare) openCompare(); };
     loadButton.onClick = [this] { if (loadMeasures) loadMeasures(); };
     forgetButton.onClick = [this] { if (forgetMeasures) forgetMeasures(); refreshSettings(); };
     measuresLabel.setColour (juce::Label::textColourId, ui::dim);
@@ -496,6 +499,8 @@ void ToolsPage::resized()
     loadButton.setBounds (sim.removeFromLeft (220));
     sim.removeFromLeft (10);
     forgetButton.setBounds (sim.removeFromLeft (170));
+    sim.removeFromLeft (10);
+    compareButton.setBounds (sim.removeFromLeft (240));
     sim.removeFromLeft (12);
     measuresLabel.setBounds (sim);
     r.removeFromTop (6);

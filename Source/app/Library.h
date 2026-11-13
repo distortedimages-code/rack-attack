@@ -2,6 +2,8 @@
 //   Kits/<name>.syx                 a whole kit (program, 24 sounds, 4 FX)
 //   Sons/<name>.syx                 one sound
 //   Morphs/<name>.ramorph           kits A and B of the morph and the fader's position
+//   Usine/<set>/<name>.syx           Waldorf's own files, imported (factory sets, bonus kits, patterns): kits with
+//                                    their internal patterns; Usine/Patterns/ holds the files of patterns alone
 //   Sauvegardes/<date>/P01 - ….syx  the 50 programs of the unit, one file each
 
 #pragma once
@@ -21,7 +23,13 @@ public:
         juce::String title, group;   // group: "Mes kits", "Mes sons" or the backup date
         bool isSound = false;
         bool isMorph = false;
+        bool isPatterns = false;     // internal patterns alone (no kit)
     };
+
+    // Waldorf's files (.mid as Waldorf ships them, .syx, or .zip of them, zips inside included) into Usine/.
+    // The operating system updates and anything else are skipped. Importing twice replaces the files.
+    struct Imported { int kits = 0, patternSets = 0, skipped = 0; juce::StringArray sets; };
+    Imported importWaldorf (const juce::File& file) const;
 
     juce::Array<Item> kits() const;      // my kits, then the backups (newest first)
     juce::Array<Item> sounds() const;
@@ -39,5 +47,8 @@ public:
     juce::File getRoot() const   { return root; }
 
 private:
-    juce::File root, kitsFolder, soundsFolder, backupsFolder, morphsFolder;
+    void importData (const juce::String& set, const juce::String& stem, const ra::Bytes& data, Imported&) const;
+    void importZip (juce::ZipFile&, const juce::String& set, Imported&, int depth) const;
+
+    juce::File root, kitsFolder, soundsFolder, backupsFolder, morphsFolder, usineFolder;
 };

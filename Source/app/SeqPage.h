@@ -31,6 +31,12 @@ public:
     void selectTrack (int track);
     int getSelectedTrack() const   { return track; }
 
+    // The internal patterns of a kit (the unit's Pattern Play, Waldorf's factory files) into the tracks; empty
+    // patterns leave their track alone unless `all`. Returns the number of tracks filled.
+    int importInternal (const ra::Kit&, bool all = false);
+    void patternsRead (bool ok);                         // the engine's task "readPatterns" is over
+    std::function<void (const juce::String&, bool)> onStatus;   // a word for the status bar
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -110,6 +116,8 @@ private:
     void initTracks (bool all);
     static const juce::String initTrackText, initAllText;                       // INIT PISTE / INIT SÉQUENCE: empty, 16 steps, 1/16
     void keepForUndo (const juce::String& what);      // the pattern as it is, for "Annuler"
+    void sendInternal (bool all);                        // tracks -> the unit's internal patterns
+    bool waitingForPatterns = false;
     std::unique_ptr<ra::seq::Pattern> undo;
     juce::String undoWhat;
     void showStepMenu (int step);

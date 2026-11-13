@@ -37,6 +37,11 @@ Bytes programRequest (std::uint8_t device, std::uint8_t program, std::uint8_t bu
     return build (device, { cmd::PRGR, b7 (program), b7 (buffer) });
 }
 
+Bytes patternRequest (std::uint8_t device, int sound, std::uint8_t buffer)
+{
+    return build (device, { cmd::PATR, b7 (buffer), b7 (sound) });
+}
+
 Bytes soundRequest (std::uint8_t device, int sound, std::uint8_t buffer)
 {
     return build (device, { cmd::SNDR, b7 (buffer), b7 (sound) });
@@ -125,10 +130,10 @@ int locationSize (std::uint8_t c)
     switch (objectOf (c))
     {
         case Object::sound:
-        case Object::effect:   return 2;                                     // BUFN, SNDN / EFXN
+        case Object::effect:
+        case Object::pattern:  return 2;                                     // BUFN, SNDN / EFXN
         case Object::program:  return actionOf (c) == Action::parameter ? 1 : 2;
         case Object::global:   return actionOf (c) == Action::parameter ? 0 : 1;
-        case Object::pattern:
         case Object::mode:
         case Object::unknown:  return -1;
     }
@@ -143,6 +148,7 @@ int dumpDataSize (std::uint8_t c)
         case cmd::PRGD: return kProgramDataSize;
         case cmd::EFXD: return kEffectDataSize;
         case cmd::GLBD: return kGlobalDataSize;
+        case cmd::PATD: return kPatternDataSize;
         default:        return -1;
     }
 }

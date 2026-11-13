@@ -187,6 +187,15 @@ private:
     void showFileMenu (int row);                     // right click: send, or into A or B of the morph
     void loadIntoMorph (int row, MorphControl::Side);
     bool morphsShown() const   { return showMorphs.getToggleState(); }
+    void importWaldorf();                            // Waldorf's .mid / .syx / .zip into Usine
+    void patternsOf (int row, bool toMachine);      // a file's internal patterns: into the sequence, or the unit
+    std::unique_ptr<juce::FileChooser> chooser;
+
+public:
+    // the internal patterns of a kit into the sequencer (the window does it, and shows the sequencer)
+    std::function<void (const ra::Kit&)> onPatternsToSequencer;
+
+private:
 
     Engine& engine;
     Library& library;
@@ -208,6 +217,7 @@ private:
     juce::ListBox files { "fichiers", &fileModel };
     juce::Array<Library::Item> items;
     juce::Label emptyHint;
+    juce::TextButton importButton { "Importer (Waldorf)…"_fr };
     juce::TextButton saveKit { "Enregistrer le kit en cours" }, sendButton { "Envoyer au RackAttack" },
                      openFolder { "Ouvrir le dossier" }, saveOk { "OK" }, saveCancel { "Annuler" };
     juce::TextEditor saveName;

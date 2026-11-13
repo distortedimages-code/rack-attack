@@ -1,4 +1,6 @@
 #include "Pages.h"
+
+#include "../core/RaFactory.h"
 #include "SoundSections.h"
 
 namespace
@@ -809,6 +811,10 @@ LibraryPage::LibraryPage (Engine& e, Library& l, MorphControl& m, std::function<
     saveName.onReturnKey = [this] { saveOk.triggerClick(); };
 
     sendButton.onClick = [this] { sendSelected (files.getSelectedRow()); };
+    computerCard.addAndMakeVisible (importButton);
+    importButton.setTooltip ("Les fichiers de Waldorf (sons d'usine, kits bonus, patterns : .mid, .syx, ou le .zip tel quel) "
+                             "vont dans la Bibliothèque, groupe Usine. Ils restent sur ton ordinateur."_fr);
+    importButton.onClick = [this] { importWaldorf(); };
     openFolder.onClick = [this] { library.getRoot().createDirectory(); library.getRoot().startAsProcess(); };
 
     addAndMakeVisible (status);
@@ -861,6 +867,11 @@ void LibraryPage::sendSelected (int row)
         return;
     }
     auto& item = items.getReference (row);
+    if (item.isPatterns)
+    {
+        patternsOf (row, false);
+        return;
+    }
     if (item.isMorph)
     {
         auto data = Library::loadMorph (item.file);
@@ -901,7 +912,19 @@ void LibraryPage::showFileMenu (int row)
     const auto slot = ui::twoDigits (selectedSound() + 1);
     juce::PopupMenu m;
     m.addSectionHeader (item.title.toUpperCase());
-    if (item.isMorph)
+    bool withPatterns = false;
+    if (! item.isSound && ! item.isMorph)
+        if (auto k = Library::loadKit (item.file))
+            for (int s = 0; s < ra::Kit::numSounds && ! withPatterns; ++s)
+                if (k->hasPattern (s))
+                    if (auto ip = ra::InternalPattern::fromData (k->patternData (s)); ip && ! ip->isEmpty())
+                        withPatterns = true;
+    if (item.isPatterns)
+    {
+        m.addItem (10, "Ces patterns → séquence"_fr);
+        m.addItem (11, "Ces patterns → machine (patterns internes)"_fr);
+    }
+    else if (item.isMorph)
         m.addItem (1, "Charger le morph (cœur, crâne et position)"_fr);
     else if (item.isSound)
     {
@@ -916,6 +939,11 @@ void LibraryPage::showFileMenu (int row)
         m.addSeparator();
         m.addItem (2, "Charger dans le cœur"_fr);
         m.addItem (3, "Charger dans le crâne"_fr);
+        if (withPatterns)
+        {
+            m.addSeparator();
+            m.addItem (10, "Ses patterns internes → séquence"_fr);
+        }
     }
     m.showMenuAsync (juce::PopupMenu::Options().withMousePosition(),
                      [safe = juce::Component::SafePointer<LibraryPage> (this), row] (int r)
@@ -924,7 +952,70 @@ void LibraryPage::showFileMenu (int row)
         if (r == 1) safe->sendSelected (row);
         if (r == 2) safe->loadIntoMorph (row, MorphControl::Side::a);
         if (r == 3) safe->loadIntoMorph (row, MorphControl::Side::b);
+        if (r == 10) safe->patternsOf (row, false);
+        if (r == 11) safe->patternsOf (row, true);
     });
+}
+
+void LibraryPage::importWaldorf()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Fichiers Waldorf (.mid, .syx, .zip)"_fr,
+                                                   juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("Downloads"), "*.mid;*.midi;*.syx;*.zip");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::canSelectMultipleItems,
+                          [safe = juce::Component::SafePointer<LibraryPage> (this)] (const juce::FileChooser& fc)
+    {
+        if (safe == nullptr || fc.getResults().isEmpty())
+            return;
+        Library::Imported total;
+        for (auto& f : fc.getResults())
+        {
+            const auto r = safe->library.importWaldorf (f);
+            total.kits += r.kits;
+            total.patternSets += r.patternSets;
+            total.skipped += r.skipped;
+            for (auto& set : r.sets)
+                total.sets.addIfNotAlreadyThere (set);
+        }
+        safe->showKits.setToggleState (true, juce::sendNotification);
+        safe->refreshFiles();
+        if (total.kits + total.patternSets == 0)
+            safe->status.show ("Aucun kit ni pattern dans ces fichiers (les mises à jour du système sont laissées de côté)."_fr, ui::warning);
+        else
+            safe->status.show (juce::String (total.kits) + " kits"_fr
+                               + (total.patternSets > 0 ? " et "_fr + juce::String (total.patternSets) + " jeux de patterns"_fr : juce::String())
+                               + " importés dans le groupe Usine"_fr
+                               + (total.skipped > 0 ? " (" + juce::String (total.skipped) + " fichiers laissés de côté)."_fr : juce::String (".")),
+                               ui::accent);
+    });
+}
+
+void LibraryPage::patternsOf (int row, bool toMachine)
+{
+    if (row < 0 || row >= items.size())
+        return;
+    auto k = Library::loadKit (items.getReference (row).file);
+    if (! k || k->patternsRead() == 0)
+    {
+        status.show ("Ce fichier n'a pas de pattern interne."_fr, ui::warning);
+        return;
+    }
+    if (! toMachine)
+    {
+        if (onPatternsToSequencer)
+            onPatternsToSequencer (*k);
+        return;
+    }
+    if (engine.isBusy())
+    {
+        status.show ("Attends la fin de ce que fait la machine."_fr, ui::warning);
+        return;
+    }
+    std::vector<std::pair<int, ra::Bytes>> list;
+    for (int s = 0; s < ra::Kit::numSounds; ++s)
+        if (k->hasPattern (s))
+            list.push_back ({ s, k->patternData (s) });
+    engine.sendPatterns (list);
 }
 
 void LibraryPage::loadIntoMorph (int row, MorphControl::Side side)
@@ -1046,7 +1137,12 @@ void LibraryPage::resized()
     }
     openFolder.setBounds (bottom.removeFromRight (176));
     c.removeFromBottom (8);
-    sendButton.setBounds (c.removeFromBottom (34).removeFromLeft (260));
+    {
+        auto line = c.removeFromBottom (34);
+        sendButton.setBounds (line.removeFromLeft (260));
+        line.removeFromLeft (8);
+        importButton.setBounds (line.removeFromLeft (230));
+    }
     c.removeFromBottom (8);
     files.setBounds (c);
     emptyHint.setBounds (c.reduced (20));

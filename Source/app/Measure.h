@@ -21,6 +21,7 @@
 
 #include <JuceHeader.h>
 
+#include "../core/RaKit.h"
 #include "../sim/RaSynth.h"
 
 class Engine;
@@ -240,6 +241,48 @@ private:
     Recorder& recorder;
     int seen = 0;
 };
+
+//==============================================================================
+// Comparing the unit with the simulator on a whole kit (a factory kit, say): each sound of the kit played on
+// both, the level, the pitch, the length and the brightness side by side. The recordings are kept, to tune the
+// simulator by. The sounds' internal patterns are switched off on the unit during the comparison, then back.
+struct SoundCompare
+{
+    int sound = 0;
+    std::array<bool, 2> heard {};                 // [0] the unit, [1] the simulator
+    std::array<double, 2> levelDb {}, pitchHz {}, lengthMs {}, brightHz {};
+    double score() const;                         // how different (0: the same)
+    juce::String differences() const;             // in words, the biggest first ("plus long de 40 %"...)
+};
+
+struct Comparison
+{
+    bool ok = false;
+    juce::String message, kitName;
+    std::vector<SoundCompare> sounds;
+    juce::var report;
+    std::vector<Result::Recording> recordings;
+    juce::Time when = juce::Time::getCurrentTime();
+    juce::StringArray summary (int most = 6) const;   // the sounds that differ most, one line each
+};
+
+class Compare
+{
+public:
+    Compare (Rig& unit, const ra::Kit&, const ra::synth::Calibration& simulator, int deviceId, int channel, int baseNote);
+    std::function<void (int, int, const juce::String&)> onProgress;
+    Comparison run();                             // blocking, on the measuring thread
+
+private:
+    std::vector<float> shot (Rig&, int sound);
+
+    Rig& unit;
+    const ra::Kit kit;
+    const ra::synth::Calibration cal;
+    const int device, channel, baseNote;
+};
+
+juce::File save (const Comparison&, const juce::File& folder);   // RackAttack-comparaison-<date>.racompare
 
 //==============================================================================
 // The measurement file

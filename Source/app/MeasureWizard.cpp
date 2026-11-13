@@ -545,6 +545,16 @@ measure::Rig* MeasureWizard::rig()
 
 void MeasureWizard::start()
 {
+    mode = Mode::measure;
+    resultFile = juce::File();
+    show (Screen::intro);
+    startTimerHz (30);
+}
+
+void MeasureWizard::startCompare()
+{
+    mode = Mode::compare;
+    trial = false;
     resultFile = juce::File();
     show (Screen::intro);
     startTimerHz (30);
@@ -557,6 +567,32 @@ void MeasureWizard::demo (const juce::String& what)
         if (live != nullptr) live->stop = true;
         if (sim != nullptr) sim->stop = true;
         worker.stopThread (5000);
+    }
+    if (what == "compare")
+    {
+        startCompare();
+        return;
+    }
+    if (what == "compare-done")
+    {
+        // a made-up comparison, to see the last screen
+        mode = Mode::compare;
+        measure::Comparison c;
+        c.ok = true;
+        c.kitName = "909 Kit";
+        for (int i = 0; i < 24; ++i)
+        {
+            measure::SoundCompare sc;
+            sc.sound = i;
+            sc.heard = { true, true };
+            sc.levelDb = { -20.0 - (i % 3), -20.0 };
+            sc.pitchHz = { 100.0 * (1.0 + (i == 2 ? 0.12 : 0.0)), 100.0 };
+            sc.lengthMs = { 300.0 * (i == 7 ? 1.6 : 1.0), 300.0 };
+            sc.brightHz = { 2000.0 * (i == 11 ? 1.6 : 1.0), 2000.0 };
+            c.sounds.push_back (sc);
+        }
+        compared (c, {});
+        return;
     }
     trial = what != "live";
     openAudio();
@@ -760,6 +796,11 @@ void MeasureWizard::toneDone()
 
 void MeasureWizard::startMeasure()
 {
+    if (mode == Mode::compare)
+    {
+        startComparing();
+        return;
+    }
     if (isBusy() || rig() == nullptr)
         return;
     withKit ([this]
@@ -802,6 +843,67 @@ void MeasureWizard::startMeasure()
     });
 }
 
+void MeasureWizard::startComparing()
+{
+    if (isBusy() || live == nullptr || ! engine.getKit().isComplete())
+        return;
+    if (stopSequencer)
+        stopSequencer();
+    live->stop = false;
+    live->pauseWanted = false;
+    live->resume();
+    stepsDone = 0;
+    lastPaused = -2;
+    show (Screen::running);
+
+    const auto kit = engine.getKit();
+    const auto cal = simulatorCalibration != nullptr ? simulatorCalibration() : ra::synth::Calibration::defaults();
+    const int device = engine.deviceId.load(), channel = engine.channel.load(), base = engine.baseNote.load();
+    worker.job = [this, kit, cal, device, channel, base]
+    {
+        measure::Compare cmp (*live, kit, cal, device, channel, base);
+        cmp.onProgress = [this] (int done, int, const juce::String& what)
+        {
+            stepsDone = done;
+            const juce::ScopedLock sl (whatLock);
+            whatNow = what;
+        };
+        auto c = std::make_shared<measure::Comparison> (cmp.run());
+        juce::File file;
+        if (c->ok)
+            file = measure::save (*c, measure::defaultFolder());
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MeasureWizard> (this), c, file]
+        {
+            if (safe != nullptr)
+                safe->compared (*c, file);
+        });
+    };
+    worker.startThread();
+}
+
+void MeasureWizard::compared (const measure::Comparison& c, const juce::File& file)
+{
+    worker.stopThread (1000);
+    resultFile = file;
+    resultOk = c.ok;
+    resultStopped = ! c.ok;
+    show (Screen::done);
+    title.setText (c.ok ? "Comparaison faite"_fr : "Comparaison arrêtée"_fr, juce::dontSendNotification);
+    if (c.ok)
+    {
+        body.setText ("Kit « "_fr + c.kitName + " » : chaque son joué sur la machine et dans le simulateur. Ce qui diffère le plus :\n\n"_fr
+                      + c.summary (5).joinIntoString ("\n"), juce::dontSendNotification);
+        details.setText (file.existsAsFile() ? "Tout est dans « "_fr + file.getFileName() + " » (" + file.getParentDirectory().getFullPathName()
+                                                   + ") avec les enregistrements des deux côtés, de quoi régler le simulateur. Ils viennent de ta machine : garde-les pour toi."_fr
+                                             : "Le fichier n'a pas pu être écrit dans Documents."_fr, juce::dontSendNotification);
+        details.setVisible (true);
+    }
+    else
+        body.setText (c.message + "\n\nLes patterns internes des sons sont remis comme avant."_fr, juce::dontSendNotification);
+    ghost.setFinished (c.ok);
+    updateButtons();
+}
+
 void MeasureWizard::finished (const measure::Result& r, const juce::File& file)
 {
     worker.stopThread (1000);
@@ -842,14 +944,38 @@ void MeasureWizard::show (Screen s)
 {
     screen = s;
     const int number = s == Screen::intro ? 1 : s == Screen::audio ? 2 : s == Screen::ready ? 3 : s == Screen::running ? 4 : 5;
-    stepLabel.setText ((trial ? "ESSAI SANS MACHINE   ·   "_fr : "MESURER LE RACKATTACK   ·   "_fr) + juce::String (number) + " / 5",
+    stepLabel.setText ((mode == Mode::compare ? "COMPARER MACHINE ET SIMULATEUR   ·   "_fr
+                        : trial ? "ESSAI SANS MACHINE   ·   "_fr : "MESURER LE RACKATTACK   ·   "_fr) + juce::String (number) + " / 5",
                        juce::dontSendNotification);
+    measureReal.setButtonText (mode == Mode::compare ? "Comparer le kit en cours"_fr : "Mesurer mon RackAttack");
     status.setVisible (false);
     details.setVisible (false);
 
     const bool connected = engine.getConnection() == Engine::Connection::connected;
     const bool simulating = isSimulation != nullptr && isSimulation();
-    if (s == Screen::intro)
+    if (s == Screen::intro && mode == Mode::compare)
+    {
+        title.setText ("Comparer ta machine et le simulateur"_fr, juce::dontSendNotification);
+        const bool hasKit = engine.getKit().isComplete();
+        juce::String text = "Chaque son du kit en cours est joué deux fois : sur le RackAttack (écouté par ta carte son), puis dans le simulateur. "_fr
+                            "Le plugin compare le volume, la hauteur, la longueur et la brillance, et garde les enregistrements pour régler le simulateur. "_fr
+                            "Environ une minute et demie.\n\n"_fr
+                            "Charge d'abord le kit à comparer, par exemple un kit d'usine importé dans la Bibliothèque. "_fr
+                            "Les patterns internes des sons sont coupés pendant la comparaison, puis remis.\n\n"_fr;
+        if (simulating)
+            text << "Tu es en mode simulation : branche d'abord ta machine (bouton en haut)."_fr;
+        else if (! connected)
+            text << "Le RackAttack n'est pas connecté : branche-le d'abord (bouton en haut)."_fr;
+        else if (! hasKit)
+            text << "Le kit en cours n'est pas encore lu : attends la fin de la lecture."_fr;
+        else
+            text << "Il te faut : Out 1 et Out 2 du RackAttack sur deux entrées de ta carte son. Kit en cours : « "_fr + juce::String (engine.getKit().name()).trim() + " »."_fr;
+        body.setText (text, juce::dontSendNotification);
+        measureReal.setEnabled (connected && ! simulating && hasKit);
+        ghost.reset();
+        ghost.setIdle ("Deux sons, un seul vrai. À toi de jouer !"_fr);
+    }
+    else if (s == Screen::intro)
     {
         title.setText ("Apprendre au simulateur à sonner comme ta machine"_fr, juce::dontSendNotification);
         juce::String text = "Le plugin fait jouer au RackAttack des sons de test, un réglage à la fois, et les écoute par ta carte son : "_fr
@@ -879,6 +1005,11 @@ void MeasureWizard::show (Screen s)
     else if (s == Screen::ready)
     {
         title.setText ("Avant de commencer", juce::dontSendNotification);
+        if (mode == Mode::compare)
+            body.setText ("Le RackAttack va jouer les sons du kit, un par un, parfois fort. "_fr
+                          "Le plugin écoute directement l'entrée de la carte son, alors coupe tes enceintes et ton casque.\n\n"_fr
+                          "Ensuite, ne touche plus à la machine : ni potards, ni boutons, ni volume, jusqu'à la fin."_fr, juce::dontSendNotification);
+        else
         body.setText ("Le RackAttack va jouer des bips, des souffles et des sifflements, parfois forts : c'est normal. "_fr
                       "Le plugin écoute directement l'entrée de la carte son, alors coupe tes enceintes et ton casque.\n\n"_fr
                       "Ensuite, ne touche plus à la machine : ni potards, ni boutons, ni volume. Si tu y touches, la mesure se met en pause "_fr
@@ -914,7 +1045,7 @@ void MeasureWizard::updateButtons()
     next.setVisible (screen == Screen::audio);
     next.setEnabled (signal == Signal::ok && ! busy);
     measureReal.setVisible (screen == Screen::intro);
-    tryIt.setVisible (screen == Screen::intro);
+    tryIt.setVisible (screen == Screen::intro && mode == Mode::measure);
     testTone.setVisible (screen == Screen::audio);
     testTone.setEnabled (! busy);
     speakersOff.setVisible (screen == Screen::ready);
@@ -922,11 +1053,11 @@ void MeasureWizard::updateButtons()
     go.setVisible (screen == Screen::ready);
     go.setEnabled (speakersOff.getToggleState() && handsOff.getToggleState() && ! busy);
     ui::styleBig (go, go.isEnabled());
-    pauseButton.setVisible (screen == Screen::running);
+    pauseButton.setVisible (screen == Screen::running && mode == Mode::measure);
     stopButton.setVisible (screen == Screen::running);
     ghost.setVisible (screen == Screen::intro || screen == Screen::running || screen == Screen::done);
     showFile.setVisible (screen == Screen::done && resultFile.existsAsFile());
-    useHere.setVisible (screen == Screen::done && resultFile.existsAsFile());
+    useHere.setVisible (screen == Screen::done && resultFile.existsAsFile() && mode == Mode::measure);
     again.setVisible (screen == Screen::done && ! resultOk);
 }
 
@@ -1053,7 +1184,7 @@ void MeasureWizard::paint (juce::Graphics& g)
 
         // progress
         const int done = stepsDone.load();
-        const int total = measure::Bench::expectedSteps;
+        const int total = mode == Mode::compare ? ra::Kit::numSounds : measure::Bench::expectedSteps;
         auto row = progressArea;
         const int blocks = 50;
         px::bar (g, row.removeFromTop (18), blocks, juce::jlimit (0, blocks, done * blocks / total), px::white);
@@ -1150,7 +1281,7 @@ void MeasureWizard::resized()
             title.setBounds (r.removeFromTop (44));
             r.removeFromTop (6);
             ghost.setBounds (r.removeFromRight (juce::jmin (380, r.getWidth() / 2)).withTrimmedLeft (20).withHeight (260));
-            body.setBounds (r.removeFromTop (150));
+            body.setBounds (r.removeFromTop (mode == Mode::compare ? 330 : 150));
             r.removeFromTop (6);
             status.setBounds (r.removeFromTop (30));
             details.setBounds (r);

@@ -86,6 +86,9 @@ public:
     // Library transfers into the edit buffer, checked by reading back.
     void sendKit (const ra::Kit& k);                        // task "sendKit"
     void sendSound (const ra::Bytes& soundData, int slot);  // task "sendSound"
+    // the internal patterns of the sounds (the unit's Pattern Play): read into the kit, or sent to the edit buffer
+    void readPatterns();                                    // task "readPatterns"
+    void sendPatterns (const std::vector<std::pair<int, ra::Bytes>>& patterns);   // task "sendPatterns"
     // a whole sound at once, without the check (the morph, when many of its settings change): its
     // parameter changes still waiting are dropped, the dump is quicker than them
     void loadSoundQuietly (int slot, const ra::Bytes& soundData);

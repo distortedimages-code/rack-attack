@@ -44,8 +44,10 @@ export class Engine {
   //============================================================================
   // the kit
   kitName () { return this.text(this.x.ra_kit_name()); }
-  sound (s, a) { return this.x.ra_sound_get(s, a); }
-  fx (e, a) { return this.x.ra_fx_get(e, a); }
+  // what the pages show: the kit heard, or the end of the morph that is armed
+  sound (s, a) { return this.x.ra_shown_sound(s, a); }
+  fx (e, a) { return this.x.ra_shown_fx(e, a); }
+  heard (s, a) { return this.x.ra_sound_get(s, a); }
   paramName (a, object = 0) { return this.text(this.x.ra_param_name(object, a)); }
   valueNames (a, object = 0) {
     const key = object + ':' + a;
@@ -55,20 +57,98 @@ export class Engine {
   }
   paramMax (a) { const n = this.valueNames(a); return n.length ? n.length - 1 : 127; }
 
+  // an edit: into the armed end of the morph (heard as far as the fader goes there), else at its position
   setSound (s, a, v) {
     v = Math.max(0, Math.min(this.paramMax(a), Math.round(v)));
     if (this.sound(s, a) === v) return;
-    const msg = this.scratch(this.x.ra_sound_set(s, a, v));
-    this.send(msg);
+    const n = this.x.ra_sound_edit(s, a, v);
+    if (n > 0) this.send(this.scratch(n));
     this.save();
-    this.emit('kit');
+    this.emit('kit'); this.emit('morph');
   }
 
   setFx (e, a, v) {
-    const msg = this.scratch(this.x.ra_fx_set(e, a, Math.max(0, Math.min(127, Math.round(v)))));
-    this.send(msg);
+    const n = this.x.ra_fx_edit(e, a, Math.max(0, Math.min(127, Math.round(v))));
+    if (n > 0) this.send(this.scratch(n));
     this.save();
+    this.emit('kit'); this.emit('morph');
+  }
+
+  //============================================================================
+  // the morph, as the plug-in's fader: kits A and B, a fader that glides, A or B armed (as Octatrack scenes)
+  morphDiffers () { return this.x.ra_morph_differs() === 1; }
+  morphPosition () { return this.x.ra_morph_position(); }
+  morphArmed () { return this.x.ra_morph_armed(); }                // -1, 0 (A) or 1 (B)
+  morphGlide () { return this.settings.glide ?? 150; }
+  setMorphGlide (ms) { this.settings.glide = ms; this.saveSettings(); this.emit('morph'); }
+  morphArm (side) { this.x.ra_morph_arm(side); this.emit('kit'); this.emit('morph'); }
+
+  // the messages one after the other (as the module gives them) -> the simulator and the unit
+  sendAll (bytes) {
+    if (!bytes.length) return;
+    const list = [];
+    for (let i = 0, start = 0; i < bytes.length; ++i)
+      if (bytes[i] === 0xf7) { list.push(bytes.slice(start, i + 1)); start = i + 1; }
+    if (this.node && this.sim) this.node.port.postMessage({ t: 'midi', list: list.map(d => ({ at: -1, d })) });
+    if (this.midi.out && this.midi.connected) for (const d of list) try { this.midi.out.send(d); } catch (e) { this.midiError(e); return; }
+  }
+  morphResult (n) {
+    if (n > 0) this.sendAll(this.scratch(n));
+    this.saveMorphSoon();
+    this.kitSoon();
+    this.emit('morph');
+  }
+  // the screen follows the knobs as they move, but not 50 times a second
+  kitSoon () { if (this.kitTimer) return; this.kitTimer = setTimeout(() => { this.kitTimer = 0; this.emit('kit'); }, 90); }
+
+  // the fader glides to where it is put
+  morphTo (p) {
+    this.morphTarget = Math.max(0, Math.min(1, p));
+    if (this.morphGlide() <= 0) { this.morphNow(this.morphTarget); return; }
+    this.emit('morph');
+    if (this.glideTimer) return;
+    let last = performance.now();
+    this.glideTimer = setInterval(() => {
+      const now = performance.now(), dt = Math.min(100, now - last);
+      last = now;
+      if (this.readingKit) return;
+      const p0 = this.morphPosition(), t = this.morphTarget;
+      let next = p0 + (t - p0) * (1 - Math.exp(-dt * 3 / Math.max(1, this.morphGlide())));
+      if (Math.abs(t - next) < 0.003) next = t;
+      this.morphNow(next);
+      if (next === t) { clearInterval(this.glideTimer); this.glideTimer = 0; }
+    }, 20);
+  }
+  morphNow (p) { this.morphResult(this.x.ra_morph_set_position(p)); }
+  morphApply () { this.morphResult(this.x.ra_morph_apply()); }
+  morphCopyHeard (side) { this.morphResult(this.x.ra_morph_copy_heard(side)); }
+  morphSwap () { this.morphResult(this.x.ra_morph_swap()); }
+  morphFlatten () { this.x.ra_morph_flatten(); this.saveMorphSoon(); this.emit('morph'); }
+  morphLoadDemo (side, program) { this.morphResult(this.x.ra_morph_load_demo(side, program)); }
+  morphLoadKit (side, bytes) {
+    const n = this.withBytes(bytes, (p, len) => this.x.ra_morph_load_kit(side, p, len));
+    if (n < 0) return false;
+    this.morphResult(n);
+    return true;
+  }
+  morphBytes () { return this.scratch(this.x.ra_morph_save()); }
+  loadMorph (bytes) {
+    const n = this.withBytes(bytes, (p, len) => this.x.ra_morph_restore(p, len));
+    if (n < 0) return false;
+    this.morphTarget = this.morphPosition();
+    this.morphResult(n);
     this.emit('kit');
+    return true;
+  }
+  saveMorphSoon () {
+    clearTimeout(this.morphSaveTimer);
+    this.morphSaveTimer = setTimeout(() => {
+      try {
+        if (this.morphDiffers()) localStorage.setItem('ra.morph', b64(this.morphBytes()));
+        else localStorage.removeItem('ra.morph');
+      } catch (e) {}
+      this.save();
+    }, 400);
   }
 
   //============================================================================
@@ -110,11 +190,15 @@ export class Engine {
       const p = localStorage.getItem('ra.pattern'), k = localStorage.getItem('ra.kit');
       if (k) this.withBytes(unb64(k), (ptr, n) => this.x.ra_kit_load(ptr, n));
       if (p) this.withBytes(unb64(p), (ptr, n) => this.x.ra_pattern_load(ptr, n));
+      const m = localStorage.getItem('ra.morph');
+      if (m) this.withBytes(unb64(m), (ptr, n) => this.x.ra_morph_restore(ptr, n));    // the kit becomes its blend
+      this.morphTarget = this.x.ra_morph_position();
     } catch (e) { /* nothing kept */ }
   }
   resetAll () {
-    try { localStorage.removeItem('ra.pattern'); localStorage.removeItem('ra.kit'); } catch (e) {}
+    try { localStorage.removeItem('ra.pattern'); localStorage.removeItem('ra.kit'); localStorage.removeItem('ra.morph'); } catch (e) {}
     this.x.ra_model_init(3);
+    this.morphTarget = 0;
     this.sendKitToSynth();
     this.emit('kit'); this.emit('pattern');
   }
@@ -399,6 +483,7 @@ export class Engine {
   }
 
   async readKit () {
+    this.readingKit = true;
     const asks = [this.scratch(this.x.ra_msg_program_request())];
     for (let s = 0; s < 24; ++s) asks.push(this.scratch(this.x.ra_msg_sound_request(s)));
     for (let e = 0; e < 4; ++e) asks.push(this.scratch(this.x.ra_msg_effect_request(e)));
@@ -410,8 +495,10 @@ export class Engine {
       if (got) ++done;
     }
     this.midi.status = done === asks.length ? '' : `Kit lu en partie (${done}/${asks.length})`;
+    this.readingKit = false;
+    if (this.morphDiffers()) this.morphApply();        // the unit gets what the fader makes of the kit read
     this.sendKitToSynth();
-    this.emit('kit'); this.emit('midi');
+    this.emit('kit'); this.emit('midi'); this.emit('morph');
   }
 
   // sends a request, waits for the first answer that `accept` takes
@@ -428,7 +515,11 @@ export class Engine {
       if (this.waiting) this.waiting(d);
       // dumps and parameter changes from the unit (its knobs, when Ctl. send = SysEx): the screen follows
       const what = this.withBytes(d, (p, n) => this.x.ra_kit_apply(p, n));
-      if (what) this.emit('kit');
+      if (what) {
+        // with an end armed, the unit's knob went into it: the unit goes back to what the fader makes of it
+        if (this.morphArmed() >= 0 && !this.readingKit) this.morphApply();
+        this.emit('kit'); this.emit('morph');
+      }
       return;
     }
     if ((d[0] & 0xf0) === 0x90 && d[2] > 0) {

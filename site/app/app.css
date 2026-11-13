@@ -38,6 +38,26 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .light.midi { border-color: var(--white); } .light.midi b { background: var(--white); }
 .light.err { border-color: var(--red); } .light.err b { background: var(--red); }
 
+/* the morph fader, in the top bar */
+.morph { display: flex; align-items: center; gap: 6px; height: 36px; flex: none; touch-action: none; }
+.morph .mname { font: 700 12px var(--silk); letter-spacing: 1px; color: var(--grey); margin-right: 2px; }
+.morph.on .mname { color: var(--white); } .morph.armed .mname { color: var(--yellow); }
+.morph .mend { width: 34px; height: 34px; border: 2px solid var(--frame); font: 700 14px var(--silk); color: var(--grey); background: #000; }
+.morph.on .mend { border-color: var(--grey); color: var(--white); }
+.morph .mend.at { background: var(--white); border-color: var(--white); color: #000; }
+.morph .mend.arm { background: var(--yellow); border-color: var(--yellow); color: #000; }
+.morph .mtrack { position: relative; width: 190px; height: 36px; margin: 0 8px; cursor: pointer;
+                 background: linear-gradient(90deg, var(--faint) 50%, transparent 50%) 0 17px / 4px 2px repeat-x; }
+.morph .mtrack i { position: absolute; display: block; }
+.morph .mfill { left: 0; top: 17px; height: 2px; background: var(--white); }
+.morph .mmid { left: calc(50% - 1px); top: 12px; width: 2px; height: 12px; background: var(--faint); }
+.morph .mheard { top: 3px; width: 2px; height: 30px; margin-left: -1px; background: var(--red); }
+.morph .mknob { top: 2px; width: 10px; height: 32px; margin-left: -5px; background: var(--grey); }
+.morph.on .mknob { background: var(--white); }
+/* an end armed: the page in a yellow frame */
+.stage.armed::after { content: ''; position: absolute; left: 0; top: 56px; width: 1360px; height: 792px; pointer-events: none; z-index: 9;
+                      border: 2px dashed var(--yellow); }
+
 /* the sequencer page */
 .ghost { left: 16px; top: 72px; image-rendering: pixelated; }
 .kitname { left: 84px; top: 76px; height: 44px; display: flex; align-items: center; gap: 12px; font-size: 30px; }

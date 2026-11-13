@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "../core/RaKit.h"
+#include "../core/RaMorph.h"
 #include "../core/RaSeq.h"
 #include "../core/RaSysex.h"
 #include "../sim/RaSynth.h"
@@ -47,6 +48,8 @@ namespace
         std::vector<Event> events;
         std::uint8_t device = ra::kBroadcast;
         int channel = 1;
+        ra::Morph morph;          // kits A and B, as the plug-in's fader (the kit above is the blend heard)
+        int armed = -1;           // -1, or the end edits go into (0 A, 1 B)
     };
     Model* model = nullptr;
 
@@ -62,6 +65,114 @@ namespace
     {
         auto* tr = trackAt (t);
         return tr != nullptr && s >= 0 && s < maxSteps ? &tr->steps[(size_t) s] : nullptr;
+    }
+
+    using Side = ra::Morph::Side;
+    Side sideOf (int i)   { return i == 1 ? Side::b : Side::a; }
+
+    // the kit heard -> the blend: the messages for the unit (and the simulator) one after the other in `out`
+    void blendInto (ra::Bytes& out)
+    {
+        auto& m = model->morph;
+        auto& kit = model->kit;
+        for (int s = 0; s < ra::Kit::numSounds; ++s)
+        {
+            if (! kit.hasSound (s))
+                continue;
+            std::vector<int> diff;
+            for (int a = 0; a < ra::kSoundDataSize; ++a)
+                if (kit.soundValue (s, a) != m.sound (s, a))
+                    diff.push_back (a);
+            if (diff.size() > 16)
+            {
+                // many settings: the whole sound at once, as the plug-in does
+                ra::Bytes data ((size_t) ra::kSoundDataSize);
+                for (int a = 0; a < ra::kSoundDataSize; ++a)
+                    data[(size_t) a] = (std::uint8_t) m.sound (s, a);
+                kit.setSoundData (s, data);
+                ra::Bytes payload { ra::cmd::SNDD, ra::kEditBuffer, (std::uint8_t) s };
+                payload.insert (payload.end(), data.begin(), data.end());
+                const auto msg = ra::build (model->device, payload);
+                out.insert (out.end(), msg.begin(), msg.end());
+            }
+            else
+                for (auto a : diff)
+                {
+                    kit.setSoundValue (s, a, m.sound (s, a));
+                    const auto msg = ra::soundParameter (model->device, s, a, m.sound (s, a));
+                    out.insert (out.end(), msg.begin(), msg.end());
+                }
+        }
+        for (int e = 0; e < ra::Kit::numEffects; ++e)
+        {
+            if (! kit.hasEffect (e))
+                continue;
+            for (int a = 0; a < ra::kEffectDataSize; ++a)
+                if (kit.effectValue (e, a) != m.effect (e, a))
+                {
+                    kit.setEffectValue (e, a, m.effect (e, a));
+                    const auto msg = ra::build (model->device, { ra::cmd::EFXP, ra::kEditBuffer, (std::uint8_t) e, (std::uint8_t) (a >> 7),
+                                                                 (std::uint8_t) (a & 127), (std::uint8_t) m.effect (e, a) });
+                    out.insert (out.end(), msg.begin(), msg.end());
+                }
+        }
+    }
+
+    // something from the unit (its knobs, or dumps while its kit is read): into the armed end, else at the
+    // position; whole sounds into the end heard (or both in between); with no morph, A and B follow it
+    void morphTakes (const ra::Kit::Change& c)
+    {
+        using What = ra::Kit::Change::What;
+        auto& m = model->morph;
+        const auto& kit = model->kit;
+        if (c.what == What::sound && c.address >= 0)
+        {
+            if (model->armed >= 0) m.setSoundEnd (sideOf (model->armed), c.index, c.address, kit.soundValue (c.index, c.address));
+            else m.editSound (c.index, c.address, kit.soundValue (c.index, c.address));
+            return;
+        }
+        if (c.what == What::effect && c.address >= 0)
+        {
+            if (model->armed >= 0) m.setEffectEnd (sideOf (model->armed), c.index, c.address, kit.effectValue (c.index, c.address));
+            else m.editEffect (c.index, c.address, kit.effectValue (c.index, c.address));
+            return;
+        }
+        if (c.what != What::sound && c.what != What::effect && c.what != What::whole)
+            return;
+        if (! m.differs() && model->armed < 0)
+        {
+            const double p = m.position();
+            m.reset (kit);
+            m.setPosition (p);
+            return;
+        }
+        const double p = m.position();
+        const bool intoA = model->armed >= 0 ? model->armed == 0 : p < 1.0;
+        const bool intoB = model->armed >= 0 ? model->armed == 1 : p > 0.0;
+        auto takeSound = [&] (int s)
+        {
+            if (! kit.hasSound (s)) return;
+            if (intoA) m.loadSound (Side::a, s, kit.soundData (s));
+            if (intoB) m.loadSound (Side::b, s, kit.soundData (s));
+            for (int a : { 0x58, 0x5A, 0x5B })
+                m.setSoundEnd (Side::a, s, a, kit.soundValue (s, a));
+        };
+        auto takeEffect = [&] (int e)
+        {
+            if (! kit.hasEffect (e)) return;
+            ra::Bytes d;
+            for (int a = 0; a < ra::kEffectDataSize; ++a)
+                d.push_back ((std::uint8_t) std::clamp (kit.effectValue (e, a), 0, 127));
+            if (intoA) m.loadEffect (Side::a, e, d);
+            if (intoB) m.loadEffect (Side::b, e, d);
+        };
+        if (c.what == What::sound) takeSound (c.index);
+        else if (c.what == What::effect) takeEffect (c.index);
+        else
+        {
+            for (int s = 0; s < ra::Kit::numSounds; ++s) takeSound (s);
+            for (int e = 0; e < ra::Kit::numEffects; ++e) takeEffect (e);
+        }
     }
 
     void refreshContext()
@@ -138,6 +249,7 @@ RA_EXPORT (ra_model_init) void raModelInit (int program)
     model = new Model();
     ra::fillDemoKit (model->kit, std::clamp (program, 0, 49));
     fillDemoPattern (model->pattern);
+    model->morph.reset (model->kit);
     refreshContext();
 }
 
@@ -193,6 +305,112 @@ RA_EXPORT (ra_fx_data) int raFxData (int e)
     return toScratch (d);
 }
 
+//==============================================================================
+// The morph (as the plug-in's fader): A, B, the position; edits into the armed end or at the position.
+// The functions that change what is heard give back the messages to send (in scratch, one after the other).
+
+RA_EXPORT (ra_morph_differs) int raMorphDiffers()                 { return model->morph.differs() ? 1 : 0; }
+RA_EXPORT (ra_morph_position) double raMorphPosition()            { return model->morph.position(); }
+RA_EXPORT (ra_morph_armed) int raMorphArmed()                     { return model->armed; }
+RA_EXPORT (ra_morph_arm) void raMorphArm (int side)               { model->armed = side == 0 || side == 1 ? side : -1; }
+RA_EXPORT (ra_morph_end) int raMorphEnd (int side, int s, int a)  { return model->morph.end (sideOf (side), s, a); }
+
+// what the pages show: the end armed, else the kit heard
+RA_EXPORT (ra_shown_sound) int raShownSound (int s, int a)
+{
+    return model->armed >= 0 && model->kit.hasSound (s) ? model->morph.end (sideOf (model->armed), s, a) : model->kit.soundValue (s, a);
+}
+RA_EXPORT (ra_shown_fx) int raShownFx (int e, int a)
+{
+    return model->armed >= 0 && model->kit.hasEffect (e) ? model->morph.effectEnd (sideOf (model->armed), e, a) : model->kit.effectValue (e, a);
+}
+
+static int blendToScratch()
+{
+    ra::Bytes out;
+    blendInto (out);
+    refreshContext();
+    return toScratch (out);
+}
+
+RA_EXPORT (ra_morph_set_position) int raMorphSetPosition (double p)  { model->morph.setPosition (p); return blendToScratch(); }
+RA_EXPORT (ra_morph_apply) int raMorphApply()                         { return blendToScratch(); }
+RA_EXPORT (ra_morph_copy_heard) int raMorphCopyHeard (int side)       { model->morph.copyBlendTo (sideOf (side)); return blendToScratch(); }
+RA_EXPORT (ra_morph_swap) int raMorphSwap()                           { model->morph.swap(); return blendToScratch(); }
+RA_EXPORT (ra_morph_flatten) void raMorphFlatten()
+{
+    const double p = model->morph.position();
+    model->morph.reset (model->kit);
+    model->morph.setPosition (p);
+}
+RA_EXPORT (ra_morph_load_demo) int raMorphLoadDemo (int side, int program)
+{
+    ra::Kit k;
+    ra::fillDemoKit (k, std::clamp (program, 0, 49));
+    model->morph.load (sideOf (side), k);
+    return blendToScratch();
+}
+RA_EXPORT (ra_morph_load_kit) int raMorphLoadKit (int side, const std::uint8_t* data, int size)
+{
+    auto k = ra::Kit::fromSyx (ra::Bytes (data, data + size));
+    if (! k) return -1;
+    model->morph.load (sideOf (side), *k);
+    return blendToScratch();
+}
+RA_EXPORT (ra_morph_save) int raMorphSave()                           { return toScratch (model->morph.save()); }
+RA_EXPORT (ra_morph_restore) int raMorphRestore (const std::uint8_t* data, int size)
+{
+    if (! model->morph.restore (std::vector<std::uint8_t> (data, data + size)))
+        return -1;
+    return blendToScratch();
+}
+
+// an edit from the page: into the armed end (heard as far as the fader goes there), else at the position
+RA_EXPORT (ra_sound_edit) int raSoundEdit (int s, int a, int v)
+{
+    v = std::clamp (v, 0, 127);
+    if (model->armed >= 0 && model->kit.hasSound (s))
+        model->morph.setSoundEnd (sideOf (model->armed), s, a, v);
+    else
+    {
+        model->morph.editSound (s, a, v);
+        model->kit.setSoundValue (s, a, v);       // exactly what was asked, heard at once
+    }
+    ra::Bytes out;
+    const int before = model->kit.soundValue (s, a);
+    if (model->armed >= 0)
+    {
+        const int heard = model->morph.sound (s, a);
+        if (heard != before)
+        {
+            model->kit.setSoundValue (s, a, heard);
+            out = ra::soundParameter (model->device, s, a, heard);
+        }
+    }
+    else
+        out = ra::soundParameter (model->device, s, a, v);
+    refreshContext();
+    return toScratch (out);
+}
+
+RA_EXPORT (ra_fx_edit) int raFxEdit (int e, int a, int v)
+{
+    v = std::clamp (v, 0, 127);
+    int heard = v;
+    if (model->armed >= 0 && model->kit.hasEffect (e))
+    {
+        model->morph.setEffectEnd (sideOf (model->armed), e, a, v);
+        heard = model->morph.effect (e, a);
+    }
+    else
+        model->morph.editEffect (e, a, v);
+    if (model->kit.effectValue (e, a) == heard && model->armed >= 0)
+        return toScratch (ra::Bytes());
+    model->kit.setEffectValue (e, a, heard);
+    return toScratch (ra::build (model->device, { ra::cmd::EFXP, ra::kEditBuffer, (std::uint8_t) e,
+                                                  (std::uint8_t) (a >> 7), (std::uint8_t) (a & 127), (std::uint8_t) heard }));
+}
+
 // a message from the unit (dumps while reading its kit): 0 nothing, 1 program, 2 sound, 3 effect, 4 whole
 RA_EXPORT (ra_kit_apply) int raKitApply (const std::uint8_t* data, int size)
 {
@@ -202,7 +420,10 @@ RA_EXPORT (ra_kit_apply) int raKitApply (const std::uint8_t* data, int size)
         return 0;
     const auto change = model->kit.apply (p);
     if (change.what != ra::Kit::Change::What::nothing)
+    {
+        morphTakes (change);
         refreshContext();
+    }
     return (int) change.what;
 }
 
@@ -381,6 +602,7 @@ RA_EXPORT (ra_kit_load) int raKitLoad (const std::uint8_t* data, int size)
     auto k = ra::Kit::fromSyx (ra::Bytes (data, data + size));
     if (! k) return 0;
     model->kit = *k;
+    model->morph.reset (model->kit);
     refreshContext();
     return 1;
 }

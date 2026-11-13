@@ -112,6 +112,51 @@ const rms = Math.sqrt(sum / count);
 }
 check(peak > 0.05 && peak < 4, 'peak ' + peak.toFixed(3));
 check(rms > 0.005, 'rms ' + rms.toFixed(4));
+// Waldorf's files: a program as their MIDI files have it (dumps to buffer 0x30, the patterns, then the order to
+// store it as program 7), read back as a kit with its patterns, loaded, and the patterns into the sequencer
+{
+  const w = load();
+  w.ra_model_init(3);
+  const split = (b) => { const out = []; for (let i = 0, st = 0; i < b.length; ++i) if (b[i] === 0xf7) { out.push(b.slice(st, i + 1)); st = i + 1; } return out; };
+  const withBytes = (x, b, fn) => { const p = x.ra_alloc(b.length); new Uint8Array(x.mem().buffer, p, b.length).set(b); try { return fn(p, b.length); } finally { x.ra_free(p); } };
+  const seal = (m) => { let sum = 0; for (let i = 4; i < m.length - 2; ++i) sum += m[i]; m[m.length - 2] = sum & 0x7f; return m; };
+  const pats = split(w.bytes(w.ra_patterns_from_seq(-1)));
+  check(pats.length === 24, 'sequence -> 24 pattern dumps: ' + pats.length);
+  const msgs = split(w.bytes(w.ra_kit_save())).map(m => { m[3] = 0; m[5] = 0x30; return seal(m); });
+  check(msgs.length === 29 + 24, 'kit file with its patterns: ' + msgs.length);
+  msgs.push(seal(new Uint8Array([0xf0, 0x3e, 0x11, 0, 0x07, 0x01, 0x30, 0x06, 0, 0xf7])));
+  const trk = [0x00, 0xff, 0x51, 0x03, 0x07, 0xa1, 0x20];
+  for (const m of msgs) { trk.push(0, 0xf0); const len = m.length - 1; if (len >= 128) trk.push(0x80 | (len >> 7)); trk.push(len & 0x7f); trk.push(...m.slice(1)); }
+  trk.push(0, 0xff, 0x2f, 0);
+  const smf = new Uint8Array([0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1, 0, 96, 0x4d, 0x54, 0x72, 0x6b, 0, 0, trk.length >> 8, trk.length & 255, ...trk]);
+  const got = withBytes(w, smf, (p, len) => w.ra_bank_read(p, len));
+  check(got === 1, 'one program in the file: ' + got);
+  check(w.ra_bank_number(0) === 6 && w.ra_bank_has_kit(0) === 1 && w.text(w.ra_bank_name(0)) === 'SIM 04', 'its number, kit and name');
+  const filledTracks = [...Array(24).keys()].filter(t => [...Array(16).keys()].some(s => w.ra_track_is_on(t, s) === 1)).length;
+  check(w.ra_bank_patterns(0) === filledTracks, 'patterns with notes: ' + w.ra_bank_patterns(0) + ' / ' + filledTracks);
+  const syx = w.bytes(w.ra_bank_syx(0));
+  // another page: the kit taken (the unit gets its dumps), then its patterns into the sequencer
+  const v = load();
+  v.ra_model_init(0);
+  const sent = withBytes(v, syx, (p, len) => v.ra_kit_take(p, len));
+  check(sent > 0 && v.text(v.ra_kit_name()) === 'SIM 04' && v.ra_kit_patterns() === filledTracks, 'kit taken with its patterns');
+  check(split(v.bytes(sent)).filter(m => m[4] === 0x13).length === 24, 'the unit gets 24 pattern dumps');
+  for (let t = 0; t < 24; ++t) v.ra_track_op(t, 2, 0);
+  check(v.ra_patterns_to_seq(0, 0, 0) === filledTracks, 'patterns -> sequencer');
+  let same = true;
+  for (let s = 0; s < 16; ++s) same = same && v.ra_track_is_on(0, s) === w.ra_track_is_on(0, s);
+  check(same && v.ra_track_get(0, 1) === w.ra_track_get(0, 1), 'the kick comes back as it was');
+  // a file of patterns alone
+  const only = new Uint8Array(pats.map(m => [...seal(m)]).flat());
+  check(withBytes(w, only, (p, len) => w.ra_bank_read(p, len)) === 1 && w.ra_bank_has_kit(0) === 0, 'patterns alone: no kit');
+  const onlySyx = w.bytes(w.ra_bank_syx(0));
+  check(withBytes(v, onlySyx, (p, len) => v.ra_kit_take(p, len)) === -1, 'patterns alone are no kit to load');
+  check(withBytes(v, onlySyx, (p, len) => v.ra_patterns_take(p, len)) > 0, 'patterns alone into the kit');
+  check(withBytes(v, onlySyx, (p, len) => v.ra_patterns_to_seq(p, len, 1)) === filledTracks, 'patterns alone -> sequencer');
+  // nothing in a file of something else
+  check(withBytes(w, new Uint8Array([1, 2, 3, 4]), (p, len) => w.ra_bank_read(p, len)) === 0, 'not a Waldorf file');
+}
+
 console.log(`plan: ${n} events (${ons} notes, ${params} parameters) · audio peak ${peak.toFixed(3)} rms ${rms.toFixed(4)}`);
 if (failures) { console.log(failures + ' failed'); process.exit(1); }
 console.log('web engine: all passed');

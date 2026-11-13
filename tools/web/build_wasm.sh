@@ -8,6 +8,6 @@ OUT=${1:-site/app/ra.wasm}
 mkdir -p "$(dirname "$OUT")"
 python3 -m ziglang c++ -target wasm32-wasi -mexec-model=reactor -O2 -std=c++20 -fno-exceptions -fno-rtti \
   -DNDEBUG -Wall -Wno-unused-function -Wno-unused-const-variable -Wl,--strip-all \
-  Source/web/RaWeb.cpp Source/core/RaSeq.cpp Source/core/RaKit.cpp Source/core/RaSysex.cpp Source/core/RaMorph.cpp Source/sim/RaSynth.cpp \
+  Source/web/RaWeb.cpp Source/core/RaSeq.cpp Source/core/RaKit.cpp Source/core/RaSysex.cpp Source/core/RaMorph.cpp Source/core/RaFactory.cpp Source/sim/RaSynth.cpp \
   -o "$OUT"
 ls -l "$OUT"

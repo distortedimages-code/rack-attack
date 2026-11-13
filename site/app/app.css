@@ -33,6 +33,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .logo { font: 700 17px var(--silk); letter-spacing: 3px; margin-right: 18px; white-space: nowrap; }
 .logo i { color: var(--red); font-style: normal; }
 .top .key { height: 36px; padding: 0 14px; font: 24px var(--vt); text-transform: none; letter-spacing: 0; }
+.top .key.square { width: 36px; padding: 0; }
 .light { flex: 1; height: 36px; border: 2px solid var(--yellow); display: flex; align-items: center; gap: 10px; padding: 0 12px; font-size: 24px; white-space: nowrap; overflow: hidden; }
 .light b { width: 12px; height: 12px; background: var(--yellow); flex: none; }
 .light.midi { border-color: var(--white); } .light.midi b { background: var(--white); }
@@ -266,3 +267,25 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .ptitle.go::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(var(--yellow) 0 3px, transparent 3px 9px); animation: pstreak .52s linear both; }
 @keyframes ptin { 0% { transform: translateX(-140%); opacity: 1; } 22% { transform: translateX(10px); opacity: 1; } 30%, 70% { transform: none; opacity: 1; } 100% { opacity: 0; } }
 @keyframes pstreak { 0% { transform: translateX(-100%); opacity: .9; } 23% { transform: none; opacity: .7; } 33% { opacity: 0; } 100% { opacity: 0; } }
+
+/* the Kits page: Waldorf's files imported into this browser */
+.importkey { border-color: var(--yellow); color: var(--yellow); font: 24px var(--vt); text-transform: none; letter-spacing: 0; }
+.kitsets, .kitgrid { overflow-y: auto; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+.kitsets { display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+.kitset { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 12px; border: 2px solid var(--frame); background: var(--panel); text-align: left; }
+.kitset .nm { flex: 1; font: 700 12px var(--silk); letter-spacing: 1px; line-height: 16px; }
+.kitset .ct { font-size: 24px; color: var(--grey); }
+.kitset.on { background: var(--white); border-color: var(--white); color: #000; } .kitset.on .ct { color: #000; }
+.kitgrid.empty { display: block; }
+.kitgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; align-content: start; padding-right: 4px; }
+.kitcell { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 10px; border: 2px solid var(--frame); background: var(--cell); text-align: left; overflow: hidden; }
+.kitcell:hover { border-color: var(--grey); }
+.kitcell .no { font-size: 24px; color: var(--dim); flex: none; width: 30px; }
+.kitcell .nm { flex: 1; font-size: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kitcell .pt { flex: none; font-size: 20px; color: var(--yellow); }
+.kitcell.pats .no { color: var(--yellow); font: 700 10px var(--silk); width: 30px; }
+.kitcell.on { background: var(--white); border-color: var(--white); color: #000; } .kitcell.on .no, .kitcell.on .pt { color: #000; }
+.kitsempty { border: 2px solid var(--white); background: var(--panel); padding: 28px 32px 36px; max-width: 760px; margin: 60px auto 0; }
+.kitsempty h3 { margin: 0 0 14px; font: 700 18px var(--silk); letter-spacing: 2px; }
+.kitsempty p { margin: 0 0 12px; font-size: 26px; color: var(--grey); line-height: 1.15; }
+.kitsempty .key.big { margin-top: 18px; }

@@ -189,19 +189,20 @@ kbd.k { background: var(--black); color: var(--white); border: 2px solid var(--g
 .mx-box { position: absolute; left: 0; top: 16px; width: 64px; height: 150px; border: 2px solid var(--frame); background: var(--cell); }
 .mx-col.hot .mx-box { border-color: var(--yellow); }
 .mx-fillv { position: absolute; left: 18px; bottom: 0; width: 24px; background: var(--white); }
-.mx-tk { position: absolute; width: 14px; height: 11px; font: 700 7px/11px var(--silk); text-align: center; color: var(--black); background: var(--grey); margin-bottom: -5px; }
+.mx-tk { position: absolute; width: 14px; height: 12px; display: flex; align-items: center; justify-content: center; color: var(--black); background: var(--grey); margin-bottom: -6px; }
 .mx-tk.a { left: 1px; } .mx-tk.b { right: 1px; }
 .mx-tk.arm { background: var(--yellow); }
 .mx-val { position: absolute; left: 0; right: 0; top: 170px; text-align: center; font: 22px/22px var(--vt); }
 .mx-val.arm { color: var(--yellow); }
 .mx-shape { position: absolute; left: 0; right: 0; top: 56px; text-align: center; font: 28px var(--vt); }
 .mx-shape.flash { background: var(--red); color: var(--black); }
+.mx .gl { display: inline-block; vertical-align: -1px; }
 .mx-sh { position: absolute; left: 4px; font: 16px var(--vt); color: var(--dim); } .mx-sh.a { bottom: 4px; } .mx-sh.b { top: 2px; }
 .mx-frame { position: absolute; left: 198px; top: 6px; width: 436px; height: 208px; border: 2px dashed var(--yellow); display: none; pointer-events: none; }
 .mx-bar { position: absolute; left: 12px; top: 222px; width: 616px; height: 34px; display: flex; align-items: center; gap: 6px; }
 .mx-name { width: 62px; font: 700 10px var(--silk); letter-spacing: 1px; color: var(--white); }
 .mx-name.arm { color: var(--yellow); }
-.mx-end { width: 30px; height: 30px; border: 2px solid var(--grey); font: 700 12px/26px var(--silk); text-align: center; color: var(--white); }
+.mx-end { width: 30px; height: 30px; border: 2px solid var(--grey); display: flex; align-items: center; justify-content: center; color: var(--white); }
 .mx-end.at { background: var(--white); border-color: var(--white); color: var(--black); }
 .mx-end.arm { background: var(--yellow); border-color: var(--yellow); color: var(--black); }
 .mx-end.flash { outline: 3px solid var(--red); outline-offset: 2px; }

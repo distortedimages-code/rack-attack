@@ -42,7 +42,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .morph { display: flex; align-items: center; gap: 6px; height: 36px; flex: none; touch-action: none; }
 .morph .mname { font: 700 12px var(--silk); letter-spacing: 1px; color: var(--grey); margin-right: 2px; }
 .morph.on .mname { color: var(--white); } .morph.armed .mname { color: var(--yellow); }
-.morph .mend { width: 34px; height: 34px; border: 2px solid var(--frame); font: 700 14px var(--silk); color: var(--grey); background: #000; }
+.morph .mend { width: 34px; height: 34px; border: 2px solid var(--frame); color: var(--grey); background: #000; display: flex; align-items: center; justify-content: center; padding: 0; }
+.morph .mend svg { width: 21px; height: 21px; display: block; }
 .morph.on .mend { border-color: var(--grey); color: var(--white); }
 .morph .mend.at { background: var(--white); border-color: var(--white); color: #000; }
 .morph .mend.arm { background: var(--yellow); border-color: var(--yellow); color: #000; }

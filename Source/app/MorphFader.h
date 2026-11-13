@@ -1,8 +1,8 @@
-// The morph fader, in the bottom bar of every page: MORPH, A, the fader, B.
+// The morph fader, in the bottom bar of every page: MORPH, the heart (end A), the fader, the skull (end B).
 // Drag it (⌘ or Ctrl: finer), double-click: half way; it glides there (the red mark: what is heard). A click on
-// A or B arms that end (lit yellow, as the Octatrack's scenes): what is turned then goes into it. Right click:
-// the ends, the kit heard into A or B, A and B swapped, no more morph, the glide time. Kits, sounds and morphs
-// go into A or B from the library (right click).
+// the heart or the skull arms that end (lit yellow, as the Octatrack's scenes): what is turned then goes into it.
+// Right click: the ends, the kit heard into one end, the ends swapped, no more morph, the glide time. Kits, sounds
+// and morphs go into the heart or the skull from the library (right click).
 #pragma once
 
 #include <JuceHeader.h>
@@ -19,9 +19,9 @@ public:
     explicit MorphFader (MorphControl& m) : morph (m)
     {
         morph.addChangeListener (this);
-        setTooltip ("Morph : du kit A au kit B. Glisse (⌘ ou Ctrl : plus fin), double-clic : au milieu. "
-                    "Clic sur A ou B : ce que tu tournes va dans ce côté seulement (re-clic pour sortir). "
-                    "Clic droit : aller à A ou B, glide… Pour charger un kit dans A ou B : clic droit dans la Bibliothèque."_fr);
+        setTooltip ("Morph : du kit du cœur au kit du crâne. Glisse (⌘ ou Ctrl : plus fin), double-clic : au milieu. "
+                    "Clic sur le cœur ou le crâne : ce que tu tournes va dans ce côté seulement (re-clic pour sortir). "
+                    "Clic droit : aller au cœur ou au crâne, glide… Pour y charger un kit : clic droit dans la Bibliothèque."_fr);
     }
 
     ~MorphFader() override   { morph.removeChangeListener (this); }
@@ -35,16 +35,15 @@ public:
         px::drawText (g, "MORPH", nameBox, juce::Justification::centredLeft, px::label (11.0f), armed ? px::yellow : (on ? px::white : px::grey));
 
         // an end: yellow when armed, white when heard, else a frame
-        for (auto [box, label, side, atEnd] : { std::tuple { aBox, "A", MorphControl::Side::a, p <= 0.0 },
-                                                std::tuple { bBox, "B", MorphControl::Side::b, p >= 1.0 } })
+        for (auto [box, side, atEnd] : { std::tuple { aBox, MorphControl::Side::a, p <= 0.0 },
+                                         std::tuple { bBox, MorphControl::Side::b, p >= 1.0 } })
         {
             const bool lit = armed == side;
             g.setColour (lit ? px::yellow : (atEnd ? px::white : px::black));
             g.fillRect (box);
             if (! lit && ! atEnd)
                 px::frameRect (g, box, on ? px::grey : px::frame, 2);
-            px::drawText (g, label, box, juce::Justification::centred, px::label (12.0f),
-                          lit || atEnd ? px::black : (on ? px::white : px::grey));
+            drawGlyph (g, box, side, lit || atEnd ? px::black : (on ? px::white : px::grey));
         }
 
         // the track: dots, the part from A filled, a mark in the middle, the knob
@@ -71,7 +70,7 @@ public:
             g.fillRect (hx - 1, 2, 2, getHeight() - 4);
         }
         if (! on)
-            px::drawText (g, "A = B", track.withTrimmedLeft (track.getWidth() / 2 + 8), juce::Justification::centredLeft, px::label (9.0f), px::dim);
+            px::drawText (g, "PAREILS", track.withTrimmedLeft (track.getWidth() / 2 + 8), juce::Justification::centredLeft, px::label (9.0f), px::dim);
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -82,7 +81,7 @@ public:
             showMenu();
             return;
         }
-        // A or B: armed, or no more
+        // the heart or the skull: armed, or no more
         for (auto [box, side] : { std::pair { aBox, MorphControl::Side::a }, std::pair { bBox, MorphControl::Side::b } })
             if (box.contains (e.getPosition()))
             {
@@ -134,6 +133,25 @@ public:
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override   { repaint(); }
 
+public:
+    // the ends, drawn in pixels: a heart for A, a skull for B (7 x 7, as big as the box allows)
+    static void drawGlyph (juce::Graphics& g, juce::Rectangle<int> box, MorphControl::Side side, juce::Colour c)
+    {
+        static const char* heart[7] = { ".##.##.", "#######", "#######", ".#####.", "..###..", "...#...", "......." };
+        static const char* skull[7] = { ".#####.", "#######", "#..#..#", "#######", ".#####.", ".#.#.#.", "......." };
+        const auto& rows = side == MorphControl::Side::a ? heart : skull;
+        const int k = juce::jmax (1, (juce::jmin (box.getWidth(), box.getHeight()) - 6) / 7);
+        const int x0 = box.getCentreX() - 7 * k / 2, y0 = box.getCentreY() - 6 * k / 2;
+        g.setColour (c);
+        for (int y = 0; y < 7; ++y)
+            for (int x = 0; x < 7; ++x)
+                if (rows[y][x] == '#')
+                    g.fillRect (x0 + x * k, y0 + y * k, k, k);
+    }
+    static juce::String endName (MorphControl::Side side)   { return side == MorphControl::Side::a ? "cœur"_fr : "crâne"_fr; }
+
+private:
+
     void layout()
     {
         auto r = getLocalBounds();
@@ -160,23 +178,23 @@ private:
         juce::PopupMenu m, glide;
         const auto armed = morph.getArmed();
         m.addSectionHeader ("MORPH");
-        m.addItem (5, "Aller à A"_fr);
+        m.addItem (5, "Aller au cœur"_fr);
         m.addItem (6, "Au milieu"_fr);
-        m.addItem (7, "Aller à B"_fr);
+        m.addItem (7, "Aller au crâne"_fr);
         m.addSeparator();
-        m.addItem (9, "Éditer A seulement"_fr, true, armed == MorphControl::Side::a);
-        m.addItem (10, "Éditer B seulement"_fr, true, armed == MorphControl::Side::b);
+        m.addItem (9, "Éditer le cœur seulement"_fr, true, armed == MorphControl::Side::a);
+        m.addItem (10, "Éditer le crâne seulement"_fr, true, armed == MorphControl::Side::b);
         m.addSeparator();
-        m.addItem (1, "Le kit entendu dans A"_fr);
-        m.addItem (2, "Le kit entendu dans B"_fr);
-        m.addItem (3, "Échanger A et B"_fr, morph.differs());
-        m.addItem (4, "A = B : plus de morph"_fr, morph.differs());
+        m.addItem (1, "Le kit entendu dans le cœur"_fr);
+        m.addItem (2, "Le kit entendu dans le crâne"_fr);
+        m.addItem (3, "Échanger le cœur et le crâne"_fr, morph.differs());
+        m.addItem (4, "Cœur = crâne : plus de morph"_fr, morph.differs());
         m.addSeparator();
         for (size_t i = 0; i < glideTimes.size(); ++i)
             glide.addItem (100 + (int) i, glideText (glideTimes[i]), true, morph.getGlideMs() == glideTimes[i]);
         m.addSubMenu (glideText (morph.getGlideMs()), glide);
         m.addSeparator();
-        m.addItem (8, "Charger un kit dans A ou B, enregistrer le morph : Bibliothèque"_fr, false);
+        m.addItem (8, "Charger un kit dans le cœur ou le crâne, enregistrer le morph : Bibliothèque"_fr, false);
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
                          [safe = juce::Component::SafePointer<MorphFader> (this)] (int r)
         {

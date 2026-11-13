@@ -85,6 +85,9 @@ private:
     void updateSlots();                    // slots = the section's settings + the quick row
     std::vector<ui::ParamDef> slots;
     std::vector<juce::String> slotWhy;     // why a quick setting is there (empty: always there)
+    // the quick setting last turned stays where it is for this sound, even when its new value would
+    // make the row pick something else there (Forme 1 turned to Noise, P.Mod back to 0...)
+    struct { int track = -1, index = -1; ui::ParamDef def {}; } stickyQuick;
     int quickFrom = 0;
     juce::Rectangle<int> quickRow, quickHeader, tuneBox;
     void toggleTuned();

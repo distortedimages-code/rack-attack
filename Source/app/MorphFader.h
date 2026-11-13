@@ -1,4 +1,4 @@
-// The morph fader, in the bottom bar of every page: MORPH, A, the fader, B (Microtonic's morph slider).
+// The morph fader, in the bottom bar of every page: MORPH, A, the fader, B.
 // Drag it (⌘ or Ctrl: finer), double-click: half way; it glides there (the red mark: what is heard). A click on
 // A or B arms that end (lit yellow, as the Octatrack's scenes): what is turned then goes into it. Right click:
 // the ends, the kit heard into A or B, A and B swapped, no more morph, the glide time. Kits, sounds and morphs

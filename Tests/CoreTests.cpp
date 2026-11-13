@@ -173,7 +173,7 @@ int main()
         CHECK (soundBack.has_value() && *soundBack == kit.soundData (5));
     }
 
-    // Morph: two kits and a fader, as Microtonic's
+    // Morph: two kits and a fader
     {
         Kit k1, k2;
         fillDemoKit (k1, 0);

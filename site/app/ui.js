@@ -218,23 +218,34 @@ for (const [id, label] of [['seq', 'Séquenceur'], ['son', 'Son'], ['fx', 'Effet
   b.addEventListener('click', () => showPage(id));
   pageKeys[id] = b;
 }
-// the morph fader (as the plug-in's): MORPH, A, the fader, B. A tap on A or B arms it (yellow): what is turned
+// the morph fader (as the plug-in's): MORPH, the heart (end A), the fader, the skull (end B). A tap on one arms it
+// (yellow): what is turned
 // then goes into that end only. Drag the fader (it glides there), double tap: half way; long press: the menu.
 const morphEl = el('div', 'morph', top);
 const morphName = el('span', 'mname', morphEl, 'MORPH');
-const morphA = el('button', 'mend', morphEl, 'A');
+// the ends in pixels: a heart and a skull (7 x 7, in the colour of the text)
+const GLYPHS = [['.##.##.', '#######', '#######', '.#####.', '..###..', '...#...', '.......'],
+                ['.#####.', '#######', '#..#..#', '#######', '.#####.', '.#.#.#.', '.......']];
+const END = ['cœur', 'crâne'], End = ['Cœur', 'Crâne'];
+function glyph (side, size = 21) {
+  let r = '';
+  GLYPHS[side].forEach((row, y) => [...row].forEach((c, x) => { if (c === '#') r += `<rect x="${x}" y="${y}" width="1" height="1"/>`; }));
+  return `<svg width="${size}" height="${size}" viewBox="0 0 7 7" shape-rendering="crispEdges" fill="currentColor">${r}</svg>`;
+}
+const morphA = el('button', 'mend', morphEl);
+morphA.innerHTML = glyph(0); morphA.setAttribute('aria-label', 'cœur');
 const morphTrack = el('div', 'mtrack', morphEl);
 const morphFill = el('i', 'mfill', morphTrack);
 el('i', 'mmid', morphTrack);
 const morphHeard = el('i', 'mheard', morphTrack);
 const morphKnob = el('i', 'mknob', morphTrack);
-const morphB = el('button', 'mend', morphEl, 'B');
+const morphB = el('button', 'mend', morphEl);
+morphB.innerHTML = glyph(1); morphB.setAttribute('aria-label', 'crâne');
 for (const [b, side] of [[morphA, 0], [morphB, 1]]) {
   b.addEventListener('click', () => {
     const on = E.morphArmed() === side;
     E.morphArm(on ? -1 : side);
-    const end = side ? 'B' : 'A';
-    if (!on) toast(`${end} armé : ce que tu tournes va dans ${end} seulement`, 'yellow');
+    if (!on) toast(`${End[side]} armé : tes réglages vont dans le ${END[side]} seulement`, 'yellow');
   });
 }
 {
@@ -275,14 +286,14 @@ function pickFile (accept) {
 async function morphMenu () {
   const box = boxOf(morphEl), x = box.x, y = box.y + box.h, armed = E.morphArmed(), differs = E.morphDiffers();
   const id = await menu([{ header: 'Morph' },
-    { id: 'a', label: 'Aller à A' }, { id: 'mid', label: 'Au milieu' }, { id: 'b', label: 'Aller à B' }, { sep: 1 },
-    { id: 'armA', label: 'Éditer A seulement', ticked: armed === 0 }, { id: 'armB', label: 'Éditer B seulement', ticked: armed === 1 }, { sep: 1 },
-    { id: 'heardA', label: 'Le kit entendu dans A' }, { id: 'heardB', label: 'Le kit entendu dans B' },
-    { id: 'swap', label: 'Échanger A et B', disabled: !differs }, { id: 'flat', label: 'A = B : plus de morph', disabled: !differs }, { sep: 1 },
-    { id: 'demo', label: 'Un kit démo dans A ou B…' }, { id: 'syx', label: 'Un kit .syx dans A ou B…' }, { sep: 1 },
+    { id: 'a', label: 'Aller au cœur' }, { id: 'mid', label: 'Au milieu' }, { id: 'b', label: 'Aller au crâne' }, { sep: 1 },
+    { id: 'armA', label: 'Éditer le cœur seulement', ticked: armed === 0 }, { id: 'armB', label: 'Éditer le crâne seulement', ticked: armed === 1 }, { sep: 1 },
+    { id: 'heardA', label: 'Le kit entendu dans le cœur' }, { id: 'heardB', label: 'Le kit entendu dans le crâne' },
+    { id: 'swap', label: 'Échanger le cœur et le crâne', disabled: !differs }, { id: 'flat', label: 'Cœur = crâne : plus de morph', disabled: !differs }, { sep: 1 },
+    { id: 'demo', label: 'Un kit démo dans le cœur ou le crâne…' }, { id: 'syx', label: 'Un kit .syx dans le cœur ou le crâne…' }, { sep: 1 },
     { id: 'save', label: 'Enregistrer le morph (fichier)', disabled: !differs }, { id: 'open', label: 'Ouvrir un morph…' }, { sep: 1 },
     { id: 'glide', label: glideText(E.morphGlide()) + ' ▸' }], x, y);
-  const side = async (title) => menu([{ header: title }, { id: 0, label: 'Dans A' }, { id: 1, label: 'Dans B' }], x, y);
+  const side = async (title) => menu([{ header: title }, { id: 0, label: 'Dans le cœur' }, { id: 1, label: 'Dans le crâne' }], x, y);
   if (id === 'a') E.morphTo(0);
   if (id === 'mid') E.morphTo(0.5);
   if (id === 'b') E.morphTo(1);
@@ -290,20 +301,20 @@ async function morphMenu () {
   if (id === 'heardA') E.morphCopyHeard(0);
   if (id === 'heardB') E.morphCopyHeard(1);
   if (id === 'swap') E.morphSwap();
-  if (id === 'flat') { E.morphFlatten(); toast('A = B : plus de morph'); }
+  if (id === 'flat') { E.morphFlatten(); toast('Cœur = crâne : plus de morph'); }
   if (id === 'demo') {
     const s = await side('Kit démo');
     if (s === null) return;
-    const items = [{ header: 'Kit démo dans ' + (s ? 'B' : 'A') }];
+    const items = [{ header: 'Kit démo dans le ' + END[s] }];
     for (let k = 0; k < 12; ++k) items.push({ id: k + 1, label: 'Kit démo ' + two(k + 1) });
     const k = await menu(items, x, y);
-    if (k) { E.morphLoadDemo(s, k - 1); toast(`Kit démo ${two(k)} dans ${s ? 'B' : 'A'}`); }
+    if (k) { E.morphLoadDemo(s, k - 1); toast(`Kit démo ${two(k)} dans le ${END[s]}`); }
   }
   if (id === 'syx') {
     const s = await side('Kit .syx');
     if (s === null) return;
     const bytes = await pickFile('.syx');
-    if (bytes) toast(E.morphLoadKit(s, bytes) ? `Kit dans ${s ? 'B' : 'A'}` : 'Ce fichier ne contient pas de kit lisible', E.morphDiffers() ? '' : 'red');
+    if (bytes) toast(E.morphLoadKit(s, bytes) ? `Kit dans le ${END[s]}` : 'Ce fichier ne contient pas de kit lisible', E.morphDiffers() ? '' : 'red');
   }
   if (id === 'save') {
     const url = URL.createObjectURL(new Blob([E.morphBytes()], { type: 'application/octet-stream' }));
@@ -314,7 +325,7 @@ async function morphMenu () {
   }
   if (id === 'open') {
     const bytes = await pickFile('.ramorph');
-    if (bytes) toast(E.loadMorph(bytes) ? 'Morph chargé : A, B et la position' : 'Ce fichier ne contient pas de morph lisible', '');
+    if (bytes) toast(E.loadMorph(bytes) ? 'Morph chargé : le cœur, le crâne et la position' : 'Ce fichier ne contient pas de morph lisible', '');
   }
   if (id === 'glide') {
     const g = await menu([{ header: 'Glide du fader' }, ...GLIDES.map(ms => ({ id: ms + 1, label: glideText(ms), ticked: E.morphGlide() === ms }))], x, y);

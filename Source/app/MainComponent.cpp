@@ -508,8 +508,9 @@ void MainComponent::morphChanged()
     shownArmed = armed;
     if (armed)
     {
-        const juce::String end = *armed == MorphControl::Side::a ? "A" : "B";
-        statusLine.show (end + " armé : ce que tu tournes va dans "_fr + end + " seulement. Re-clic sur "_fr + end + " pour sortir."_fr, px::yellow);
+        const auto end = MorphFader::endName (*armed);
+        statusLine.show (end.substring (0, 1).toUpperCase() + end.substring (1) + " armé : tes réglages vont dans le "_fr + end
+                         + " seulement. Re-clic pour sortir."_fr, px::yellow);
     }
     else
         statusLine.show ({});

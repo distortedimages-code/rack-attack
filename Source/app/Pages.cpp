@@ -768,7 +768,7 @@ LibraryPage::LibraryPage (Engine& e, Library& l, MorphControl& m, std::function<
         {
             if (! morph.differs())
             {
-                status.show ("A et B sont pareils : rien à morpher. Clic droit sur un kit : « Charger dans B »."_fr, ui::warning);
+                status.show ("Le cœur et le crâne sont pareils : rien à morpher. Clic droit sur un kit : « Charger dans le crâne »."_fr, ui::warning);
                 return;
             }
             saveName.setText (juce::String (engine.getKit().name()).trim() + " morph");
@@ -792,7 +792,7 @@ LibraryPage::LibraryPage (Engine& e, Library& l, MorphControl& m, std::function<
             showSave (false);
             refreshFiles();
             if (file.existsAsFile())
-                status.show ("Enregistré dans Mes morphs : "_fr + file.getFileNameWithoutExtension() + " (A, B et la position du fader)."_fr, ui::accent);
+                status.show ("Enregistré dans Mes morphs : "_fr + file.getFileNameWithoutExtension() + " (le cœur, le crâne et la position du fader)."_fr, ui::accent);
             else
                 status.show ("Le morph n'a pas pu être enregistré."_fr, ui::bad);
             return;
@@ -838,7 +838,7 @@ void LibraryPage::refreshFiles()
     items = morphs ? library.morphs() : (kits ? library.kits() : library.sounds());
     files.updateContent();
     files.repaint();
-    emptyHint.setText (items.isEmpty() ? (morphs ? "Aucun morph enregistré. Clic droit sur des kits : « Charger dans A », « Charger dans B », puis « Enregistrer le morph »."_fr
+    emptyHint.setText (items.isEmpty() ? (morphs ? "Aucun morph enregistré. Clic droit sur des kits : « Charger dans le cœur », « Charger dans le crâne », puis « Enregistrer le morph »."_fr
                                           : kits ? "Aucun kit sur l'ordinateur pour l'instant. « Enregistrer le kit en cours » ou « Tout sauvegarder »."_fr
                                                  : "Aucun son enregistré pour l'instant. Page Son : « Enregistrer ce son »."_fr)
                                        : juce::String(), juce::dontSendNotification);
@@ -865,7 +865,7 @@ void LibraryPage::sendSelected (int row)
     {
         auto data = Library::loadMorph (item.file);
         if (data && morph.loadPreset (*data))
-            status.show ("Morph « "_fr + item.title + " » chargé : A, B et la position du fader."_fr, ui::accent);
+            status.show ("Morph « "_fr + item.title + " » chargé : le cœur, le crâne et la position du fader."_fr, ui::accent);
         else
             status.show ("Ce fichier ne contient pas de morph lisible."_fr, ui::bad);
         return;
@@ -902,20 +902,20 @@ void LibraryPage::showFileMenu (int row)
     juce::PopupMenu m;
     m.addSectionHeader (item.title.toUpperCase());
     if (item.isMorph)
-        m.addItem (1, "Charger le morph (A, B et la position)"_fr);
+        m.addItem (1, "Charger le morph (cœur, crâne et position)"_fr);
     else if (item.isSound)
     {
         m.addItem (1, "Envoyer dans le son "_fr + slot);
         m.addSeparator();
-        m.addItem (2, "Charger dans A (son "_fr + slot + ")");
-        m.addItem (3, "Charger dans B (son "_fr + slot + ")");
+        m.addItem (2, "Charger dans le cœur (son "_fr + slot + ")");
+        m.addItem (3, "Charger dans le crâne (son "_fr + slot + ")");
     }
     else
     {
         m.addItem (1, "Envoyer au RackAttack"_fr);
         m.addSeparator();
-        m.addItem (2, "Charger dans A"_fr);
-        m.addItem (3, "Charger dans B"_fr);
+        m.addItem (2, "Charger dans le cœur"_fr);
+        m.addItem (3, "Charger dans le crâne"_fr);
     }
     m.showMenuAsync (juce::PopupMenu::Options().withMousePosition(),
                      [safe = juce::Component::SafePointer<LibraryPage> (this), row] (int r)
@@ -939,7 +939,7 @@ void LibraryPage::loadIntoMorph (int row, MorphControl::Side side)
     const auto& item = items.getReference (row);
     if (item.isMorph)
         return;
-    const juce::String end = side == MorphControl::Side::a ? "A" : "B";
+    const juce::String end = side == MorphControl::Side::a ? "le cœur"_fr : "le crâne"_fr;
     if (item.isSound)
     {
         if (auto data = Library::loadSound (item.file))
@@ -947,7 +947,7 @@ void LibraryPage::loadIntoMorph (int row, MorphControl::Side side)
             const int slot = selectedSound();
             morph.loadSound (side, slot, *data);
             status.show ("« "_fr + item.title + " » est dans "_fr + end + " pour le son "_fr + ui::twoDigits (slot + 1)
-                         + ". Le fader Morph, en bas, va de A à B."_fr, ui::accent);
+                         + ". Le fader Morph, en bas, va du cœur au crâne."_fr, ui::accent);
         }
         else
             status.show ("Ce fichier ne contient pas de son lisible."_fr, ui::bad);
@@ -957,7 +957,7 @@ void LibraryPage::loadIntoMorph (int row, MorphControl::Side side)
         if (auto kit = Library::loadKit (item.file))
         {
             morph.loadKit (side, *kit);
-            status.show ("Kit « "_fr + item.title + " » dans "_fr + end + ". Le fader Morph, en bas, va de A à B."_fr, ui::accent);
+            status.show ("Kit « "_fr + item.title + " » dans "_fr + end + ". Le fader Morph, en bas, va du cœur au crâne."_fr, ui::accent);
         }
         else
             status.show ("Ce fichier ne contient pas de kit lisible."_fr, ui::bad);

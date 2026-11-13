@@ -632,7 +632,7 @@ function fit (stage, w, h) {
   const cols = P.map(p => {
     const c = document.createElement('div'); c.className = 'mx-col';
     c.innerHTML = `<em>${p.n}</em><div class="mx-box">${p.list ? '<span class="mx-sh b"></span><span class="mx-shape"></span><span class="mx-sh a"></span>'
-      : '<i class="mx-fillv"></i><i class="mx-tk a">A</i><i class="mx-tk b">B</i>'}</div><span class="mx-val"></span>`;
+      : '<i class="mx-fillv"></i><i class="mx-tk a"><svg class="gl" width="10" height="10" viewBox="0 0 7 7" shape-rendering="crispEdges" fill="currentColor"><rect x="1" y="0" width="1" height="1"/><rect x="2" y="0" width="1" height="1"/><rect x="4" y="0" width="1" height="1"/><rect x="5" y="0" width="1" height="1"/><rect x="0" y="1" width="1" height="1"/><rect x="1" y="1" width="1" height="1"/><rect x="2" y="1" width="1" height="1"/><rect x="3" y="1" width="1" height="1"/><rect x="4" y="1" width="1" height="1"/><rect x="5" y="1" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="0" y="2" width="1" height="1"/><rect x="1" y="2" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="2" width="1" height="1"/><rect x="4" y="2" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="6" y="2" width="1" height="1"/><rect x="1" y="3" width="1" height="1"/><rect x="2" y="3" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="3" y="5" width="1" height="1"/></svg></i><i class="mx-tk b"><svg class="gl" width="10" height="10" viewBox="0 0 7 7" shape-rendering="crispEdges" fill="currentColor"><rect x="1" y="0" width="1" height="1"/><rect x="2" y="0" width="1" height="1"/><rect x="3" y="0" width="1" height="1"/><rect x="4" y="0" width="1" height="1"/><rect x="5" y="0" width="1" height="1"/><rect x="0" y="1" width="1" height="1"/><rect x="1" y="1" width="1" height="1"/><rect x="2" y="1" width="1" height="1"/><rect x="3" y="1" width="1" height="1"/><rect x="4" y="1" width="1" height="1"/><rect x="5" y="1" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="0" y="2" width="1" height="1"/><rect x="3" y="2" width="1" height="1"/><rect x="6" y="2" width="1" height="1"/><rect x="0" y="3" width="1" height="1"/><rect x="1" y="3" width="1" height="1"/><rect x="2" y="3" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="6" y="3" width="1" height="1"/><rect x="1" y="4" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="4" width="1" height="1"/><rect x="1" y="5" width="1" height="1"/><rect x="3" y="5" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/></svg></i>'}</div><span class="mx-val"></span>`;
     $('#mx-cols').appendChild(c);
     return { el: c, box: $('.mx-box', c), fill: $('.mx-fillv', c), ta: $('.mx-tk.a', c), tb: $('.mx-tk.b', c), val: $('.mx-val', c),
              shape: $('.mx-shape', c), sa: $('.mx-sh.a', c), sb: $('.mx-sh.b', c) };
@@ -653,7 +653,7 @@ function fit (stage, w, h) {
         const h = heard(i);
         if (h !== S.lastShape) { c.shape.classList.remove('flash'); void c.shape.offsetWidth; c.shape.classList.add('flash'); setTimeout(() => c.shape.classList.remove('flash'), 260); S.lastShape = h; }
         c.shape.textContent = SHAPES[Math.round(h)];
-        c.sa.textContent = on ? 'A ' + SHAPES[Math.round(S.a[i])] : ''; c.sb.textContent = on ? 'B ' + SHAPES[Math.round(S.b[i])] : '';
+        c.sa.innerHTML = on ? '<svg class="gl" width="10" height="10" viewBox="0 0 7 7" shape-rendering="crispEdges" fill="currentColor"><rect x="1" y="0" width="1" height="1"/><rect x="2" y="0" width="1" height="1"/><rect x="4" y="0" width="1" height="1"/><rect x="5" y="0" width="1" height="1"/><rect x="0" y="1" width="1" height="1"/><rect x="1" y="1" width="1" height="1"/><rect x="2" y="1" width="1" height="1"/><rect x="3" y="1" width="1" height="1"/><rect x="4" y="1" width="1" height="1"/><rect x="5" y="1" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="0" y="2" width="1" height="1"/><rect x="1" y="2" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="2" width="1" height="1"/><rect x="4" y="2" width="1" height="1"/><rect x="5" y="2" width="1" height="1"/><rect x="6" y="2" width="1" height="1"/><rect x="1" y="3" width="1" height="1"/><rect x="2" y="3" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="3" y="5" width="1" height="1"/></svg> ' + SHAPES[Math.round(S.a[i])] : ''; c.sb.innerHTML = on ? '<svg class="gl" width="10" height="10" viewBox="0 0 7 7" shape-rendering="crispEdges" fill="currentColor"><rect x="1" y="0" width="1" height="1"/><rect x="2" y="0" width="1" height="1"/><rect x="3" y="0" width="1" height="1"/><rect x="4" y="0" width="1" height="1"/><rect x="5" y="0" width="1" height="1"/><rect x="0" y="1" width="1" height="1"/><rect x="1" y="1" width="1" height="1"/><rect x="2" y="1" width="1" height="1"/><rect x="3" y="1" width="1" height="1"/><rect x="4" y="1" width="1" height="1"/><rect x="5" y="1" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="0" y="2" width="1" height="1"/><rect x="3" y="2" width="1" height="1"/><rect x="6" y="2" width="1" height="1"/><rect x="0" y="3" width="1" height="1"/><rect x="1" y="3" width="1" height="1"/><rect x="2" y="3" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="5" y="3" width="1" height="1"/><rect x="6" y="3" width="1" height="1"/><rect x="1" y="4" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="5" y="4" width="1" height="1"/><rect x="1" y="5" width="1" height="1"/><rect x="3" y="5" width="1" height="1"/><rect x="5" y="5" width="1" height="1"/></svg> ' + SHAPES[Math.round(S.b[i])] : '';
         c.val.textContent = end === null ? '' : SHAPES[Math.round(end)];
       } else {
         c.fill.style.height = (heard(i) / 100 * H) + 'px';
@@ -737,24 +737,24 @@ function fit (stage, w, h) {
   const scripts = {
     async ab (my) {
       set(vals('o'), vals('o'), 0); S.lastShape = 0;
-      await tell('Deux kits complets : A d’un côté du fader, B de l’autre.', my);
-      for (const [row, end, goal] of [[0, 'A', 'a'], [1, 'B', 'b']]) {
+      await tell('Deux kits complets : le cœur d’un côté du fader, le crâne de l’autre.', my);
+      for (const [row, end, goal] of [[0, 'le cœur', 'a'], [1, 'le crâne', 'b']]) {
         const li = list.children[row], p = at(li, 0.4);
         await wait(700, my);
         await move(p.x, p.y, 800, my);
         li.classList.add('sel'); await click(my);
-        await popMenu(p.x + 6, p.y + 6, ['#' + li.textContent, 'Envoyer au RackAttack', 'Charger dans A', 'Charger dans B'], 'Charger dans ' + end, my);
+        await popMenu(p.x + 6, p.y + 6, ['#' + li.textContent, 'Envoyer au RackAttack', 'Charger dans le cœur', 'Charger dans le crâne'], 'Charger dans ' + end, my);
         li.classList.remove('sel');
         if (goal === 'a') S.ga = vals('a'); else S.gb = vals('b');
-        flash(end === 'A' ? endA : endB);
-        await tell(end === 'A' ? 'Clic droit sur un kit › Charger dans A.' : 'Un autre › Charger dans B. Au bout A, tu entends A.', my);
+        flash(goal === 'a' ? endA : endB);
+        await tell(goal === 'a' ? 'Clic droit sur un kit › Charger dans le cœur.' : 'Un autre › dans le crâne. Côté cœur, tu entends le cœur.', my);
       }
       await move(560, 200, 600, my);
       await wait(2600, my);
     },
     async glide (my) {
       set(vals('a'), vals('b'), 0); S.lastShape = 0;
-      await tell('Glisse le fader : les 24 sons et les 4 effets vont de A à B.', my);
+      await tell('Glisse le fader : les 24 sons et les 4 effets vont du cœur au crâne.', my);
       let p = at(knob);
       await move(p.x, p.y, 800, my);
       knob.classList.add('held'); await click(my);
@@ -782,12 +782,12 @@ function fit (stage, w, h) {
     },
     async arm (my) {
       set(vals('a'), vals('b'), 0.5); S.lastShape = 1;
-      await tell('Clic sur A : il passe en jaune.', my);
+      await tell('Clic sur le cœur : il passe en jaune.', my);
       let p = at(endA);
       await move(p.x, p.y, 900, my); await click(my);
       S.armed = 0;
       await wait(500, my);
-      await tell('Ce que tu tournes va dans A seulement. La page montre A.', my);
+      await tell('Ce que tu tournes va dans le cœur seulement. La page le montre.', my);
       await wait(900, my);
       const R = 3, c = cols[R], box = at(c.box, 0.5, 0);     // RESO: A climbs, what is heard climbs half as much
       const y0 = box.y + 150 - S.a[R] / 100 * 146, y1 = box.y + 150 - 100 / 100 * 146 + 4;
@@ -802,12 +802,12 @@ function fit (stage, w, h) {
       knob.classList.add('held'); await click(my);
       await move(trackX(0), p.y, 900, my, x => { S.target = fracAt(x); });
       knob.classList.remove('held');
-      await tell('Au bout A : tout.', my);
+      await tell('Côté cœur : tout.', my);
       await wait(1600, my);
       p = at(endA);
       await move(p.x, p.y, 600, my); await click(my);
       S.armed = -1;
-      await tell('Re-clic sur A : fini. Pareil avec B.', my);
+      await tell('Re-clic sur le cœur : fini. Pareil avec le crâne.', my);
       await wait(2200, my);
     },
     async keep (my) {
@@ -825,7 +825,7 @@ function fit (stage, w, h) {
       for (let n = 1; n <= name.length; ++n) { li.textContent = name.slice(0, n); await wait(45, my); }
       $('#mx-save').classList.remove('down');
       setTimeout(() => li.classList.remove('flash'), 300);
-      await tell('Enregistrer le morph : A, B et la position.', my);
+      await tell('Enregistrer le morph : le cœur, le crâne et la position.', my);
       await wait(1500, my);
       p = at(li, 0.4);
       await move(p.x, p.y, 600, my); await click(my); await click(my);
@@ -873,8 +873,8 @@ function fit (stage, w, h) {
     set(vals('a'), vals('b'), pos);
     if (route === 'arm') { S.armed = 0; S.a[3] = S.ga[3] = 100; }
     if (route === 'keep') { libTab(true); list.innerHTML = '<li>TECHNO MORPH</li>'; }
-    say.textContent = { ab: 'Clic droit sur un kit › Charger dans A, puis un autre dans B.', glide: 'Glisse : de A à B. Double-clic : au milieu.',
-                        arm: 'A armé : ce que tu tournes va dans A seulement.', keep: 'Bibliothèque › Morphs › Enregistrer le morph.' }[route];
+    say.textContent = { ab: 'Clic droit sur un kit › Charger dans le cœur, puis un autre dans le crâne.', glide: 'Glisse : du cœur au crâne. Double-clic : au milieu.',
+                        arm: 'Cœur armé : ce que tu tournes va dans le cœur seulement.', keep: 'Bibliothèque › Morphs › Enregistrer le morph.' }[route];
     render();
   }
   if (still) { still1(); return; }

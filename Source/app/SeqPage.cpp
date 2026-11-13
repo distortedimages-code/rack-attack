@@ -1723,7 +1723,7 @@ void SeqPage::mouseDrag (const juce::MouseEvent& e)
     {
         case Zone::tempo:
         {
-            const bool fine = e.mods.isShiftDown();
+            const bool fine = e.mods.isCommandDown() || e.mods.isCtrlDown();     // ⌘ or Ctrl: fine steps (Shift is for locks)
             const double t = juce::jlimit (30.0, 300.0, (drag.startValue + dy * (fine ? 1 : 5)) / 10.0);
             seq.edit ([&] (Pattern& p) { p.tempo = std::round (t * (fine ? 10.0 : 2.0)) / (fine ? 10.0 : 2.0); });
             break;
@@ -1753,7 +1753,7 @@ void SeqPage::mouseDrag (const juce::MouseEvent& e)
             // up / down turns the knob from where it is: the whole range in about 200 pixels
             // (finer with Shift), a list one choice per 12 pixels
             const int maxV = paramMax (slots[(size_t) drag.hit.index].address);
-            const double fine = e.mods.isShiftDown() && selection.empty() ? 0.25 : 1.0;   // Shift held for locks: no fine steps
+            const double fine = e.mods.isCommandDown() || e.mods.isCtrlDown() ? 0.25 : 1.0;   // ⌘ or Ctrl: fine steps
             const double delta = maxV >= 24 ? dy * maxV / 200.0 * fine : dy / 12.0;
             if (drag.moved)
                 setParam (drag.hit.index, drag.startValue + juce::roundToInt (delta));

@@ -280,7 +280,7 @@ namespace
         label (cv.g, area.reduced (10, 8), choice (0x26, (float) type), px::grey);
     }
 
-    void amplifier (Canvas& cv, juce::Rectangle<int> area, const Value& v, juce::Colour ink, double now)
+    void amplifier (Canvas& cv, juce::Rectangle<int>, const Value& v, juce::Colour ink, double now)
     {
         const float vol = v (0x35) / 127.0f, pan = v (0x3A) / 127.0f;
         const int mid = cv.rows / 2;
@@ -309,10 +309,6 @@ namespace
         for (int y = -size; y <= size; ++y)
             for (int x = -size; x <= size; ++x)
                 cv.dot (cx + x, mid + y, ink);
-
-        const int pattern = juce::roundToInt (v (0x6C));
-        if (pattern != 0)
-            label (cv.g, area.reduced (10, 8), "PATTERN " + choice (0x6C, (float) pattern), px::yellow);
     }
 
     void envelope (Canvas& cv, juce::Rectangle<int> area, int base, const Value& v, juce::Colour ink, double now)
@@ -421,8 +417,15 @@ namespace
         for (int x = boxW + 7, i = 0; x < outX - 1; ++x, ++i)
             if (send > 0.01f && i % step == 0)
                 cv.dot (x, rowA + 4 + (x - boxW - 7) * (rowB + 2 - rowA - 4) / juce::jmax (1, outX - boxW - 8), ink);
+        // in yellow, what changes how a note plays: an XOR group, the unit's own pattern started by each note
+        juce::StringArray marks;
         if (xorGroup != 0)
-            px::drawText (g, "XOR " + juce::String (xorGroup), cv.cells (1, rowB + 1, 16, 3), juce::Justification::centredLeft,
+            marks.add ("XOR " + juce::String (xorGroup));
+        const int pattern = juce::roundToInt (v (0x6C));
+        if (pattern != 0)
+            marks.add ("PATTERN INT. " + choice (0x6C, (float) pattern));
+        if (! marks.isEmpty())
+            px::drawText (g, marks.joinIntoString ("  "), cv.cells (1, rowB + 1, outX - 2, 3), juce::Justification::centredLeft,
                           px::label (9.0f), px::yellow);
 
         // the keys it plays as notes: a keyboard of 128 keys

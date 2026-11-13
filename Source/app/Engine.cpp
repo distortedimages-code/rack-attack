@@ -508,19 +508,55 @@ void Engine::queueParameter (ra::Bytes withoutValue, int value)
 
 void Engine::flushParameters()
 {
-    // two per 10 ms tick: about 200 per second, two thirds of a MIDI cable
-    for (int n = 0; n < 2 && ! pendingParams.empty(); ++n)
+    // two per 10 ms tick: about 200 per second, two thirds of a MIDI cable; the simulator takes many more.
+    // A crowd of them (the morph) isn't written one by one in the journal.
+    const int perTick = timedOutput != nullptr ? 48 : 2;
+    const bool crowd = pendingParams.size() > 8;
+    int sent = 0;
+    for (int n = 0; n < perTick && ! pendingParams.empty(); ++n)
     {
         auto [payload, value] = pendingParams.front();
         pendingParams.erase (pendingParams.begin());
         payload.push_back ((std::uint8_t) (value & 0x7F));
-        sendSysex (ra::build ((std::uint8_t) deviceId.load(), payload), {}, false);
+        auto sysex = ra::build ((std::uint8_t) deviceId.load(), payload);
+        if (crowd && hasOutput())
+            sendNow (juce::MidiMessage::createSysExMessage (sysex.data() + 1, (int) sysex.size() - 2));
+        else
+            sendSysex (sysex, {}, false);
+        ++sent;
     }
+    if (crowd && sent > 0)
+        log (juce::String (sent) + " réglages envoyés d'un coup (morph)"_fr, false);
+}
+
+void Engine::loadSoundQuietly (int slot, const ra::Bytes& soundData)
+{
+    if (slot < 0 || slot >= ra::Kit::numSounds || (int) soundData.size() != ra::kSoundDataSize)
+        return;
+    pendingParams.erase (std::remove_if (pendingParams.begin(), pendingParams.end(), [slot] (const auto& p)
+    {
+        return p.first.size() >= 3 && p.first[0] == ra::cmd::SNDP && p.first[2] == (std::uint8_t) slot;
+    }), pendingParams.end());
+    kit.setSoundData (slot, soundData);
+    ra::Bytes payload { ra::cmd::SNDD, ra::kEditBuffer, (std::uint8_t) slot };
+    payload.insert (payload.end(), soundData.begin(), soundData.end());
+    Step s;
+    s.kind = Step::Kind::send;
+    s.sysex = ra::build ((std::uint8_t) deviceId.load(), payload);
+    s.label = "son " + twoDigits (slot + 1) + " (morph)";
+    s.quiet = true;
+    queue (s);
+    Step wait; wait.kind = Step::Kind::pause; wait.ms = 12; queue (wait);
+    runSteps();
+    ra::Kit::Change c { ra::Kit::Change::What::sound, slot, -1 };
+    listeners.call ([&] (Listener& l) { l.kitChanged (c); });
 }
 
 void Engine::setSoundParameter (int sound, int address, int value)
 {
     if (sound < 0 || sound >= ra::Kit::numSounds)
+        return;
+    if (editHook && editHook (false, sound, address, value))
         return;
     kit.setSoundValue (sound, address, value);
     queueParameter ({ ra::cmd::SNDP, ra::kEditBuffer, (std::uint8_t) sound, (std::uint8_t) (address >> 7), (std::uint8_t) (address & 0x7F) }, value);
@@ -539,6 +575,8 @@ void Engine::setProgramParameter (int address, int value)
 void Engine::setEffectParameter (int effect, int address, int value)
 {
     if (effect < 0 || effect >= ra::Kit::numEffects)
+        return;
+    if (editHook && editHook (true, effect, address, value))
         return;
     kit.setEffectValue (effect, address, value);
     queueParameter ({ ra::cmd::EFXP, ra::kEditBuffer, (std::uint8_t) effect, (std::uint8_t) (address >> 7), (std::uint8_t) (address & 0x7F) }, value);

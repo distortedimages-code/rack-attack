@@ -4,6 +4,26 @@
 RackAttackProcessor::RackAttackProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
+    // the morph fader, from kit A (0) to kit B (1): the host can automate it, and hears of it when it is moved
+    morphParameter = new juce::AudioParameterFloat (juce::ParameterID { "morph", 1 }, "Morph", 0.0f, 1.0f, 0.0f);
+    addParameter (morphParameter);
+    morphParameter->addListener (this);
+    auto& morph = context.morph;
+    morph.onUserPosition = [this] (double p)
+    {
+        if (std::abs (morphParameter->get() - (float) p) > 1.0e-6f)
+            morphParameter->setValueNotifyingHost ((float) p);
+    };
+    morph.onGestureStart = [this] { morphParameter->beginChangeGesture(); };
+    morph.onGestureEnd = [this] { morphParameter->endChangeGesture(); };
+}
+
+RackAttackProcessor::~RackAttackProcessor()
+{
+    morphParameter->removeListener (this);
+    context.morph.onUserPosition = nullptr;
+    context.morph.onGestureStart = nullptr;
+    context.morph.onGestureEnd = nullptr;
 }
 
 bool RackAttackProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -57,15 +77,23 @@ void RackAttackProcessor::getStateInformation (juce::MemoryBlock& dest)
     juce::XmlElement xml ("RackAttackEditor");
     xml.setAttribute ("version", Updater::currentVersion());
     xml.setAttribute ("pattern", context.sequencer.saveToString());
+    const auto morph = context.morph.toString();     // only while A and B differ
+    if (morph.isNotEmpty())
+        xml.setAttribute ("morph", morph);
     copyXmlToBinary (xml, dest);
 }
 
 void RackAttackProcessor::setStateInformation (const void* data, int size)
 {
-    // The ports and settings are global; the pattern belongs to the project.
+    // The ports and settings are global; the pattern and the morph belong to the project (a project with no
+    // morph leaves the unit's kit alone).
     if (auto xml = getXmlFromBinary (data, size))
+    {
         if (xml->hasAttribute ("pattern"))
             context.sequencer.loadFromString (xml->getStringAttribute ("pattern"));
+        if (xml->hasAttribute ("morph"))
+            context.morph.fromString (xml->getStringAttribute ("morph"));
+    }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

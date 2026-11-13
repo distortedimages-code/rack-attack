@@ -62,6 +62,13 @@ public:
     const ra::Kit& getKit() const       { return kit; }
     void readKit();                                         // task "kit"
 
+    // The kit the pages show and edit: the one heard, or the end of the morph that is armed (A or B, as the
+    // Octatrack's scenes). The morph takes the edits then (editHook returns true: nothing sent from here).
+    const ra::Kit& getShownKit() const  { if (shownKitHook) if (auto* k = shownKitHook()) return *k; return kit; }
+    std::function<const ra::Kit*()> shownKitHook;
+    std::function<bool (bool effect, int index, int address, int value)> editHook;
+    void notifyKitChanged (const ra::Kit::Change& c)   { listeners.call ([&] (Listener& l) { l.kitChanged (c); }); }
+
     // Editing: updates the model and sends the change (at most ~200 per second,
     // the latest value of each parameter only).
     void setSoundParameter (int sound, int address, int value);
@@ -79,6 +86,9 @@ public:
     // Library transfers into the edit buffer, checked by reading back.
     void sendKit (const ra::Kit& k);                        // task "sendKit"
     void sendSound (const ra::Bytes& soundData, int slot);  // task "sendSound"
+    // a whole sound at once, without the check (the morph, when many of its settings change): its
+    // parameter changes still waiting are dropped, the dump is quicker than them
+    void loadSoundQuietly (int slot, const ra::Bytes& soundData);
 
     bool isBusy() const                 { return waiting || ! steps.empty(); }
     void cancel();

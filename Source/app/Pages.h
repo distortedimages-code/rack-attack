@@ -6,6 +6,7 @@
 
 #include "Engine.h"
 #include "Library.h"
+#include "MorphControl.h"
 #include "Widgets.h"
 
 //==============================================================================
@@ -150,7 +151,7 @@ class LibraryPage : public juce::Component,
                     private Engine::Listener
 {
 public:
-    LibraryPage (Engine&, Library&, std::function<int()> selectedSound);
+    LibraryPage (Engine&, Library&, MorphControl&, std::function<int()> selectedSound);
     ~LibraryPage() override;
 
     void resized() override;
@@ -172,6 +173,7 @@ private:
         int getNumRows() override   { return owner.items.size(); }
         void paintListBoxItem (int row, juce::Graphics&, int w, int h, bool selected) override;
         void listBoxItemDoubleClicked (int row, const juce::MouseEvent&) override   { owner.sendSelected (row); }
+        void listBoxItemClicked (int row, const juce::MouseEvent& e) override        { if (e.mods.isPopupMenu()) owner.showFileMenu (row); }
         LibraryPage& owner;
     };
 
@@ -182,9 +184,13 @@ private:
     void refreshFiles();
     void askFirst (const juce::String& question, std::function<void()> then);
     void sendSelected (int row);
+    void showFileMenu (int row);                     // right click: send, or into A or B of the morph
+    void loadIntoMorph (int row, MorphControl::Side);
+    bool morphsShown() const   { return showMorphs.getToggleState(); }
 
     Engine& engine;
     Library& library;
+    MorphControl& morph;
     std::function<int()> selectedSound;
 
     ui::Card machineCard { "Sur le RackAttack" }, computerCard { "Sur l'ordinateur"_fr };
@@ -197,7 +203,7 @@ private:
     juce::TextButton confirmYes { "Continuer" }, confirmNo { "Annuler" };
     std::function<void()> confirmed;
 
-    juce::TextButton showKits { "Kits" }, showSounds { "Sons" };
+    juce::TextButton showKits { "Kits" }, showSounds { "Sons" }, showMorphs { "Morphs" };
     FileList fileModel { *this };
     juce::ListBox files { "fichiers", &fileModel };
     juce::Array<Library::Item> items;

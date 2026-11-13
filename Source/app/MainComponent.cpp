@@ -146,6 +146,7 @@ MainComponent::MainComponent (AppContext& c)
         comp->getProperties().set ("overlay", true);      // over the page, on purpose
     }
 
+    addAndMakeVisible (morphFader);
     addAndMakeVisible (statusLine);
     addChildComponent (bar);
 
@@ -169,6 +170,7 @@ MainComponent::MainComponent (AppContext& c)
 
     engine.addListener (this);
     ctx.updater.changes.addChangeListener (this);
+    ctx.morph.addChangeListener (this);
 
     setSize (ui::designWidth, ui::designHeight);
     showPage (juce::SystemStats::getEnvironmentVariable ("RA_PAGE", "0").getIntValue());
@@ -180,6 +182,23 @@ MainComponent::MainComponent (AppContext& c)
     ctx.start();   // the first time a window opens: ports of last time, then find the unit
     if (! ctx.isSetUp() || juce::SystemStats::getEnvironmentVariable ("RA_WIZARD", {}) == "1")
         showWizard();
+
+    // screenshots of the morph (RA_MORPH=0.35, RA_MORPH_ARM=a or b): another demo kit in B, the fader there
+    const auto morphEnv = juce::SystemStats::getEnvironmentVariable ("RA_MORPH", {});
+    if (morphEnv.isNotEmpty())
+        juce::Timer::callAfterDelay (2500, [safe = juce::Component::SafePointer<MainComponent> (this), morphEnv]
+        {
+            if (safe == nullptr) return;
+            auto& m = safe->ctx.morph;
+            ra::Kit b = safe->engine.getKit();
+            ra::fillDemoKit (b, 7);
+            m.loadKit (MorphControl::Side::b, b);
+            m.setGlideMs (0);
+            m.userMoved (morphEnv.getDoubleValue());
+            const auto arm = juce::SystemStats::getEnvironmentVariable ("RA_MORPH_ARM", {});
+            if (arm == "a" || arm == "b")
+                m.arm (arm == "a" ? MorphControl::Side::a : MorphControl::Side::b);
+        });
 
     // the layout check (RA_AUDIT=1): every page, every assistant screen, then quit
     if (juce::SystemStats::getEnvironmentVariable ("RA_AUDIT", {}).isNotEmpty())
@@ -205,6 +224,7 @@ MainComponent::MainComponent (AppContext& c)
 MainComponent::~MainComponent()
 {
     stopTimer();
+    ctx.morph.removeChangeListener (this);
     ctx.updater.changes.removeChangeListener (this);
     engine.removeListener (this);
     setLookAndFeel (nullptr);
@@ -480,6 +500,36 @@ void MainComponent::paint (juce::Graphics& g)
     px::dither (g, { 0, 54, getWidth(), 2 }, px::faint, 3);
 }
 
+void MainComponent::morphChanged()
+{
+    const auto armed = ctx.morph.getArmed();
+    if (armed == shownArmed)
+        return;
+    shownArmed = armed;
+    if (armed)
+    {
+        const juce::String end = *armed == MorphControl::Side::a ? "A" : "B";
+        statusLine.show (end + " armé : ce que tu tournes va dans "_fr + end + " seulement. Re-clic sur "_fr + end + " pour sortir."_fr, px::yellow);
+    }
+    else
+        statusLine.show ({});
+    repaint();
+}
+
+void MainComponent::paintOverChildren (juce::Graphics& g)
+{
+    // an end of the morph armed: the page in a yellow frame, its letter in the corner
+    if (! shownArmed || wizard.isVisible() || measureWizard.isVisible())
+        return;
+    auto r = getLocalBounds().withTrimmedTop (56).withTrimmedBottom (34);
+    if (journalOpen)
+        r.removeFromRight (420);
+    px::dither (g, r.removeFromTop (2), px::yellow, 3);
+    px::dither (g, r.removeFromBottom (2), px::yellow, 3);
+    px::dither (g, r.removeFromLeft (2), px::yellow, 3);
+    px::dither (g, r.removeFromRight (2), px::yellow, 3);
+}
+
 void MainComponent::resized()
 {
     auto r = getLocalBounds();
@@ -513,6 +563,8 @@ void MainComponent::resized()
     light.setBounds (top);
 
     auto bottom = r.removeFromBottom (34).reduced (12, 4);
+    morphFader.setBounds (bottom.removeFromLeft (400));
+    bottom.removeFromLeft (16);
     bar.setBounds (bottom.removeFromRight (360));
     bottom.removeFromRight (10);
     statusLine.setBounds (bottom);

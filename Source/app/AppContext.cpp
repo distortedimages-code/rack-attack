@@ -25,6 +25,13 @@ AppContext::AppContext() : settingsFile (makeSettings())
     engine.baseNote = s.getIntValue ("baseNote", 36);
     inId = s.getValue ("in");
     outId = s.getValue ("out");
+    morph.setGlideMs (s.getIntValue ("morphGlide", 150));
+    morph.onGlideChanged = [this] (int ms)
+    {
+        if (demoFromEnvironment) return;
+        settings().setValue ("morphGlide", ms);
+        settings().saveIfNeeded();
+    };
 
     const juce::File file (s.getValue ("measures"));
     if (s.getValue ("measures").isNotEmpty() && file.existsAsFile())

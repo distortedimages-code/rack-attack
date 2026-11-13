@@ -27,7 +27,7 @@ endif()
 
 #==============================================================================
 # SysEx core, no JUCE inside: shared by the Labo, the future plugin and the tests.
-add_library(ra_core STATIC Source/core/RaSysex.cpp Source/core/RaKit.cpp Source/core/RaSeq.cpp Source/sim/RaSynth.cpp)
+add_library(ra_core STATIC Source/core/RaSysex.cpp Source/core/RaKit.cpp Source/core/RaSeq.cpp Source/core/RaMorph.cpp Source/sim/RaSynth.cpp)
 target_compile_features(ra_core PUBLIC cxx_std_17)
 set_target_properties(ra_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -58,6 +58,7 @@ set(RA_APP_SOURCES
     Source/plugin/Updater.cpp
     Source/app/AppContext.cpp
     Source/app/MainComponent.cpp
+    Source/app/MorphControl.cpp
     Source/app/ConnectWizard.cpp
     Source/app/Pages.cpp
     Source/app/ToolsPage.cpp
@@ -125,7 +126,7 @@ if(RA_BUILD_TESTS)
     juce_add_console_app(EngineTests PRODUCT_NAME "EngineTests")
     juce_generate_juce_header(EngineTests)
     target_sources(EngineTests PRIVATE Tests/EngineTests.cpp Source/app/Engine.cpp Source/app/Session.cpp Source/app/Library.cpp
-        Source/app/Sequencer.cpp)
+        Source/app/Sequencer.cpp Source/app/MorphControl.cpp)
     target_compile_definitions(EngineTests PRIVATE
         JUCE_MODAL_LOOPS_PERMITTED=1
         JUCE_WEB_BROWSER=0

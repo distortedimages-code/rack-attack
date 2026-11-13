@@ -9,6 +9,7 @@
 #include "AppContext.h"
 #include "ConnectWizard.h"
 #include "MeasureWizard.h"
+#include "MorphFader.h"
 #include "Pages.h"
 #include "Pixel.h"
 #include "SeqPage.h"
@@ -57,7 +58,16 @@ private:
     void wizardFinished (bool connected) override;
     void startSimulation() override;
 
-    void changeListenerCallback (juce::ChangeBroadcaster*) override   { refreshUpdate(); }
+    void changeListenerCallback (juce::ChangeBroadcaster* source) override
+    {
+        if (source == &ctx.morph)
+            morphChanged();
+        else
+            refreshUpdate();
+    }
+    void morphChanged();                 // an end armed: the page framed in yellow, a word in the status bar
+    void paintOverChildren (juce::Graphics&) override;
+    std::optional<MorphControl::Side> shownArmed;
     void timerCallback() override
     {
         flushJournal();
@@ -86,7 +96,7 @@ private:
     KitPage kitPage { engine };
     SoundPage soundPage { engine, library };
     EffectsPage effectsPage { engine };
-    LibraryPage libraryPage { engine, library, [this] { return soundPage.getSelectedSound(); } };
+    LibraryPage libraryPage { engine, library, ctx.morph, [this] { return soundPage.getSelectedSound(); } };
     ToolsPage toolsPage { engine, ctx.updater, [this] { ctx.saveSettings(); } };
     static constexpr int numPages = 6;
     std::array<juce::Component*, numPages> pages {};
@@ -110,6 +120,7 @@ private:
     juce::TextEditor journal, noteField;
     juce::TextButton noteButton { "Noter" }, zipButton { "Préparer le zip"_fr }, folderButton { "Dossier" };
 
+    MorphFader morphFader { ctx.morph };
     ui::StatusLine statusLine;
     double progress = 0.0;
     juce::ProgressBar bar { progress };

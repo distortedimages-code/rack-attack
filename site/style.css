@@ -164,6 +164,63 @@ kbd.k { background: var(--black); color: var(--white); border: 2px solid var(--g
 .cursor.click::after { content: ''; position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; border: 3px solid var(--red); animation: ping .25s steps(3) forwards; }
 @keyframes ping { to { transform: scale(1.8); opacity: 0; } }
 
+/* the morph tutorial: the bottom bar's fader, the kit's settings as bars, the library ------------------------------ */
+.mod > .mxr { margin-left: 20px; margin-right: 20px; }
+.mx { color: var(--white); }
+.mx-win { position: absolute; left: 12px; top: 12px; width: 176px; height: 196px; border: 2px solid var(--white); background: var(--black); }
+.mx-tt { height: 16px; background: var(--white); color: var(--black); font: 700 8px/16px var(--silk); letter-spacing: 1px; padding-left: 6px; }
+.mx-ltabs { display: flex; gap: 3px; padding: 5px 5px 0; }
+.mx-ltabs i { flex: 1; font: 700 7px/14px var(--silk); font-style: normal; text-align: center; border: 2px solid var(--frame); color: var(--grey); }
+.mx-ltabs i.on { background: var(--white); border-color: var(--white); color: var(--black); }
+.mx-list { list-style: none; margin: 6px 5px 0; padding: 0; }
+.mx-list li { font: 18px/22px var(--vt); padding: 0 6px; border: 2px solid transparent; white-space: nowrap; overflow: hidden; }
+.mx-list li.sel { border-color: var(--grey); } .mx-list li.flash { background: var(--white); color: var(--black); }
+.mx-list li.hint { color: var(--dim); font-size: 16px; }
+.mx-save { position: absolute; left: 5px; right: 5px; bottom: 6px; font: 700 7px/18px var(--silk); text-align: center; border: 2px solid var(--white); }
+.mx-save.down { background: var(--white); color: var(--black); }
+.mx-lane { display: none; }
+.mx-lane svg { position: absolute; left: 0; top: 30px; width: 172px; height: 150px; }
+.mx-lane polyline { fill: none; stroke: var(--yellow); stroke-width: 3; vector-effect: non-scaling-stroke; }
+.mx-ph { position: absolute; top: 18px; width: 2px; height: 174px; background: var(--red); }
+.mx-la, .mx-lb { position: absolute; right: 4px; font: 700 8px var(--silk); color: var(--dim); } .mx-la { top: 24px; } .mx-lb { bottom: 6px; }
+.mx-cols { position: absolute; left: 204px; top: 12px; width: 424px; height: 196px; display: flex; gap: 8px; }
+.mx-col { position: relative; width: 64px; height: 196px; }
+.mx-col > em { display: block; font: 700 8px/14px var(--silk); font-style: normal; letter-spacing: 1px; text-align: center; color: var(--grey); }
+.mx-box { position: absolute; left: 0; top: 16px; width: 64px; height: 150px; border: 2px solid var(--frame); background: var(--cell); }
+.mx-col.hot .mx-box { border-color: var(--yellow); }
+.mx-fillv { position: absolute; left: 18px; bottom: 0; width: 24px; background: var(--white); }
+.mx-tk { position: absolute; width: 14px; height: 11px; font: 700 7px/11px var(--silk); text-align: center; color: var(--black); background: var(--grey); margin-bottom: -5px; }
+.mx-tk.a { left: 1px; } .mx-tk.b { right: 1px; }
+.mx-tk.arm { background: var(--yellow); }
+.mx-val { position: absolute; left: 0; right: 0; top: 170px; text-align: center; font: 22px/22px var(--vt); }
+.mx-val.arm { color: var(--yellow); }
+.mx-shape { position: absolute; left: 0; right: 0; top: 56px; text-align: center; font: 28px var(--vt); }
+.mx-shape.flash { background: var(--red); color: var(--black); }
+.mx-sh { position: absolute; left: 4px; font: 16px var(--vt); color: var(--dim); } .mx-sh.a { bottom: 4px; } .mx-sh.b { top: 2px; }
+.mx-frame { position: absolute; left: 198px; top: 6px; width: 436px; height: 208px; border: 2px dashed var(--yellow); display: none; pointer-events: none; }
+.mx-bar { position: absolute; left: 12px; top: 222px; width: 616px; height: 34px; display: flex; align-items: center; gap: 6px; }
+.mx-name { width: 62px; font: 700 10px var(--silk); letter-spacing: 1px; color: var(--white); }
+.mx-name.arm { color: var(--yellow); }
+.mx-end { width: 30px; height: 30px; border: 2px solid var(--grey); font: 700 12px/26px var(--silk); text-align: center; color: var(--white); }
+.mx-end.at { background: var(--white); border-color: var(--white); color: var(--black); }
+.mx-end.arm { background: var(--yellow); border-color: var(--yellow); color: var(--black); }
+.mx-end.flash { outline: 3px solid var(--red); outline-offset: 2px; }
+.mx-track { position: relative; width: 300px; height: 34px; margin: 0 10px;
+            background: linear-gradient(90deg, var(--faint) 50%, transparent 50%) 0 16px / 4px 2px repeat-x; }
+.mx-track i { position: absolute; display: block; }
+.mx-fill { left: 0; top: 16px; height: 2px; background: var(--white); }
+.mx-mid { left: 149px; top: 11px; width: 2px; height: 12px; background: var(--faint); }
+.mx-heard { top: 2px; width: 2px; height: 30px; margin-left: -1px; background: var(--red); }
+.mx-knob { top: 1px; width: 10px; height: 32px; margin-left: -5px; background: var(--white); }
+.mx-knob.held { outline: 2px solid var(--black); box-shadow: 0 0 0 4px var(--white); }
+.mx-chip { margin-left: auto; font: 700 8px/18px var(--silk); letter-spacing: 1px; padding: 0 6px; border: 2px solid var(--frame); color: var(--grey); }
+.mx-chip.flash { border-color: var(--white); color: var(--white); }
+.mx-menu { position: absolute; z-index: 8; display: none; min-width: 150px; background: var(--black); border: 2px solid var(--white); padding: 3px 0; }
+.mx-menu b { display: block; font: 700 8px/16px var(--silk); background: var(--white); color: var(--black); padding: 0 6px; margin: -3px 0 3px; }
+.mx-menu span { display: block; font: 18px/20px var(--vt); padding: 0 8px; white-space: nowrap; }
+.mx-menu span.hi { background: var(--white); color: var(--black); }
+.mx-say { position: absolute; left: 12px; right: 12px; top: 264px; height: 30px; font: 22px/30px var(--vt); color: var(--yellow); white-space: nowrap; overflow: hidden; }
+
 .steps-list { list-style: none; padding: 0; margin: 18px 20px 0; }
 .steps-list li { margin: 0 0 14px; padding-left: 46px; text-indent: -46px; }
 .steps-list li > small, .steps-list li > .cmd { text-indent: 0; }

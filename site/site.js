@@ -617,4 +617,268 @@ function fit (stage, w, h) {
   if (still) { ub.classList.add('show'); return; }
   whenVisible(box, () => { run(++gen); }, () => { ++gen; });
 })();
+
+/* the morph tutorial: A, B, the fader that glides, an end armed, the morph kept ----------------------------------------- */
+(function morphTutorial () {
+  const stage = $('#mx'); if (!stage) return;
+  fit(stage, 640, 300);
+  const sc = stage.firstElementChild;
+  const cur = $('#mx-cur'), say = $('#mx-say'), menuEl = $('#mx-menu'), list = $('#mx-list'), track = $('#mx-track');
+  const knob = $('#mx-knob'), heardEl = $('#mx-heard'), fill = $('#mx-fill'), endA = $('#mx-a'), endB = $('#mx-b');
+  const SHAPES = ['SINE', 'SAW'];
+  const P = [ // a kit's settings, for the picture: A ("KICKS DURS"), B ("TECHNO SALE"), and the kit heard before
+    { n: 'PITCH', a: 30, b: 72, o: 50 }, { n: 'DECAY', a: 82, b: 24, o: 50 }, { n: 'CUTOFF', a: 40, b: 94, o: 66 },
+    { n: 'RESO', a: 18, b: 70, o: 30 }, { n: 'DRIVE', a: 10, b: 86, o: 40 }, { n: 'FORME', a: 0, b: 1, o: 0, list: true } ];
+  const cols = P.map(p => {
+    const c = document.createElement('div'); c.className = 'mx-col';
+    c.innerHTML = `<em>${p.n}</em><div class="mx-box">${p.list ? '<span class="mx-sh b"></span><span class="mx-shape"></span><span class="mx-sh a"></span>'
+      : '<i class="mx-fillv"></i><i class="mx-tk a">A</i><i class="mx-tk b">B</i>'}</div><span class="mx-val"></span>`;
+    $('#mx-cols').appendChild(c);
+    return { el: c, box: $('.mx-box', c), fill: $('.mx-fillv', c), ta: $('.mx-tk.a', c), tb: $('.mx-tk.b', c), val: $('.mx-val', c),
+             shape: $('.mx-shape', c), sa: $('.mx-sh.a', c), sb: $('.mx-sh.b', c) };
+  });
+
+  // the state: the ends (a, b) fly to their goals, the heard position glides to the fader
+  const S = { a: [], b: [], ga: [], gb: [], pos: 0, target: 0, armed: -1, glide: 300, lastShape: 0 };
+  function set (a, b, pos) { S.a = [...a]; S.b = [...b]; S.ga = [...a]; S.gb = [...b]; S.pos = S.target = pos; }
+  const vals = k => P.map(p => p[k]);
+  const differs = () => S.a.some((v, i) => Math.abs(v - S.b[i]) > 0.5);
+  const heard = i => P[i].list ? (S.pos < 0.5 ? S.a[i] : S.b[i]) : S.a[i] + (S.b[i] - S.a[i]) * S.pos;
+
+  function render () {
+    const on = differs(), H = 146;
+    P.forEach((p, i) => {
+      const c = cols[i], end = S.armed === 0 ? S.a[i] : S.armed === 1 ? S.b[i] : null;
+      if (p.list) {
+        const h = heard(i);
+        if (h !== S.lastShape) { c.shape.classList.remove('flash'); void c.shape.offsetWidth; c.shape.classList.add('flash'); setTimeout(() => c.shape.classList.remove('flash'), 260); S.lastShape = h; }
+        c.shape.textContent = SHAPES[Math.round(h)];
+        c.sa.textContent = on ? 'A ' + SHAPES[Math.round(S.a[i])] : ''; c.sb.textContent = on ? 'B ' + SHAPES[Math.round(S.b[i])] : '';
+        c.val.textContent = end === null ? '' : SHAPES[Math.round(end)];
+      } else {
+        c.fill.style.height = (heard(i) / 100 * H) + 'px';
+        c.ta.style.bottom = (S.a[i] / 100 * H) + 'px'; c.tb.style.bottom = (S.b[i] / 100 * H) + 'px';
+        c.ta.style.display = c.tb.style.display = on ? '' : 'none';
+        c.ta.classList.toggle('arm', S.armed === 0); c.tb.classList.toggle('arm', S.armed === 1);
+        c.val.textContent = Math.round(end === null ? heard(i) : end);
+      }
+      c.val.classList.toggle('arm', end !== null);
+    });
+    knob.style.left = (S.target * 300) + 'px';
+    heardEl.style.left = (S.pos * 300) + 'px';
+    heardEl.style.display = Math.abs(S.pos - S.target) > 0.01 ? '' : 'none';
+    fill.style.width = on ? (S.pos * 300) + 'px' : '0';
+    endA.className = 'mx-end' + (S.armed === 0 ? ' arm' : S.pos <= 0.001 ? ' at' : '');
+    endB.className = 'mx-end' + (S.armed === 1 ? ' arm' : S.pos >= 0.999 ? ' at' : '');
+    $('#mx-name').classList.toggle('arm', S.armed >= 0);
+    $('#mx-frame').style.display = S.armed >= 0 ? 'block' : 'none';
+  }
+  let raf = 0, last = 0;
+  function frame (t) {
+    const dt = Math.min(60, t - (last || t)); last = t;
+    const k = 1 - Math.exp(-dt * 3 / S.glide);
+    S.pos += (S.target - S.pos) * k; if (Math.abs(S.target - S.pos) < 0.002) S.pos = S.target;
+    for (const [v, g] of [[S.a, S.ga], [S.b, S.gb]]) v.forEach((x, i) => { v[i] = x + (g[i] - x) * Math.min(1, dt / 90); });
+    render();
+    raf = requestAnimationFrame(frame);
+  }
+
+  // the cursor and the script (as the install tutorial)
+  let route = 'ab', gen = 0, visible = false, running = false;
+  class Stop extends Error {}
+  const pos = { x: 560, y: 200 };
+  const check = my => { if (my !== gen) throw new Stop(); };
+  async function wait (ms, my) { await sleep(ms); check(my); }
+  function place (x, y) { pos.x = x; pos.y = y; cur.style.transform = `translate(${x}px, ${y}px)`; }
+  async function move (x, y, ms, my, step) {
+    const x0 = pos.x, y0 = pos.y, t0 = performance.now();
+    while (true) {
+      const k = Math.min(1, (performance.now() - t0) / ms), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      place(x0 + (x - x0) * e, y0 + (y - y0) * e);
+      if (step) step(pos.x, pos.y);
+      if (k >= 1) break;
+      await sleep(16); check(my);
+    }
+  }
+  async function click (my) { cur.classList.remove('click'); void cur.offsetWidth; cur.classList.add('click'); await wait(170, my); }
+  function at (el, fx = 0.5, fy = 0.5) {     // a point of an element, in scene coordinates
+    const r = el.getBoundingClientRect(), s = sc.getBoundingClientRect(), k = s.width / 640;
+    return { x: (r.left - s.left + r.width * fx) / k, y: (r.top - s.top + r.height * fy) / k };
+  }
+  const trackX = f => at(track, 0).x + f * 300;
+  const fracAt = x => Math.max(0, Math.min(1, (x - at(track, 0).x) / 300));
+  async function tell (text, my) {
+    say.textContent = '';
+    const t0 = performance.now();
+    while (say.textContent.length < text.length) { say.textContent = text.slice(0, Math.floor((performance.now() - t0) / 18) + 1); await wait(16, my); }
+  }
+  function libTab (morphs) {
+    $('#mx-tk').classList.toggle('on', !morphs); $('#mx-tm').classList.toggle('on', morphs);
+    list.innerHTML = morphs ? '<li class="hint">Aucun morph pour l\'instant.</li>' : '<li>KICKS DURS</li><li>TECHNO SALE</li><li>BROKEN 909</li>';
+    $('#mx-save').style.display = morphs ? '' : 'none';
+  }
+  async function popMenu (x, y, items, pick, my) {
+    menuEl.innerHTML = items.map(t => t.startsWith('#') ? `<b>${t.slice(1)}</b>` : `<span>${t}</span>`).join('');
+    menuEl.style.left = x + 'px'; menuEl.style.top = y + 'px'; menuEl.style.display = 'block';
+    await wait(500, my);
+    const it = [...menuEl.querySelectorAll('span')].find(s => s.textContent === pick), p = at(it, 0.35);
+    await move(p.x, p.y, 450, my);
+    it.classList.add('hi'); await wait(200, my); await click(my);
+    menuEl.style.display = 'none';
+  }
+  function reset () {
+    menuEl.style.display = 'none'; say.textContent = '';
+    $('#mx-lib').style.display = ''; $('#mx-lane').style.display = 'none'; $('#mx-save').classList.remove('down');
+    cols.forEach(c => c.el.classList.remove('hot')); $('#mx-chip').classList.remove('flash'); knob.classList.remove('held');
+    S.armed = -1; S.glide = 300; $('#mx-chip').textContent = 'GLIDE 300 MS'; libTab(false); place(560, 200);
+  }
+  function flash (el, cls = 'flash', ms = 500) { el.classList.add(cls); setTimeout(() => el.classList.remove(cls), ms); }
+
+  const scripts = {
+    async ab (my) {
+      set(vals('o'), vals('o'), 0); S.lastShape = 0;
+      await tell('Deux kits complets : A d’un côté du fader, B de l’autre.', my);
+      for (const [row, end, goal] of [[0, 'A', 'a'], [1, 'B', 'b']]) {
+        const li = list.children[row], p = at(li, 0.4);
+        await wait(700, my);
+        await move(p.x, p.y, 800, my);
+        li.classList.add('sel'); await click(my);
+        await popMenu(p.x + 6, p.y + 6, ['#' + li.textContent, 'Envoyer au RackAttack', 'Charger dans A', 'Charger dans B'], 'Charger dans ' + end, my);
+        li.classList.remove('sel');
+        if (goal === 'a') S.ga = vals('a'); else S.gb = vals('b');
+        flash(end === 'A' ? endA : endB);
+        await tell(end === 'A' ? 'Clic droit sur un kit › Charger dans A.' : 'Un autre › Charger dans B. Au bout A, tu entends A.', my);
+      }
+      await move(560, 200, 600, my);
+      await wait(2600, my);
+    },
+    async glide (my) {
+      set(vals('a'), vals('b'), 0); S.lastShape = 0;
+      await tell('Glisse le fader : les 24 sons et les 4 effets vont de A à B.', my);
+      let p = at(knob);
+      await move(p.x, p.y, 800, my);
+      knob.classList.add('held'); await click(my);
+      await move(trackX(0.3), p.y, 1300, my, x => { S.target = fracAt(x); });
+      knob.classList.remove('held');
+      await wait(500, my);
+      // a longer glide, to see it
+      S.glide = 1200; $('#mx-chip').textContent = 'GLIDE 1,2 S'; flash($('#mx-chip'), 'flash', 2400);
+      await tell('Lance-le : il glisse en douceur, le trait rouge suit.', my);
+      p = at(knob);
+      await move(p.x, p.y, 500, my);
+      knob.classList.add('held'); await click(my);
+      await move(trackX(0.92), p.y, 220, my, x => { S.target = fracAt(x); });
+      knob.classList.remove('held');
+      await wait(1500, my);
+      flash(cols[5].el, 'hot', 1700);
+      await tell('Les nombres glissent. Les choix (FORME) basculent à mi-course.', my);
+      await wait(1900, my);
+      p = { x: trackX(0.5), y: p.y };
+      await move(p.x, p.y + 4, 700, my);
+      await click(my); await click(my);
+      S.target = 0.5;
+      await tell('Double-clic : au milieu. Le glide se règle au clic droit.', my);
+      await wait(2400, my);
+    },
+    async arm (my) {
+      set(vals('a'), vals('b'), 0.5); S.lastShape = 1;
+      await tell('Clic sur A : il passe en jaune.', my);
+      let p = at(endA);
+      await move(p.x, p.y, 900, my); await click(my);
+      S.armed = 0;
+      await wait(500, my);
+      await tell('Ce que tu tournes va dans A seulement. La page montre A.', my);
+      await wait(900, my);
+      const R = 3, c = cols[R], box = at(c.box, 0.5, 0);     // RESO: A climbs, what is heard climbs half as much
+      const y0 = box.y + 150 - S.a[R] / 100 * 146, y1 = box.y + 150 - 100 / 100 * 146 + 4;
+      await move(box.x, y0, 800, my);
+      c.el.classList.add('hot'); await click(my);
+      await move(box.x, y1, 1300, my, (x, y) => { S.a[R] = S.ga[R] = Math.max(0, Math.min(100, (box.y + 150 - y) / 146 * 100)); });
+      await tell('Fader au milieu : tu entends la moitié du changement.', my);
+      await wait(2100, my);
+      c.el.classList.remove('hot');
+      p = at(knob);
+      await move(p.x, p.y, 700, my);
+      knob.classList.add('held'); await click(my);
+      await move(trackX(0), p.y, 900, my, x => { S.target = fracAt(x); });
+      knob.classList.remove('held');
+      await tell('Au bout A : tout.', my);
+      await wait(1600, my);
+      p = at(endA);
+      await move(p.x, p.y, 600, my); await click(my);
+      S.armed = -1;
+      await tell('Re-clic sur A : fini. Pareil avec B.', my);
+      await wait(2200, my);
+    },
+    async keep (my) {
+      set(vals('a'), vals('b'), 0.35); S.lastShape = 0;
+      await tell('Bibliothèque, onglet Morphs.', my);
+      let p = at($('#mx-tm'));
+      await move(p.x, p.y, 800, my); await click(my);
+      libTab(true);
+      await wait(400, my);
+      p = at($('#mx-save'));
+      await move(p.x, p.y, 700, my); await click(my);
+      $('#mx-save').classList.add('down');
+      list.innerHTML = '<li class="flash"></li>';
+      const li = list.firstChild, name = 'TECHNO MORPH';
+      for (let n = 1; n <= name.length; ++n) { li.textContent = name.slice(0, n); await wait(45, my); }
+      $('#mx-save').classList.remove('down');
+      setTimeout(() => li.classList.remove('flash'), 300);
+      await tell('Enregistrer le morph : A, B et la position.', my);
+      await wait(1500, my);
+      p = at(li, 0.4);
+      await move(p.x, p.y, 600, my); await click(my); await click(my);
+      flash(li);
+      await tell('Un double-clic le recharge, tel quel.', my);
+      await wait(1500, my);
+      // the host's automation
+      $('#mx-lib').style.display = 'none'; $('#mx-lane').style.display = 'block';
+      await move(560, 200, 400, my);
+      await tell('Dans ton DAW : Morph est un paramètre à automatiser.', my);
+      const ph = $('#mx-ph'), t0 = performance.now();
+      while (true) {
+        const k = Math.min(1, (performance.now() - t0) / 4200);
+        ph.style.left = (k * 172) + 'px';
+        S.target = curve(k);
+        if (k >= 1) break;
+        await wait(16, my);
+      }
+      await tell('Et le morph est gardé avec le projet.', my);
+      await wait(2400, my);
+    },
+  };
+  const curve = k => Math.max(0, Math.min(1, 0.5 - 0.5 * Math.cos(k * Math.PI * 2.5) * (1 - k * 0.3)));
+  $('#mx-curve').setAttribute('points', Array.from({ length: 45 }, (_, i) => { const k = i / 44; return `${(k * 176).toFixed(1)},${(6 + (1 - curve(k)) * 138).toFixed(1)}`; }).join(' '));
+
+  async function loop () {
+    if (running) return;
+    running = true;
+    const my = gen;
+    try { while (visible && my === gen) { reset(); await scripts[route](my); await wait(400, my); } }
+    catch (e) { if (!(e instanceof Stop)) throw e; }
+    finally { running = false; if (visible && my !== gen) loop(); }
+  }
+  function restart () { ++gen; if (!running && visible) loop(); }
+  function choose (b) {
+    route = b.dataset.mx;
+    $$('#mx-tabs [data-mx]').forEach(x => x.setAttribute('aria-selected', x === b));
+    $$('.mxr').forEach(r => { r.hidden = r.dataset.mx !== route; });
+  }
+  $$('#mx-tabs [data-mx]').forEach(b => b.addEventListener('click', () => { choose(b); if (still) still1(); else restart(); }));
+  // still: each chapter's picture, no motion
+  function still1 () {
+    reset();
+    const pos = { ab: 0, glide: 0.7, arm: 0.5, keep: 0.35 }[route];
+    set(vals('a'), vals('b'), pos);
+    if (route === 'arm') { S.armed = 0; S.a[3] = S.ga[3] = 100; }
+    if (route === 'keep') { libTab(true); list.innerHTML = '<li>TECHNO MORPH</li>'; }
+    say.textContent = { ab: 'Clic droit sur un kit › Charger dans A, puis un autre dans B.', glide: 'Glisse : de A à B. Double-clic : au milieu.',
+                        arm: 'A armé : ce que tu tournes va dans A seulement.', keep: 'Bibliothèque › Morphs › Enregistrer le morph.' }[route];
+    render();
+  }
+  if (still) { still1(); return; }
+  whenVisible(stage, () => { visible = true; cancelAnimationFrame(raf); last = 0; raf = requestAnimationFrame(frame); restart(); },
+                     () => { visible = false; ++gen; cancelAnimationFrame(raf); });
+})();
 })();

@@ -19,6 +19,7 @@
     <a href="#installer">Installer</a>
     <a href="#brancher">Brancher</a>
     <a href="#jouer">Jouer</a>
+    <a href="#morph">Morpher</a>
     <a href="#mesurer">Mesurer</a>
   </nav>
   <a class="light" href="#telecharger"><b></b><span class="ver">v@VERSION@</span></a>
@@ -208,9 +209,81 @@
   <p class="cap" id="shotcap">2 oscillateurs, 1 filtre, 2 enveloppes, 2 LFO. Tout à l'écran, en même temps.</p>
 </section>
 
-<!-- 05 SANS MACHINE ========================================================= -->
+<!-- 05 MORPHER ============================================================== -->
+<section class="mod" id="morph">
+  <h2><span>05 · Morpher</span></h2>
+  <p class="intro">Deux kits complets, A et B, et un fader entre les deux. Comme sur le Microtonic. <small>(À partir de la version 0.5.7.)</small></p>
+  <div class="tabs" role="tablist" id="mx-tabs">
+    <button role="tab" aria-selected="true" data-mx="ab">1 · A et B</button>
+    <button role="tab" aria-selected="false" data-mx="glide">2 · Glisser</button>
+    <button role="tab" aria-selected="false" data-mx="arm">3 · Armer</button>
+    <button role="tab" aria-selected="false" data-mx="keep">4 · Garder</button>
+  </div>
+
+  <div class="stage" id="mx" aria-hidden="true">
+    <div class="sc mx">
+      <div class="mx-win mx-lib" id="mx-lib">
+        <div class="mx-tt">BIBLIOTHÈQUE</div>
+        <div class="mx-ltabs"><i id="mx-tk">KITS</i><i>SONS</i><i id="mx-tm">MORPHS</i></div>
+        <ul class="mx-list" id="mx-list"></ul>
+        <span class="mx-save" id="mx-save">ENREGISTRER LE MORPH</span>
+      </div>
+      <div class="mx-win mx-lane" id="mx-lane">
+        <div class="mx-tt">TON DAW · MORPH</div>
+        <svg viewBox="0 0 176 150" preserveAspectRatio="none"><polyline id="mx-curve" points=""/></svg>
+        <i class="mx-ph" id="mx-ph"></i>
+        <b class="mx-la">B</b><b class="mx-lb">A</b>
+      </div>
+      <div class="mx-cols" id="mx-cols"></div>
+      <div class="mx-frame" id="mx-frame"></div>
+      <div class="mx-bar">
+        <span class="mx-name" id="mx-name">MORPH</span>
+        <span class="mx-end" id="mx-a">A</span>
+        <div class="mx-track" id="mx-track"><i class="mx-fill" id="mx-fill"></i><i class="mx-mid"></i><i class="mx-heard" id="mx-heard"></i><i class="mx-knob" id="mx-knob"></i></div>
+        <span class="mx-end" id="mx-b">B</span>
+        <span class="mx-chip" id="mx-chip">GLIDE 300 MS</span>
+      </div>
+      <div class="mx-menu" id="mx-menu"></div>
+      <div class="mx-say" id="mx-say"></div>
+      <div class="cursor" id="mx-cur"></div>
+    </div>
+  </div>
+
+  <div class="mxr" data-mx="ab">
+    <ol class="steps-list">
+      <li><kbd>1</kbd>Bibliothèque&nbsp;: clic droit sur un kit › <b>Charger dans A</b>.</li>
+      <li><kbd>2</kbd>Un autre kit › <b>Charger dans B</b>. <small>Sur un son&nbsp;: pareil, pour le son ouvert.</small></li>
+      <li><kbd>3</kbd>Fader au bout A&nbsp;: tu entends A. B attend son tour.</li>
+    </ol>
+  </div>
+  <div class="mxr" data-mx="glide" hidden>
+    <ol class="steps-list">
+      <li><kbd>1</kbd>Le fader est en bas de toutes les pages. Glisse-le&nbsp;: les 24 sons et les 4 effets vont de A à B. <small><kbd class="k">⌘</kbd> ou <kbd class="k">Ctrl</kbd>&nbsp;: plus fin.</small></li>
+      <li><kbd>2</kbd>Il glisse en douceur, le trait rouge montre ce que tu entends. <small>Clic droit sur le fader › Glide&nbsp;: de «&nbsp;sans&nbsp;» à 2&nbsp;s.</small></li>
+      <li><kbd>3</kbd>Double-clic&nbsp;: au milieu. Les formes, types et sources basculent à mi-course.</li>
+    </ol>
+  </div>
+  <div class="mxr" data-mx="arm" hidden>
+    <ol class="steps-list">
+      <li><kbd>1</kbd>Clic sur <b class="y">A</b>&nbsp;: il passe en jaune, la page s'encadre. <small>Comme les scènes de l'Octatrack.</small></li>
+      <li><kbd>2</kbd>Tourne ce que tu veux&nbsp;: ça va dans A seulement, et la page montre A. Tu l'entends selon le fader.</li>
+      <li><kbd>3</kbd>Re-clic sur A pour sortir. Pareil avec B.</li>
+    </ol>
+    <p class="cap">Sans rien armer&nbsp;: aux bouts, seul ce côté change&nbsp;; entre les deux, A et B bougent pour que tu entendes ce que tu tournes.</p>
+  </div>
+  <div class="mxr" data-mx="keep" hidden>
+    <ol class="steps-list">
+      <li><kbd>1</kbd>Bibliothèque › onglet <b>Morphs</b> › <b>Enregistrer le morph</b>&nbsp;: A, B et la position.</li>
+      <li><kbd>2</kbd>Double-clic pour le recharger tel quel.</li>
+      <li><kbd>3</kbd>Dans ton DAW&nbsp;: le paramètre <b>Morph</b> s'automatise, et le morph est gardé avec le projet.</li>
+    </ol>
+  </div>
+  <p class="done"><a class="try small" href="app/">▶ Essaie le morph dans ton navigateur</a> <small>Appui long sur le fader&nbsp;: kits démo dans A ou B.</small></p>
+</section>
+
+<!-- 06 SANS MACHINE ========================================================= -->
 <section class="mod" id="simulateur">
-  <h2><span>05 · Sans machine</span></h2>
+  <h2><span>06 · Sans machine</span></h2>
   <div class="sim">
     <div class="sleep" aria-hidden="true">
       <div class="rackpx"><i></i><i></i><i></i><b>Z</b><b>z</b><b>z</b></div>
@@ -221,9 +294,9 @@
   </div>
 </section>
 
-<!-- 06 MESURER ============================================================== -->
+<!-- 07 MESURER ============================================================== -->
 <section class="mod" id="mesurer">
-  <h2><span>06 · Mesurer</span></h2>
+  <h2><span>07 · Mesurer</span></h2>
   <div class="stage belt"><canvas id="ghosts" width="960" height="300" aria-hidden="true"></canvas></div>
   <p class="intro">Tu as la machine&nbsp;? Aide le simulateur à lui ressembler.</p>
   <ul class="facts">
@@ -233,9 +306,9 @@
   </ul>
 </section>
 
-<!-- 07 MISES À JOUR ========================================================= -->
+<!-- 08 MISES À JOUR ========================================================= -->
 <section class="mod" id="maj">
-  <h2><span>07 · Mises à jour</span></h2>
+  <h2><span>08 · Mises à jour</span></h2>
   <div class="upd" id="upd" aria-hidden="true">
     <div class="minibar"><i class="lg">RACK·ATTACK</i><i>Séquenceur</i><i>Kit</i><i>Son</i><span class="ub" id="ub">Mettre à jour</span></div>
     <div class="cursor" id="ucur"></div>

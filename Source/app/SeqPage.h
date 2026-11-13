@@ -142,9 +142,13 @@ private:
     struct Drag
     {
         Hit hit;
-        int startY = 0, startValue = 0;
+        int startY = 0, startValue = 0, startX = 0;
         bool paintOn = false, moved = false, noteDrag = false;
         int lastStep = -1;
+        // a step: switching a trig off waits for the release (a drag up or down makes ratchets instead);
+        // the first clear move decides between ratchets (up / down) and painting (across)
+        bool pendingOff = false, ratchet = false, painting = false;
+        int ratchetBase = 1;
     } drag;
     Hit hover;
 

@@ -125,6 +125,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .step .lks { position: absolute; right: 5px; top: 5px; display: flex; gap: 2px; }
 .step .lks i { width: 6px; height: 6px; background: var(--yellow); }
 .step .cond { position: absolute; right: 6px; bottom: 6px; font: 700 9px var(--silk); color: var(--black); }
+.step .rt { position: absolute; left: 6px; top: 16px; display: flex; gap: 3px; }
+.step .rt i { width: 4px; height: 8px; background: var(--black); }
 .step.on { background: var(--white); border-color: var(--white); color: var(--black); }
 .step.on .velo { background: var(--dim); }
 .step.out { visibility: hidden; }
@@ -214,6 +216,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .range::-moz-range-thumb { width: 16px; height: 26px; background: var(--white); border: 0; border-radius: 0; }
 .vu { display: flex; gap: 2px; height: 12px; margin: 6px 18px 0; }
 .vu i { flex: 1; background: var(--frame); } .vu i.on { background: var(--white); } .vu i.hot { background: var(--red); }
+
+.unzoom { display: none; position: fixed; z-index: 120; right: 12px; bottom: 12px; font: 700 14px var(--silk); background: var(--yellow); color: var(--black); padding: 12px 16px; border: 0; }
 
 /* the first screen (a tap starts the sound) */
 .start { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: #000 radial-gradient(#161616 1px, transparent 1.2px) 0 0 / 8px 8px; }

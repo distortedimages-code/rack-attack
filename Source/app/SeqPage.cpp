@@ -1065,7 +1065,7 @@ void SeqPage::paintSequencer (juce::Graphics& g, const Track& tr, double ppq)
     {
         auto hint = tr.mode == Mode::notes
             ? fr ("clic = poser · glisser haut/bas sur une note = la changer · Maj + clic = verrou")
-            : fr ("clic = poser · glisser = peindre · Maj + clic = verrou · clic droit = menu");
+            : fr ("clic = poser · glisser = peindre · tirer vers le haut = ratchet · Maj + clic = verrou · clic droit = menu");
         px::drawText (g, hint, h, juce::Justification::centredLeft, px::text (26.0f), px::dim);
     }
 
@@ -1665,18 +1665,25 @@ void SeqPage::mouseDown (const juce::MouseEvent& e)
                 break;
             }
             drag.paintOn = ! wasOn;
+            drag.startX = e.getPosition().x;
+            drag.ratchetBase = juce::jmax (1, (int) tr.steps[(size_t) idx].retrig);
+            if (wasOn)
+            {
+                // switched off on release, unless the drag makes ratchets or paints
+                drag.pendingOff = true;
+                break;
+            }
             seq.edit ([&] (Pattern& p)
             {
                 auto& t = p.tracks[(size_t) track];
                 if (t.mode == Mode::euclid)
                     t.printEuclid();
                 auto& s = t.steps[(size_t) idx];
-                s.on = drag.paintOn;
-                if (s.on && t.mode == Mode::notes)
+                s.on = true;
+                if (t.mode == Mode::notes)
                     s.note = (std::uint8_t) lastNote;
             });
-            if (drag.paintOn)
-                addBurst (stepBoxes[(size_t) drag.hit.index].getCentre(), px::white);
+            addBurst (stepBoxes[(size_t) drag.hit.index].getCentre(), px::white);
             break;
         }
         case Zone::trig:
@@ -1757,8 +1764,50 @@ void SeqPage::mouseDrag (const juce::MouseEvent& e)
                 lastNote = note;
                 break;
             }
-            // paint the same state over the steps the mouse crosses
+            // the first clear move decides: up or down on the step = ratchets (IMPAKT's gesture), across = painting
+            const int dx = e.getPosition().x - drag.startX;
             auto h = zoneAt (e.getPosition());
+            const int under = h.zone == Zone::step ? page * stepsPerPage + h.index : -1;
+            if (! drag.ratchet && ! drag.painting)
+            {
+                if (std::abs (dy) >= 8 && std::abs (dy) > std::abs (dx))
+                    drag.ratchet = true;
+                else if (under >= 0 && under != drag.lastStep)
+                    drag.painting = true;
+                else
+                    break;
+            }
+            if (drag.ratchet)
+            {
+                // a hit more every 14 pixels up, back down to where it was (and to 1)
+                const int idx = drag.lastStep, r = juce::jlimit (1, 8, drag.ratchetBase + dy / 14);
+                bool changed = false;
+                seq.edit ([&] (Pattern& p)
+                {
+                    auto& s = p.tracks[(size_t) track].steps[(size_t) idx];
+                    s.on = true;
+                    changed = s.retrig != r;
+                    s.retrig = (std::uint8_t) r;
+                });
+                drag.pendingOff = false;
+                if (changed)
+                    showToast (r > 1 ? "RETRIG x" + juce::String (r) : fr ("RETRIG : NON"), r > 1 ? px::white : px::grey);
+                break;
+            }
+            if (drag.pendingOff)
+            {
+                // painting from a trig: it goes off first, like the ones crossed
+                const int idx = drag.lastStep;
+                seq.edit ([&] (Pattern& p)
+                {
+                    auto& t = p.tracks[(size_t) track];
+                    if (t.mode == Mode::euclid)
+                        t.printEuclid();
+                    t.steps[(size_t) idx].on = false;
+                });
+                drag.pendingOff = false;
+            }
+            // paint the same state over the steps the mouse crosses
             if (h.zone == Zone::step)
             {
                 const int idx = page * stepsPerPage + h.index;
@@ -1800,6 +1849,17 @@ void SeqPage::mouseDrag (const juce::MouseEvent& e)
 
 void SeqPage::mouseUp (const juce::MouseEvent&)
 {
+    if (drag.hit.zone == Zone::step && drag.pendingOff && drag.lastStep >= 0)
+    {
+        const int idx = drag.lastStep;
+        seq.edit ([&] (Pattern& p)
+        {
+            auto& t = p.tracks[(size_t) track];
+            if (t.mode == Mode::euclid)
+                t.printEuclid();
+            t.steps[(size_t) idx].on = false;
+        });
+    }
     if (drag.hit.zone == Zone::step && drag.noteDrag && ! drag.moved && drag.lastStep >= 0)
     {
         const int idx = drag.lastStep;

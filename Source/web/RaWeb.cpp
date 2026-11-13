@@ -9,11 +9,14 @@
 // Strings and byte blocks go through one scratch buffer (ra_scratch); JavaScript copies them out at once.
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "../core/RaFactory.h"
 #include "../core/RaKit.h"
 #include "../core/RaMorph.h"
 #include "../core/RaSeq.h"
@@ -50,6 +53,8 @@ namespace
         int channel = 1;
         ra::Morph morph;          // kits A and B, as the plug-in's fader (the kit above is the blend heard)
         int armed = -1;           // -1, or the end edits go into (0 A, 1 B)
+        std::vector<ra::BankProgram> bank;   // the programs of the Waldorf file read last
+        int approximate = 0;      // patterns -> sequencer: tracks whose note value had no exact match
     };
     Model* model = nullptr;
 
@@ -606,6 +611,158 @@ RA_EXPORT (ra_kit_load) int raKitLoad (const std::uint8_t* data, int size)
     refreshContext();
     return 1;
 }
+
+//==============================================================================
+// Waldorf's files (factory sets, bonus kits, patterns), and the internal patterns of the sounds
+
+namespace
+{
+    int patternsIn (const ra::Kit& k)
+    {
+        int n = 0;
+        for (int i = 0; i < ra::Kit::numSounds; ++i)
+            if (k.hasPattern (i))
+                if (auto ip = ra::InternalPattern::fromData (k.patternData (i)); ip && ! ip->isEmpty())
+                    ++n;
+        return n;
+    }
+    ra::Bytes patternDumps (const ra::Kit& k, std::uint8_t device)
+    {
+        ra::Bytes out;
+        for (int i = 0; i < ra::Kit::numSounds; ++i)
+            if (k.hasPattern (i))
+            {
+                const auto m = k.patternDump (device, i);
+                out.insert (out.end(), m.begin(), m.end());
+            }
+        return out;
+    }
+    const ra::BankProgram* bankAt (int i)  { return model != nullptr && i >= 0 && i < (int) model->bank.size() ? &model->bank[(size_t) i] : nullptr; }
+    void append (ra::Bytes& out, const ra::Bytes& m)   { out.insert (out.end(), m.begin(), m.end()); }
+}
+
+// a file (.mid, .syx) -> its programs, kept until the next file
+RA_EXPORT (ra_bank_read) int raBankRead (const std::uint8_t* data, int size)
+{
+    const ra::Bytes file (data, data + size);
+    model->bank = ra::readBank (ra::isSmf (file) ? ra::smfSysex (file) : ra::splitSysex (file));
+    return (int) model->bank.size();
+}
+RA_EXPORT (ra_bank_clear) void raBankClear()             { model->bank.clear(); model->bank.shrink_to_fit(); }
+RA_EXPORT (ra_bank_name) int raBankName (int i)          { auto* p = bankAt (i); return toScratch (p != nullptr ? p->kit.name() : std::string()); }
+RA_EXPORT (ra_bank_number) int raBankNumber (int i)      { auto* p = bankAt (i); return p != nullptr ? p->number : -1; }
+RA_EXPORT (ra_bank_has_kit) int raBankHasKit (int i)     { auto* p = bankAt (i); return p != nullptr && p->hasKit() ? 1 : 0; }
+RA_EXPORT (ra_bank_patterns) int raBankPatterns (int i)  { auto* p = bankAt (i); return p != nullptr ? patternsIn (p->kit) : 0; }
+// what the browser keeps of it: the kit as a .syx (with its patterns), or the pattern dumps alone
+RA_EXPORT (ra_bank_syx) int raBankSyx (int i)
+{
+    auto* p = bankAt (i);
+    if (p == nullptr) return toScratch (ra::Bytes());
+    return toScratch (p->hasKit() ? p->kit.toSyx() : patternDumps (p->kit, 0));
+}
+
+// a kit (a .syx, with its patterns) becomes the kit heard; the morph starts again from it. Out: what the unit needs
+// to have it (the program settings that change one by one, as the plug-in does, then the dumps), or -1.
+RA_EXPORT (ra_kit_take) int raKitTake (const std::uint8_t* data, int size)
+{
+    auto k = ra::Kit::fromSyx (ra::Bytes (data, data + size));
+    if (! k || ! (k->hasProgram() || k->blocksRead() > 0)) return -1;
+    const auto& old = model->kit;
+    const auto dev = model->device;
+    ra::Bytes out;
+    if (k->hasProgram())
+        for (int a = 0; a < ra::kProgramDataSize; ++a)
+            if (! old.hasProgram() || old.programValue (a) != k->programValue (a))
+                append (out, ra::build (dev, { ra::cmd::PRGP, ra::kEditBuffer, (std::uint8_t) (a >> 7), (std::uint8_t) (a & 0x7F),
+                                               (std::uint8_t) k->programValue (a) }));
+    for (int i = 0; i < ra::Kit::numSounds; ++i)  if (k->hasSound (i))  append (out, k->soundDump (dev, i));
+    for (int e = 0; e < ra::Kit::numEffects; ++e) if (k->hasEffect (e)) append (out, k->effectDump (dev, e));
+    append (out, patternDumps (*k, dev));
+    model->kit = *k;
+    model->morph.reset (model->kit);
+    model->armed = -1;
+    refreshContext();
+    return toScratch (out);
+}
+
+RA_EXPORT (ra_kit_patterns) int raKitPatterns()          { return patternsIn (model->kit); }
+RA_EXPORT (ra_kit_patterns_read) int raKitPatternsRead() { return model->kit.patternsRead(); }
+RA_EXPORT (ra_patterns_approx) int raPatternsApprox()    { return model->approximate; }
+
+// internal patterns -> the sequencer's tracks (the swing: the most used one). From a .syx, or the kit heard when
+// size is 0. all: the empty patterns empty their track too. Out: the tracks filled, -1 when nothing could be read.
+RA_EXPORT (ra_patterns_to_seq) int raPatternsToSeq (const std::uint8_t* data, int size, int all)
+{
+    std::optional<ra::Kit> from;
+    if (size > 0)
+    {
+        from = ra::Kit::fromSyx (ra::Bytes (data, data + size));
+        if (! from) return -1;
+    }
+    const auto& k = from ? *from : model->kit;
+    int filled = 0;
+    model->approximate = 0;
+    std::array<int, 6> swings {};
+    for (int i = 0; i < numTracks; ++i)
+    {
+        if (! k.hasPattern (i))
+            continue;
+        auto ip = ra::InternalPattern::fromData (k.patternData (i));
+        if (! ip || (ip->isEmpty() && all == 0))
+            continue;
+        bool approx = false;
+        ra::internalToTrack (*ip, model->pattern.tracks[(size_t) i], &approx);
+        model->approximate += approx ? 1 : 0;
+        if (! ip->isEmpty())
+        {
+            ++filled;
+            ++swings[(size_t) std::clamp (ip->swing, 0, 5)];
+        }
+    }
+    if (filled > 0)
+        model->pattern.swing = (std::uint8_t) ra::swingPercent ((int) (std::max_element (swings.begin(), swings.end()) - swings.begin()));
+    refreshContext();
+    return filled;
+}
+
+// the sequencer's tracks (all, or track t) -> the internal patterns of the kit heard, and the PATD for the unit.
+// The sound's Pattern Mode stays as it is (Son > Sortie > PAT.INT), and so do the unit's group and start settings.
+RA_EXPORT (ra_patterns_from_seq) int raPatternsFromSeq (int t)
+{
+    ra::Bytes out;
+    auto& kit = model->kit;
+    for (int i = 0; i < numTracks; ++i)
+    {
+        if (t >= 0 && i != t)
+            continue;
+        const int mode = kit.hasSound (i) ? kit.soundValue (i, 0x6C) : 0;
+        auto ip = ra::trackToInternal (model->pattern.tracks[(size_t) i], mode);
+        ip.swing = ra::internalSwing (model->pattern.swing);
+        if (kit.hasPattern (i))
+            if (auto old = ra::InternalPattern::fromData (kit.patternData (i)))
+            {
+                ip.group = old->group;
+                ip.startWhen = old->startWhen;
+                ip.startWhere = old->startWhere;
+            }
+        kit.setPatternData (i, ip.toData());
+        append (out, kit.patternDump (model->device, i));
+    }
+    return toScratch (out);
+}
+
+// the patterns of a .syx (Waldorf's patterns alone, say) -> into the kit heard, and the PATD for the unit; -1
+RA_EXPORT (ra_patterns_take) int raPatternsTake (const std::uint8_t* data, int size)
+{
+    auto k = ra::Kit::fromSyx (ra::Bytes (data, data + size));
+    if (! k || k->patternsRead() == 0) return -1;
+    for (int i = 0; i < ra::Kit::numSounds; ++i)
+        if (k->hasPattern (i))
+            model->kit.setPatternData (i, k->patternData (i));
+    return toScratch (patternDumps (*k, model->device));
+}
+
+RA_EXPORT (ra_msg_pattern_request) int raMsgPatternRequest (int s)  { return toScratch (ra::patternRequest (model->device, s)); }
 
 //==============================================================================
 // The player

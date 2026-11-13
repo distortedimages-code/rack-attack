@@ -2,9 +2,12 @@
 // module, in an audio worklet), and Web MIDI for the real unit. Timing as in the plug-in's Sequencer: every
 // 20 ms the player plans a little ahead and each message gets its own time.
 
+import { unzip, kitStore } from './waldorf.js';
+
 const LOOKAHEAD = 0.12;          // seconds planned ahead (the plug-in: 40 ms; browsers' timers are rougher)
 const LEAD_MS = 4.2;             // a lock goes this far before its note (one SysEx on the cable)
 const START_TOLERANCE_MS = 15;
+export const PATTERNS_SET = 'Patterns seuls';
 
 export class Engine {
   constructor () {
@@ -149,6 +152,116 @@ export class Engine {
       } catch (e) {}
       this.save();
     }, 400);
+  }
+
+  //============================================================================
+  // Waldorf's files (factory sets, bonus kits, patterns): read here, kept in this browser, never sent to the site
+  kits () { return kitStore.all(); }
+  removeKitSet (set) { return kitStore.removeSet(set).then(() => this.emit('kits')); }
+
+  async importFiles (files) {
+    const result = { kits: 0, patterns: 0, skipped: 0, sets: [] }, records = [];
+    for (const f of files) {
+      const data = new Uint8Array(await f.arrayBuffer());
+      const dot = f.name.lastIndexOf('.'), stem = dot > 0 ? f.name.slice(0, dot) : f.name;
+      const isZip = dot > 0 && f.name.slice(dot + 1).toLowerCase() === 'zip';
+      const entries = isZip ? await unzip(data, stem) : [{ set: '', stem, data }];
+      if (!entries.length) ++result.skipped;
+      for (const e of entries) this.importData(e, records, result);
+    }
+    // the same file in two zips (Waldorf's have that) counts once
+    const unique = [...new Map(records.map(r => [r.id, r])).values()];
+    result.kits = unique.filter(r => r.kit).length;
+    result.patterns = unique.length - result.kits;
+    if (unique.length) await kitStore.put(unique);
+    this.emit('kits');
+    return result;
+  }
+  // as the plug-in's library: a set of programs keeps its file's name, single kits the name of their zip
+  importData ({ set, stem, data }, records, result) {
+    const n = this.withBytes(data, (p, len) => this.x.ra_bank_read(p, len));
+    if (n <= 0) { ++result.skipped; return; }                  // the system updates, and anything that is no kit
+    const tidy = t => t.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+    for (let i = 0; i < n; ++i) {
+      const syx = this.scratch(this.x.ra_bank_syx(i)), patterns = this.x.ra_bank_patterns(i);
+      if (!this.x.ra_bank_has_kit(i)) {
+        const name = tidy(stem) + (n > 1 ? ' ' + (i + 1) : '');
+        records.push({ id: PATTERNS_SET + '/' + name, set: PATTERNS_SET, name, number: -1, kit: false, patterns, syx });
+        ++result.patterns;
+        continue;
+      }
+      const setName = tidy(n > 1 ? stem : set || 'Kits');
+      const stored = this.x.ra_bank_number(i);
+      let number = stored >= 0 ? stored + 1 : n > 1 ? i + 1 : 0;
+      if (!number && /^prog\d/i.test(stem)) number = parseInt(stem.slice(4), 10) || 0;   // "Prog33_New_Style_Kit"
+      const title = this.text(this.x.ra_bank_name(i)).trim() || tidy(stem);
+      const name = (number > 0 ? 'P' + String(number).padStart(2, '0') + ' ' : '') + title;
+      records.push({ id: setName + '/' + name, set: setName, name, number, kit: true, patterns, syx });
+      ++result.kits;
+      if (!result.sets.includes(setName)) result.sets.push(setName);
+    }
+    this.x.ra_bank_clear();
+  }
+
+  // a kit (a .syx) -> the kit heard, in the simulator and in the unit's edit buffer when it is connected (nothing is
+  // stored on the unit: Shift + Store there keeps it). The morph starts again from it.
+  takeKit (syx) {
+    const n = this.withBytes(syx, (p, len) => this.x.ra_kit_take(p, len));
+    if (n < 0) return false;
+    this.sendPaced(this.scratch(n));
+    this.morphTarget = this.morphPosition();
+    this.sendKitToSynth();
+    this.save(); this.saveMorphSoon();
+    this.emit('kit'); this.emit('morph');
+    return true;
+  }
+  // many dumps for the unit: one after the other, a little apart (its MIDI buffer is small)
+  sendPaced (bytes) {
+    if (!this.midi.out || !this.midi.connected || !bytes.length) return;
+    let t = performance.now() + 5;
+    for (let i = 0, start = 0; i < bytes.length; ++i)
+      if (bytes[i] === 0xf7) {
+        const d = bytes.slice(start, i + 1);
+        start = i + 1;
+        try { this.midi.out.send(d, t); } catch (e) { this.midiError(e); return; }
+        t += d.length > 40 ? 60 : 4;
+      }
+  }
+
+  // the internal patterns of the sounds (the unit's Pattern Play)
+  kitPatterns () { return this.x.ra_kit_patterns(); }
+  kitPatternsRead () { return this.x.ra_kit_patterns_read(); }
+  // -> the sequencer's tracks: from a kit kept here (syx), or the kit heard
+  patternsToSeq (syx = null, all = true) {
+    const n = syx ? this.withBytes(syx, (p, len) => this.x.ra_patterns_to_seq(p, len, all ? 1 : 0)) : this.x.ra_patterns_to_seq(0, 0, all ? 1 : 0);
+    if (n > 0) this.edited();
+    return { filled: n, approximate: this.x.ra_patterns_approx() };
+  }
+  // the sequencer's tracks (all, or one) -> the internal patterns of the kit, and of the unit when it is connected
+  seqToPatterns (track = -1) { this.sendPaced(this.scratch(this.x.ra_patterns_from_seq(track))); this.save(); }
+  // the patterns of a kit kept here -> those of the kit heard (and of the unit)
+  takePatterns (syx) {
+    const n = this.withBytes(syx, (p, len) => this.x.ra_patterns_take(p, len));
+    if (n < 0) return false;
+    this.sendPaced(this.scratch(n));
+    this.save();
+    return true;
+  }
+  // the unit's own patterns -> the kit (the unit answers each sound's request with its pattern)
+  async readPatterns () {
+    if (!this.midi.connected) return 0;
+    this.readingKit = true;
+    let done = 0;
+    for (let s = 0; s < 24; ++s) {
+      this.midi.status = `Je lis les patterns… ${s}/24`;
+      this.emit('midi');
+      if (await this.request(this.scratch(this.x.ra_msg_pattern_request(s)), d => d[0] === 0xf0 && d[4] === 0x13, 800)) ++done;
+    }
+    this.readingKit = false;
+    this.midi.status = done === 24 ? '' : `Patterns lus en partie (${done}/24)`;
+    this.save();
+    this.emit('midi');
+    return done;
   }
 
   //============================================================================

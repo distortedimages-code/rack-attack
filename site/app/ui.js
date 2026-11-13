@@ -1,5 +1,5 @@
 // The web version's screens: the Séquenceur and Son pages of the plug-in, drawn the same way, on the same engine.
-import { Engine } from './engine.js';
+import { Engine, PATTERNS_SET } from './engine.js';
 import { SECTIONS, COLUMNS, isBipolar, valueText, noteName, DIVISIONS, CONDITIONS, quickFor, TRIGS, fit as fitText } from './params.js';
 
 const E = new Engine();
@@ -213,7 +213,7 @@ function writeTrack (t, tr) {
 const top = el('div', 'abs top', stage);
 el('div', 'logo', top).innerHTML = 'RACK<i>·</i>ATTACK';
 const pageKeys = {};
-for (const [id, label] of [['seq', 'Séquenceur'], ['son', 'Son'], ['fx', 'Effets']]) {
+for (const [id, label] of [['seq', 'Séquenceur'], ['son', 'Son'], ['fx', 'Effets'], ['kits', 'Kits']]) {
   const b = el('button', 'key', top, label);
   b.addEventListener('click', () => showPage(id));
   pageKeys[id] = b;
@@ -353,7 +353,9 @@ const audioKey = el('button', 'key', top, 'Audio');
 audioKey.addEventListener('click', audioDialog);
 const midiKey = el('button', 'key', top, 'MIDI');
 midiKey.addEventListener('click', midiDialog);
-const fullKey = el('button', 'key', top, 'Plein écran');
+const fullKey = el('button', 'key square', top);
+fullKey.innerHTML = '<svg width="20" height="20" viewBox="0 0 10 10" shape-rendering="crispEdges" fill="currentColor"><path d="M0 0h4v1H1v3H0zM6 0h4v4H9V1H6zM0 6h1v3h3v1H0zM9 6h1v4H6V9h3z"/></svg>';
+fullKey.title = 'Plein écran'; fullKey.setAttribute('aria-label', 'Plein écran');
 fullKey.addEventListener('click', () => {
   const d = document.documentElement;
   if (document.fullscreenElement) document.exitFullscreen();
@@ -595,7 +597,7 @@ function initTracks (all, t = S.track) {
 }
 
 async function options () {
-  const b = boxOf(optKey), t = S.track;
+  const b = boxOf(optKey), t = S.track, con = E.midi.connected;
   const id = await menu([
     { header: `Piste ${two(t + 1)}  ${upper(E.trackName(t))}` },
     { id: 1, label: 'Effacer les pas' }, { id: 2, label: 'Effacer les verrous' }, { id: 3, label: 'Init piste : vide, 16 pas, 1/16' },
@@ -604,6 +606,10 @@ async function options () {
     { id: 6, label: 'Copier la piste' }, { id: 7, label: 'Coller la piste', disabled: !S.clip },
     { header: 'Séquence' },
     { id: 20, label: 'Effacer tous les pas' }, { id: 21, label: 'Effacer tous les verrous' }, { id: 22, label: 'Init séquence : tout vide, 16 pas, 1/16 (le tempo reste)' },
+    { header: 'Patterns internes de la machine' },
+    { id: 40, label: E.kitPatternsRead() < 24 && con ? 'Lire les patterns internes → séquence' : 'Patterns internes du kit → séquence', disabled: !con && E.kitPatterns() === 0 },
+    { id: 41, label: 'Cette piste → pattern interne du son' + (con ? '' : ' (branche la machine)'), disabled: !con },
+    { id: 42, label: 'Toute la séquence → patterns internes' + (con ? '' : ' (branche la machine)'), disabled: !con },
     { sep: true },
     { id: 30, label: S.undo ? 'Annuler : ' + S.undoWhat : 'Annuler', disabled: !S.undo },
   ], b.x, b.y + b.h);
@@ -622,6 +628,17 @@ async function options () {
     case 21: onAll('effacer tous les verrous', 1); toast('Tous les verrous effacés', 'yellow'); break;
     case 22: initTracks(true); break;
     case 30: undo(); break;
+    case 40: {
+      if (E.kitPatternsRead() < 24 && con) await E.readPatterns();
+      keepForUndo('patterns internes');
+      const r = E.patternsToSeq(null, true);
+      if (r.filled > 0) toast(`Patterns internes : ${r.filled} piste${r.filled > 1 ? 's' : ''}${r.approximate ? ` (${r.approximate} approchée${r.approximate > 1 ? 's' : ''})` : ''}`);
+      else toast('Ce kit n’a pas de pattern interne', 'red');
+      S.stepPage = 0;
+      break;
+    }
+    case 41: E.seqToPatterns(t); toast('Piste → pattern interne', 'yellow'); break;
+    case 42: E.seqToPatterns(-1); toast('Séquence → patterns internes', 'yellow'); break;
   }
   if (id) { S.sel.clear(); render(); }
 }
@@ -907,12 +924,156 @@ function renderFx () {
 }
 
 //==============================================================================
+// the Kits page: Waldorf's files (factory sets, bonus kits, patterns) imported into this browser
+const kitsPage = el('div', 'abs', stage);
+place(kitsPage, 0, 0, 1360, 848);
+const kitsHead = place(el('div', 'abs kitname', kitsPage), 16, 64);
+el('span', 'dim', kitsHead, 'KITS');
+const kitsTitle = el('span', '', kitsHead);
+const importKey = place(el('button', 'abs key importkey', kitsPage, 'Importer…'), 1144, 70, 200, 40);
+const setsEl = place(el('div', 'abs kitsets', kitsPage), 16, 124, 300, 650);
+const kitsEl = place(el('div', 'abs kitgrid', kitsPage), 332, 124, 1012, 650);
+const kitsHint = place(el('div', 'abs fxhint', kitsPage), 16, 790, 1328, 30);
+const K = { list: [], set: null, loaded: null };
+try { K.loaded = localStorage.getItem('ra.kitFrom'); } catch (e) {}
+
+const fileInput = el('input', '', document.body);
+fileInput.type = 'file'; fileInput.multiple = true;
+// iPad and iPhone grey out the files whose kind they don't know (.syx, .mid): there, every file can be picked
+const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+if (!iOS) fileInput.accept = '.zip,.mid,.midi,.syx';
+fileInput.style.display = 'none';
+fileInput.addEventListener('change', async () => {
+  const files = [...fileInput.files];
+  fileInput.value = '';
+  if (!files.length) return;
+  toast('Je lis les fichiers…');
+  let r;
+  try { r = await E.importFiles(files); } catch (e) { toast('Import impossible : ' + (e.message || e), 'red'); return; }
+  const parts = [];
+  if (r.kits) parts.push(`${r.kits} kit${r.kits > 1 ? 's' : ''}`);
+  if (r.patterns) parts.push(`${r.patterns} jeu${r.patterns > 1 ? 'x' : ''} de patterns`);
+  if (parts.length) {
+    toast('Importé : ' + parts.join(' et '));
+    if (r.sets.length) K.set = r.sets[0]; else if (r.patterns) K.set = PATTERNS_SET;
+  } else toast(r.skipped ? 'Aucun kit dans ces fichiers (les mises à jour système ne se chargent pas ici)' : 'Rien à importer', 'red');
+  await refreshKits();
+});
+importKey.addEventListener('click', () => fileInput.click());
+
+async function refreshKits () {
+  try { K.list = await E.kits(); } catch (e) { K.list = []; }
+  K.list.sort((a, b) => a.set === b.set ? (a.number - b.number) || a.name.localeCompare(b.name) : a.set === PATTERNS_SET ? 1 : b.set === PATTERNS_SET ? -1 : a.set.localeCompare(b.set));
+  const sets = [...new Set(K.list.map(k => k.set))];
+  if (!sets.includes(K.set)) K.set = sets[0] || null;
+  renderKits();
+}
+
+// a press that lasts: the menu (as the voices)
+function pressable (b, tap, more) {
+  let lp = 0, longDone = false;
+  b.addEventListener('pointerdown', ev => { if (ev.button > 0) return; longDone = false; lp = setTimeout(() => { longDone = true; more(); }, 650); });
+  const stop = () => clearTimeout(lp);
+  b.addEventListener('pointerup', stop); b.addEventListener('pointercancel', stop); b.addEventListener('pointerleave', stop);
+  b.addEventListener('click', () => { if (longDone) { longDone = false; return; } tap(); });
+  b.addEventListener('contextmenu', ev => { ev.preventDefault(); clearTimeout(lp); if (!longDone) more(); });
+}
+
+function renderKits () {
+  const sets = [...new Set(K.list.map(k => k.set))];
+  const kits = K.list.filter(k => k.kit).length, pats = K.list.length - kits;
+  kitsTitle.textContent = K.list.length ? `${kits} KIT${kits > 1 ? 'S' : ''}${pats ? ` · ${pats} JEU${pats > 1 ? 'X' : ''} DE PATTERNS` : ''} DANS CE NAVIGATEUR` : 'LES FICHIERS DE WALDORF';
+  setsEl.textContent = ''; kitsEl.textContent = '';
+  setsEl.style.display = K.list.length ? '' : 'none';
+  kitsEl.classList.toggle('empty', !K.list.length);
+  if (!K.list.length) {
+    const box = el('div', 'kitsempty', kitsEl);
+    el('h3', '', box, 'IMPORTE LES FICHIERS DE WALDORF');
+    el('p', '', box, 'Les sons d’usine, les kits bonus et les patterns que Waldorf donne pour la RackAttack : les .zip tels quels, ou les .mid et .syx qu’ils contiennent.');
+    el('p', '', box, 'Ils restent dans ce navigateur, rien n’est envoyé sur le site. Les mises à jour système sont ignorées.');
+    const go = el('button', 'key big', box, 'Importer…');
+    go.addEventListener('click', () => fileInput.click());
+    kitsEl.style.left = '16px'; kitsEl.style.width = '1328px';
+    kitsHint.textContent = 'Sur iPad : Importer ouvre l’app Fichiers (le dossier Téléchargements, iCloud…).';
+    return;
+  }
+  kitsEl.style.left = '332px'; kitsEl.style.width = '1012px';
+  for (const set of sets) {
+    const n = K.list.filter(k => k.set === set).length;
+    const b = el('button', 'kitset' + (set === K.set ? ' on' : ''), setsEl);
+    el('span', 'nm', b, upper(set));
+    el('span', 'ct', b, String(n));
+    pressable(b, () => { K.set = set; renderKits(); }, () => setMenu(set, b));
+  }
+  for (const k of K.list.filter(k => k.set === K.set)) {
+    const b = el('button', 'kitcell' + (k.id === K.loaded ? ' on' : '') + (k.kit ? '' : ' pats'), kitsEl);
+    const m = /^P(\d\d) (.*)$/.exec(k.name);
+    el('span', 'no', b, m ? m[1] : k.kit ? '··' : 'PAT');
+    el('span', 'nm', b, upper(m ? m[2] : k.name));
+    if (k.patterns) el('span', 'pt', b, '♪' + k.patterns);
+    pressable(b, () => kitTap(k, b), () => kitMenu(k, b));
+  }
+  kitsHint.textContent = E.midi.connected
+    ? 'Touche = le kit dans la machine (sa mémoire tampon : Shift + Store pour le garder) · appui long = menu'
+    : 'Touche = le kit dans le simulateur (et dans la machine quand elle est branchée) · appui long = menu';
+}
+
+function loadKit (k) {
+  if (!E.takeKit(k.syx)) { toast('Ce kit ne se lit pas', 'red'); return; }
+  K.loaded = k.id;
+  try { localStorage.setItem('ra.kitFrom', k.id); } catch (e) {}
+  toast(upper(k.name) + (E.midi.connected ? ' → machine' : ' chargé'));
+  renderKits();
+}
+function patternsIn (k) {
+  keepForUndo('patterns internes');
+  const r = E.patternsToSeq(k.syx, true);
+  if (r.filled <= 0) { toast('Pas de pattern dans ce kit', 'red'); return; }
+  S.sel.clear(); S.stepPage = 0;
+  showPage('seq');
+  toast(`Patterns internes : ${r.filled} piste${r.filled > 1 ? 's' : ''}${r.approximate ? ` (${r.approximate} approchée${r.approximate > 1 ? 's' : ''})` : ''}`);
+}
+function kitTap (k, b) {
+  if (!k.kit) { patternsIn(k); return; }
+  // with a morph going, a tap asks where the kit goes rather than flattening it
+  if (E.morphDiffers() || E.morphArmed() >= 0) { kitMenu(k, b); return; }
+  loadKit(k);
+}
+async function kitMenu (k, b) {
+  const box = boxOf(b), con = E.midi.connected;
+  const items = [{ header: k.name }];
+  if (k.kit) items.push({ id: 'load', label: E.morphDiffers() ? 'Charger (le morph repart de ce kit)' : con ? 'Charger dans la machine' : 'Charger' },
+    { id: 'a', label: 'Charger dans le cœur' }, { id: 'b', label: 'Charger dans le crâne' }, { sep: 1 });
+  if (k.kit && k.patterns) items.push({ id: 'both', label: 'Charger avec ses patterns → séquenceur' });
+  items.push({ id: 'seq', label: k.patterns ? `Ses patterns seuls → séquenceur (${k.patterns})` : 'Pas de pattern dans ce kit', disabled: !k.patterns });
+  if (!k.kit) items.push({ id: 'unit', label: con ? 'Ces patterns → machine' : 'Ces patterns → machine (branche-la)', disabled: !con });
+  const id = await menu(items, box.x, box.y + box.h);
+  if (id === 'load') loadKit(k);
+  if (id === 'a' || id === 'b') { const s = id === 'a' ? 0 : 1; toast(E.morphLoadKit(s, k.syx) ? `${upper(k.name)} dans le ${END[s]}` : 'Ce kit ne se lit pas', ''); }
+  if (id === 'seq') patternsIn(k);
+  if (id === 'both') { loadKit(k); patternsIn(k); }
+  if (id === 'unit') toast(E.takePatterns(k.syx) ? 'Patterns → machine' : 'Ces patterns ne se lisent pas', '');
+  render();
+}
+async function setMenu (set, b) {
+  const box = boxOf(b);
+  const id = await menu([{ header: set }, { id: 'rm', label: 'Enlever ce set du navigateur…' }], box.x, box.y + box.h);
+  if (id !== 'rm') return;
+  const ok = await menu([{ header: `Enlever « ${set} » ?` }, { id: 'yes', label: 'Oui, enlever (tu pourras le réimporter)' }, { id: 'no', label: 'Non' }], box.x, box.y + box.h);
+  if (ok !== 'yes') return;
+  await E.removeKitSet(set);
+  toast('Set enlevé', 'red');
+  await refreshKits();
+}
+
+//==============================================================================
 // drawing the state
 
 function render () {
   renderTop(); renderMorph(); renderHeader(); renderVoices(); renderSound(); renderSeq();
   if (S.page === 'son') renderSon();
   if (S.page === 'fx') renderFx();
+  if (S.page === 'kits') renderKits();
 }
 
 function renderHeader () {
@@ -1319,6 +1480,7 @@ function showPage (p) {
   seqPage.style.display = p === 'seq' ? '' : 'none';
   sonPage.style.display = p === 'son' ? '' : 'none';
   fxPage.style.display = p === 'fx' ? '' : 'none';
+  kitsPage.style.display = p === 'kits' ? '' : 'none';
   render();
 }
 
@@ -1336,6 +1498,7 @@ E.on(what => {
   if (what === 'midi') renderTop();
   if (what === 'kit') { render(); }
   if (what === 'morph') renderMorph();
+  if (what === 'kits' && S.page === 'kits') renderKits();
 });
 
 // the first screen: a tap starts the sound
@@ -1350,6 +1513,7 @@ const rot = el('div', 'rotate', document.body, 'TOURNE LA TABLETTE : C\'EST FAIT
   spin();
   await E.load('ra.wasm');
   showPage('seq');
+  refreshKits();
   requestAnimationFrame(frame);
   document.getElementById('start-go').addEventListener('click', async () => {
     startEl.classList.add('gone');

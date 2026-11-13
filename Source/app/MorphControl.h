@@ -1,4 +1,4 @@
-// The morph fader of the plug-in (ra::Morph, after Microtonic's): kits A and B, the position, and the kit heard
+// The morph fader of the plug-in (ra::Morph): kits A and B, the position, and the kit heard
 // kept on the unit (or the simulator) as the fader moves. The fader glides to where it is put (a time that can be
 // set), which also keeps the unit from being flooded.
 //

@@ -1,4 +1,4 @@
-**RackAttack Editor 0.5.7** : le morph. Deux kits complets, A et B, et un fader entre les deux, comme sur le Microtonic de Sonic Charge, avec les côtés armés des scènes de l'Octatrack.
+**RackAttack Editor 0.5.7** : le morph. Deux kits complets, A et B, et un fader entre les deux, avec les côtés armés des scènes de l'Octatrack.
 
 - **Fader Morph** en bas de toutes les pages (Kit, Son, Effets, Séquenceur…). Les 24 sons et les 4 effets passent de A à B. Les réglages à choix (formes, types, sources) basculent à mi-course. Le nom du kit, le MIDI, la séquence et le routage MIDI des sons ne bougent pas.
 - **Glide réglable** : le fader glisse jusqu'où tu le poses (sans glide, de 50 ms à 2 s, clic droit sur le fader). Le trait rouge montre ce qu'on entend en chemin. Ça évite aussi d'inonder la machine de messages.

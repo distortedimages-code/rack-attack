@@ -1,9 +1,9 @@
-// Morph, after Sonic Charge Microtonic's: two whole kits, A and B, and one fader between them. Every setting of
+// Morph: two whole kits, A and B, and one fader between them. Every setting of
 // the 24 sounds and of the 4 effects goes from its value in A to its value in B; a list (a shape, a source, a
 // filter type...) switches half way. The kit's own settings (name, MIDI, trigger velocities) and the sequence
 // don't morph, nor does a sound's MIDI routing (its tuned channel and key range): A and B always share it.
 //
-// Editing works at any position, as in Microtonic: at the ends only that kit changes; in between both move, more
+// Editing works at any position: at the ends only that kit changes; in between both move, more
 // the nearer one, so that the kit heard lands on the value asked for. A sound or a kit loaded into A or B only
 // changes that end.
 #pragma once

@@ -196,7 +196,7 @@ namespace ui
     }
 
     // The Son page's cells, drawn in pixels like the main page. A name, then a knob and
-    // its value (drag up or down, Shift for fine steps, double-click: the middle), or a
+    // its value (drag up or down, ⌘ or Ctrl for fine steps, double-click: the middle), or a
     // list (click), and for a modulation its source under it.
     struct Cell : public juce::Component
     {
@@ -270,7 +270,7 @@ namespace ui
         {
             if (! dragging)
                 return;
-            const float perPixel = e.mods.isShiftDown() ? 0.15f : 0.6f;
+            const float perPixel = e.mods.isCommandDown() || e.mods.isCtrlDown() ? 0.15f : 0.6f;   // ⌘ or Ctrl: fine
             const int v = juce::jlimit (0, 127, startValue + juce::roundToInt ((float) (startY - e.getPosition().y) * perPixel));
             if (v != value)
             {

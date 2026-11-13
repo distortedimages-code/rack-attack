@@ -78,7 +78,8 @@ function dragValue (e, o) {
     const dy = (y0 - ev.clientY) / S.scale;
     if (!moved && Math.abs(dy) < 4) return;
     moved = true;
-    const range = hi - lo, sens = (o.sens || 160) * (ev.shiftKey ? 4 : 1) * (range < 20 ? 20 / Math.max(1, range) * 0.35 : 1);
+    const fine = ev.metaKey || ev.ctrlKey;     // ⌘ or Ctrl: fine steps (Shift is for locks)
+    const range = hi - lo, sens = (o.sens || 160) * (fine ? 4 : 1) * (range < 20 ? 20 / Math.max(1, range) * 0.35 : 1);
     const v = Math.max(lo, Math.min(hi, v0 + dy * range / sens));
     o.set(o.float ? v : Math.round(v));
   });

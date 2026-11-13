@@ -88,6 +88,7 @@ private:
     // the quick setting last turned stays where it is for this sound, even when its new value would
     // make the row pick something else there (Forme 1 turned to Noise, P.Mod back to 0...)
     struct { int track = -1, index = -1; ui::ParamDef def {}; } stickyQuick;
+    bool shiftHeld = false;                // steps chosen with Shift: the lock mode ends when Shift is let go
     int quickFrom = 0;
     juce::Rectangle<int> quickRow, quickHeader, tuneBox;
     void toggleTuned();

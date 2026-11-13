@@ -4,7 +4,7 @@ import { SECTIONS, COLUMNS, isBipolar, valueText, noteName, DIVISIONS, CONDITION
 
 const E = new Engine();
 window.raEngine = E;   // for the console, and tests
-const S = { page: 'seq', track: 0, section: 3, sel: new Set(), stepPage: 0, lastNote: 60, undo: null, undoWhat: '', clip: null, scale: 1 };
+const S = { page: 'seq', track: 0, section: 3, sel: new Set(), held: new Map(), stepPage: 0, lastNote: 60, undo: null, undoWhat: '', clip: null, scale: 1 };
 const stage = document.getElementById('stage');
 const FIELD = { mode: 0, length: 1, division: 2, mute: 3, active: 7, trigs: 8, locks: 9 };
 
@@ -180,6 +180,10 @@ function pop (anchor, label, text, frac, centred, locked, baseFrac) {
   popEl.style.opacity = 1;
   popUntil = performance.now() + 900;
 }
+
+// the steps the settings lock: those held down (a finger each), else those chosen with Shift held
+function lockTargets () { return S.held.size ? [...new Set(S.held.values())] : [...S.sel]; }
+function lockedByHold (targets) { for (const d of sdrags.values()) if (targets.includes(d.idx)) d.locked = true; }
 
 //==============================================================================
 // the undo of OPTIONS
@@ -365,23 +369,26 @@ let paramBoxes = [];
 // a setting of the open sound, or its lock on the selected steps
 function slotValue (def) {
   let v = E.sound(S.track, def.a);
-  if (S.sel.size) { const l = E.lock(S.track, [...S.sel][0], def.a); if (l >= 0) return { v, locked: true, lv: l }; }
+  const tg = lockTargets();
+  if (tg.length) { const l = E.lock(S.track, tg[0], def.a); if (l >= 0) return { v, locked: true, lv: l }; }
   return { v, locked: false, lv: v };
 }
 function setSlot (def, v, anchor) {
   v = Math.max(0, Math.min(E.paramMax(def.a), Math.round(v)));
   const qi = quickCells.findIndex(q => q.el === anchor);
   if (qi >= 0) S.sticky = { track: S.track, index: qi, def };    // it stays there for this sound
-  if (S.sel.size) {
+  const tg = lockTargets();
+  if (tg.length) {
     let first = false;
-    for (const s of S.sel) { if (E.lock(S.track, s, def.a) < 0) first = true; E.x.ra_lock_set(S.track, s, def.a, v); }
+    lockedByHold(tg);
+    for (const s of tg) { if (E.lock(S.track, s, def.a) < 0) first = true; E.x.ra_lock_set(S.track, s, def.a, v); }
     E.edited();
     if (first) toast('Verrou posé', 'yellow');
   } else E.setSound(S.track, def.a, v);
   const sv = slotValue(def), max = E.paramMax(def.a);
   pop(anchor, def.label, valueText(def.a, sv.lv, E.valueNames(def.a)), sv.lv / max, isBipolar(def.a), sv.locked, sv.v / max);
   renderSound(); renderVoices();
-  if (S.sel.size) renderSeq();
+  if (tg.length) renderSeq();
 }
 function slotDrag (c, getDefNow) {
   // the setting under the finger stays the same for the whole gesture
@@ -403,7 +410,8 @@ function slotDrag (c, getDefNow) {
   c.addEventListener('contextmenu', ev => {
     ev.preventDefault();
     const d = getDef();
-    if (S.sel.size) { for (const s of S.sel) E.x.ra_lock_clear(S.track, s, d.a); E.edited(); toast('Verrou retiré', 'yellow'); render(); }
+    const tg = lockTargets();
+    if (tg.length) { for (const s of tg) E.x.ra_lock_clear(S.track, s, d.a); E.edited(); toast('Verrou retiré', 'yellow'); render(); }
   });
 }
 async function choose (def, anchor) {
@@ -515,8 +523,9 @@ const trigs = TRIGS.map((name, f) => {
 });
 
 function trigValue (f) {
-  if (!S.sel.size) return 0;
-  const s = [...S.sel][0], t = S.track;
+  const tg = lockTargets();
+  if (!tg.length) return 0;
+  const s = tg[0], t = S.track;
   if (f === 4) { const a = E.step(t, s, 6), b = E.step(t, s, 7); return Math.max(0, CONDITIONS.findIndex(c => c[0] === a && c[1] === b)); }
   return E.step(t, s, [1, 3, 4, 5, 0, 8, 2][f]);
 }
@@ -533,8 +542,10 @@ function trigText (f) {
   }
 }
 function setTrig (f, v) {
-  if (!S.sel.size) { toast('Choisis des pas : appui long', 'yellow'); return; }
-  for (const s of S.sel) {
+  const tg = lockTargets();
+  if (!tg.length) { toast('Garde un doigt sur un pas (ou Maj + clic)', 'yellow'); return; }
+  lockedByHold(tg);
+  for (const s of tg) {
     if (f === 4) { const c = CONDITIONS[v]; E.x.ra_step_set(S.track, s, 6, c[0]); E.x.ra_step_set(S.track, s, 7, c[1]); }
     else E.x.ra_step_set(S.track, s, [1, 3, 4, 5, 0, 8, 2][f], v);
     if (f === 6) S.lastNote = v;
@@ -543,9 +554,10 @@ function setTrig (f, v) {
   renderSeq();
 }
 
-// steps: a tap puts or takes a trig, a drag paints, a long press (or Maj) selects for locks;
-// in notes mode a drag up or down on a trig changes its note
-let sdrag = null;
+// steps: a tap puts or takes a trig, a drag across paints, up or down makes ratchets; a finger that stays on a
+// step holds it: the settings turned meanwhile lock it (several fingers, several steps), letting go ends it,
+// as with a held trig on an Elektron. With a mouse: Maj + clic chooses steps while Maj is held.
+const sdrags = new Map();      // pointer -> what it does on the steps
 stepsEl.addEventListener('pointerdown', ev => {
   const i = steps.findIndex(s => s.el === ev.target.closest('.step'));
   if (i < 0) return;
@@ -554,52 +566,60 @@ stepsEl.addEventListener('pointerdown', ev => {
   if (idx >= E.track(t, FIELD.active)) return;
   if (ev.button === 2) return;
   if (ev.shiftKey) { toggleSel(idx); return; }
-  stepsEl.setPointerCapture(ev.pointerId);
+  try { stepsEl.setPointerCapture(ev.pointerId); } catch (e) {}
   const notes = E.track(t, FIELD.mode) === 2, on = E.isOn(t, idx);
-  sdrag = { id: ev.pointerId, idx, x0: ev.clientX, y0: ev.clientY, painting: false, ratchet: false, base: Math.max(1, E.step(t, idx, 8)), paint: !on, notes: notes && on, note0: E.step(t, idx, 2), moved: false,
-            long: setTimeout(() => { if (sdrag && !sdrag.moved) { toggleSel(idx); sdrag = null; } }, 450) };
+  sdrags.set(ev.pointerId, { idx, x0: ev.clientX, y0: ev.clientY, painting: false, ratchet: false, base: Math.max(1, E.step(t, idx, 8)),
+                             paint: !on, notes: notes && on, note0: E.step(t, idx, 2), moved: false, locked: false });
+  S.held.set(ev.pointerId, idx);
+  renderSeq(); renderSound();
 });
 stepsEl.addEventListener('pointermove', ev => {
-  if (!sdrag || sdrag.id !== ev.pointerId) return;
+  const d = sdrags.get(ev.pointerId);
+  if (!d || d.locked) return;              // a step that got locks is only held now
   const t = S.track;
-  if (sdrag.notes) {
-    const dy = (sdrag.y0 - ev.clientY) / S.scale;
-    if (Math.abs(dy) < 6 && !sdrag.moved) return;
-    sdrag.moved = true; clearTimeout(sdrag.long);
-    const n = Math.max(0, Math.min(127, sdrag.note0 + Math.round(dy / 8)));
-    if (n !== E.step(t, sdrag.idx, 2)) { E.setStep(t, sdrag.idx, 2, n); S.lastNote = n; renderSeq(); pop(steps[sdrag.idx % 16].el, 'Note', noteName(n), n / 127, false, false); }
+  const dy = (d.y0 - ev.clientY) / S.scale, dx = (ev.clientX - d.x0) / S.scale;
+  const release = () => { if (S.held.delete(ev.pointerId)) { renderSeq(); renderSound(); } };
+  if (d.notes) {
+    if (Math.abs(dy) < 6 && !d.moved) return;
+    d.moved = true; release();
+    const n = Math.max(0, Math.min(127, d.note0 + Math.round(dy / 8)));
+    if (n !== E.step(t, d.idx, 2)) { E.setStep(t, d.idx, 2, n); S.lastNote = n; renderSeq(); pop(steps[d.idx % 16].el, 'Note', noteName(n), n / 127, false, false); }
     return;
   }
-  const dy = (sdrag.y0 - ev.clientY) / S.scale, dx = (ev.clientX - sdrag.x0) / S.scale;
   const target = document.elementFromPoint(ev.clientX, ev.clientY);
   const j = steps.findIndex(s => s.el === (target && target.closest('.step')));
-  const under = j < 0 ? -1 : S.stepPage * 16 + j;
   // the first clear move decides: up or down on the step = ratchets, across = painting
-  if (!sdrag.painting && !sdrag.ratchet && Math.abs(dy) >= 8 && Math.abs(dy) > Math.abs(dx)) {
-    sdrag.ratchet = true; sdrag.moved = true; clearTimeout(sdrag.long); keepForUndo('ratchet');
-    if (!E.isOn(t, sdrag.idx)) setOn(sdrag.idx, true);
+  if (!d.painting && !d.ratchet && Math.abs(dy) >= 10 && Math.abs(dy) > Math.abs(dx)) {
+    d.ratchet = true; d.moved = true; release(); keepForUndo('ratchet');
+    if (!E.isOn(t, d.idx)) setOn(d.idx, true);
   }
-  if (sdrag.ratchet) {
-    const r = Math.max(1, Math.min(8, sdrag.base + Math.round(dy / 14)));
-    if (r !== E.step(t, sdrag.idx, 8)) { E.setStep(t, sdrag.idx, 8, r); renderSeq(); }
-    pop(steps[sdrag.idx % 16].el, 'Ratchet', r > 1 ? 'x' + r : 'NON', (r - 1) / 7, false, false);
+  if (d.ratchet) {
+    const r = Math.max(1, Math.min(8, d.base + Math.round(dy / 14)));
+    if (r !== E.step(t, d.idx, 8)) { E.setStep(t, d.idx, 8, r); renderSeq(); }
+    pop(steps[d.idx % 16].el, 'Ratchet', r > 1 ? 'x' + r : 'NON', (r - 1) / 7, false, false);
     return;
   }
   if (j < 0) return;
-  const idx = under;
-  if (idx === sdrag.idx && !sdrag.painting) return;
-  if (!sdrag.painting) { sdrag.painting = true; sdrag.moved = true; clearTimeout(sdrag.long); keepForUndo('peindre'); setOn(sdrag.idx, sdrag.paint); }
-  if (idx < E.track(t, FIELD.active)) setOn(idx, sdrag.paint);
+  const idx = S.stepPage * 16 + j;
+  if (idx === d.idx && !d.painting) return;
+  if (!d.painting) { d.painting = true; d.moved = true; release(); keepForUndo('peindre'); setOn(d.idx, d.paint); }
+  if (idx < E.track(t, FIELD.active)) setOn(idx, d.paint);
 });
 const stepUp = ev => {
-  if (!sdrag || sdrag.id !== ev.pointerId) return;
-  clearTimeout(sdrag.long);
-  if (!sdrag.moved) { keepForUndo('poser'); setOn(sdrag.idx, sdrag.notes ? false : sdrag.paint); }
-  sdrag = null;
+  const d = sdrags.get(ev.pointerId);
+  if (!d) return;
+  sdrags.delete(ev.pointerId);
+  S.held.delete(ev.pointerId);
+  // a tap (nothing locked, no move): the trig goes on or off
+  if (!d.moved && !d.locked && ev.type === 'pointerup') { keepForUndo('poser'); setOn(d.idx, d.notes ? false : d.paint); }
+  renderSeq(); renderSound();
 };
 stepsEl.addEventListener('pointerup', stepUp);
 stepsEl.addEventListener('pointercancel', stepUp);
 stepsEl.addEventListener('contextmenu', ev => ev.preventDefault());
+// Maj let go: out of the lock mode
+addEventListener('keyup', ev => { if (ev.key === 'Shift' && S.sel.size) { S.sel.clear(); render(); } });
+addEventListener('blur', () => { if (S.sel.size) { S.sel.clear(); render(); } });
 
 function setOn (idx, on) {
   const t = S.track;
@@ -770,13 +790,14 @@ function renderSeq () {
   lenF.value.textContent = mode === 1 ? E.track(t, 4) : E.track(t, FIELD.length);
   divF.value.textContent = DIVISIONS[E.track(t, FIELD.division)];
   muteKey.classList.toggle('red', E.track(t, FIELD.mute) === 1);
+  const heldSet = new Set(S.held.values());
   for (let i = 0; i < 16; ++i) {
     const idx = S.stepPage * 16 + i, st = steps[i], inside = idx < len;
     st.el.classList.toggle('out', !inside);
     if (!inside) continue;
     const on = E.isOn(t, idx), locks = E.step(t, idx, 9);
     st.el.classList.toggle('on', on);
-    st.el.classList.toggle('sel', S.sel.has(idx));
+    st.el.classList.toggle('sel', S.sel.has(idx) || heldSet.has(idx));
     st.n.textContent = idx + 1;
     st.note.textContent = on && mode === 2 ? noteName(E.step(t, idx, 2)) : '';
     st.velo.style.width = on ? Math.round(E.step(t, idx, 1) / 127 * 60) + '%' : '0';
@@ -799,9 +820,12 @@ function renderSeq () {
     for (let k = 0; k < 16; ++k) { const idx = p * 16 + k; g.children[k].className = idx < len && E.isOn(t, idx) ? 'on' : ''; g.children[k].style.visibility = idx < len ? '' : 'hidden'; }
   });
   mini.style.visibility = pages > 1 ? '' : 'hidden';
-  clearSel.style.display = S.sel.size ? '' : 'none';
-  hintText.textContent = S.sel.size ? `${S.sel.size} pas choisis : tourne un réglage pour le verrouiller (jaune), règle-les en bas (DURÉE = longueur de la note)` : 'clic = poser · glisser = peindre · tirer vers le haut = ratchet · appui long = verrou · appui long sur un son = menu';
-  trigs.forEach((tr, f) => { tr.el.classList.toggle('live', S.sel.size > 0); tr.value.textContent = S.sel.size ? trigText(f) : '-'; });
+  const tg = lockTargets();
+  clearSel.style.display = S.sel.size && !S.held.size ? '' : 'none';
+  hintText.textContent = S.held.size ? `pas ${tg.map(x => x + 1).join(', ')} tenu${tg.length > 1 ? 's' : ''} : tourne un réglage = verrou (jaune) · DURÉE, VÉLO... en bas · lâche pour finir`
+    : S.sel.size ? `${S.sel.size} pas choisis : tourne un réglage pour les verrouiller · lâche Maj pour finir`
+    : 'clic = poser · glisser = peindre · tirer vers le haut = ratchet · garder le doigt sur un pas + tourner un réglage = verrou';
+  trigs.forEach((tr, f) => { tr.el.classList.toggle('live', tg.length > 0); tr.value.textContent = tg.length ? trigText(f) : '-'; });
 }
 
 //==============================================================================

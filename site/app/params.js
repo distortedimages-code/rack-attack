@@ -83,9 +83,10 @@ export const CONDITIONS = (() => { const c = [[0, 0]]; for (let b = 2; b <= 8; +
 export function quickFor (v) {
   const q = (a, label, choice = false, why = '') => ({ a, label, choice, why });
   const list = [q(0x02, 'Pitch 1'), q(0x11, 'Pitch 2'), q(0x27, 'Cutoff'), q(0x28, 'Reso'), q(0x3F, 'Attack'), q(0x40, 'Decay'), q(0x42, 'Release'), q(0x35, 'Volume')];
-  const shape = v(0x01);
-  if (shape >= 5 && shape <= 8) { list[1] = q(0x29, 'Drive', false, 'BRUIT'); list[4] = q(0x26, 'Filtre', true, 'BRUIT'); }
-  else if (v(0x1B) === 0 && v(0x1C) === 0 && v(0x09) === 0) list[1] = q(0x01, 'Forme 1', true, 'SOLO');
+  const shape = v(0x01), noisy = shape >= 5 && shape <= 8;
+  if (v(0x1B) === 0 && v(0x1C) === 0 && v(0x09) === 0) list[1] = q(0x01, 'Forme 1', true, 'SOLO');   // a lone oscillator keeps its shape in reach
+  else if (noisy) list[1] = q(0x29, 'Drive', false, 'BRUIT');
+  if (noisy) list[4] = q(0x26, 'Filtre', true, 'BRUIT');
   const pitchDrops = v(0x05) !== 64 && (v(0x07) === 0 || v(0x07) === 1);
   if (v(0x1D) > 0) { list[6] = q(0x24, 'C.Speed', false, 'CLAP'); list[7] = q(0x25, 'C.Len', false, 'CLAP'); }
   else if (pitchDrops) { list[6] = q(0x05, 'P.Mod', false, 'CHUTE'); if (v(0x07) === 1) list[7] = q(0x46, 'Decay 2', false, 'CHUTE'); }

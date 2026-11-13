@@ -344,6 +344,8 @@ function slotValue (def) {
 }
 function setSlot (def, v, anchor) {
   v = Math.max(0, Math.min(E.paramMax(def.a), Math.round(v)));
+  const qi = quickCells.findIndex(q => q.el === anchor);
+  if (qi >= 0) S.sticky = { track: S.track, index: qi, def };    // it stays there for this sound
   if (S.sel.size) {
     let first = false;
     for (const s of S.sel) { if (E.lock(S.track, s, def.a) < 0) first = true; E.x.ra_lock_set(S.track, s, def.a, v); }
@@ -355,8 +357,13 @@ function setSlot (def, v, anchor) {
   renderSound(); renderVoices();
   if (S.sel.size) renderSeq();
 }
-function slotDrag (c, getDef) {
+function slotDrag (c, getDefNow) {
+  // the setting under the finger stays the same for the whole gesture
+  let held = null;
+  const getDef = () => held || getDefNow();
   dragValue(c, {
+    start: () => { held = getDefNow(); },
+    end: () => { held = null; },
     get: () => slotValue(getDef()).lv,
     set: v => setSlot(getDef(), v, c),
     min: 0, max: () => E.paramMax(getDef().a), sens: 160,
@@ -570,7 +577,7 @@ function toggleSel (idx) {
 }
 
 function selectTrack (t) {
-  if (t !== S.track) { S.sel.clear(); S.stepPage = 0; }
+  if (t !== S.track) { S.sel.clear(); S.stepPage = 0; S.sticky = null; }
   S.track = t;
   render();
 }
@@ -670,6 +677,8 @@ function renderSound () {
   // quick access
   const v = a => E.sound(S.track, a);
   const list = quickFor(v);
+  const st = S.sticky;
+  if (st && st.track === S.track && list[st.index].a !== st.def.a) list[st.index] = { ...st.def, why: '' };
   list.forEach((def, i) => {
     const q = quickCells[i];
     q.def = def;

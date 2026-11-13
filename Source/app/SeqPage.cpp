@@ -93,6 +93,7 @@ void SeqPage::selectTrack (int t)
     track = t;
     selection.clear();
     page = 0;
+    stickyQuick = {};
     repaint();
 }
 
@@ -128,13 +129,13 @@ std::vector<SeqPage::Quick> SeqPage::quickFor (int s) const
 
     // noise, hats, cymbal: the colour matters more than a second pitch or an attack
     const int shape = v (0x01);
-    if (shape >= 5 && shape <= 8)
-    {
+    const bool noisy = shape >= 5 && shape <= 8;
+    if (v (0x1B) == 0 && v (0x1C) == 0 && v (0x09) == 0)
+        list[1] = q (0x01, "Forme 1", true, "SOLO");           // Osc 2 can't be heard: the shape of Osc 1, noise or not
+    else if (noisy)
         list[1] = q (0x29, "Drive", false, "BRUIT");
+    if (noisy)
         list[4] = q (0x26, "Filtre", true, "BRUIT");
-    }
-    else if (v (0x1B) == 0 && v (0x1C) == 0 && v (0x09) == 0)
-        list[1] = q (0x01, "Forme 1", true, "SOLO");           // Osc 2 can't be heard: the shape of Osc 1
 
     // the slot that shows what makes this sound particular
     const bool pitchDrops = v (0x05) != 64 && (v (0x07) == 0 || v (0x07) == 1);
@@ -160,7 +161,11 @@ void SeqPage::updateSlots()
 {
     auto next = params();
     std::vector<juce::String> why (next.size());
-    for (auto& qk : quickFor (track))
+    auto quick = quickFor (track);
+    if (stickyQuick.track == track && stickyQuick.index >= 0 && stickyQuick.index < (int) quick.size()
+        && quick[(size_t) stickyQuick.index].def.address != stickyQuick.def.address)
+        quick[(size_t) stickyQuick.index] = { stickyQuick.def, {} };
+    for (auto& qk : quick)
     {
         next.push_back (qk.def);
         why.push_back (qk.why);
@@ -1387,6 +1392,8 @@ void SeqPage::setParam (int slot, int value)
         return;
     const auto& def = slots[(size_t) slot];
     value = juce::jlimit (0, paramMax (def.address), value);
+    if (slot >= (int) params().size())
+        stickyQuick = { track, slot - (int) params().size(), def };
     if (selection.empty())
     {
         if (engine.getKit().hasSound (track) && engine.getKit().soundValue (track, def.address) != value)

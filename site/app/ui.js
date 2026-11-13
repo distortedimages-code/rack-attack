@@ -29,6 +29,32 @@ function fit () {
 addEventListener('resize', fit);
 fit();
 
+// iPad / iPhone: no zoom by double tap or pinch (the screen has its own scale), and a way back if it happened anyway
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('gesturechange', e => e.preventDefault());
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTouchEnd < 350 && e.changedTouches.length === 1 && !(e.target.closest && e.target.closest('select, input'))) {
+    e.preventDefault();                        // no double-tap zoom; the tap still counts
+    const t = e.target.closest && e.target.closest('button');
+    if (t) t.click();
+  }
+  lastTouchEnd = now;
+}, { passive: false });
+const unzoom = document.createElement('button');
+unzoom.className = 'unzoom'; unzoom.textContent = 'DÉZOOMER';
+document.body.appendChild(unzoom);
+unzoom.addEventListener('click', () => {
+  const m = document.querySelector('meta[name=viewport]'), c = m.content;
+  m.content = c.replace('maximum-scale=1,', 'maximum-scale=1.01,');
+  setTimeout(() => { m.content = c; }, 60);
+});
+if (window.visualViewport) {
+  const z = () => { unzoom.style.display = visualViewport.scale > 1.05 ? 'block' : 'none'; };
+  visualViewport.addEventListener('resize', z); z();
+}
+
 // stage coordinates of an element (for menus and popups)
 function boxOf (e) {
   const r = e.getBoundingClientRect(), s = stage.getBoundingClientRect();
@@ -468,11 +494,11 @@ const stepsEl = el('div', 'abs steps', panel);
 const steps = [];
 for (let i = 0; i < 16; ++i) {
   const b = el('div', 'step', stepsEl);
-  steps.push({ el: b, n: el('span', 'n', b), note: el('span', 'note', b), velo: el('i', 'velo', b), lks: el('div', 'lks', b), cond: el('span', 'cond', b) });
+  steps.push({ el: b, n: el('span', 'n', b), note: el('span', 'note', b), velo: el('i', 'velo', b), lks: el('div', 'lks', b), cond: el('span', 'cond', b), rt: el('div', 'rt', b) });
 }
 const mini = el('div', 'abs mini', panel);
 const hint = el('div', 'abs hint', panel);
-const hintText = el('span', '', hint, 'clic = poser · glisser = peindre · appui long ou Maj + clic = verrou · appui long sur un son = menu');
+const hintText = el('span', '', hint, 'clic = poser · glisser = peindre · tirer vers le haut = ratchet · appui long = verrou · appui long sur un son = menu');
 const clearSel = el('button', 'key', hint, '✕ Fini les verrous');
 clearSel.addEventListener('click', () => { S.sel.clear(); render(); });
 const trigsEl = el('div', 'abs trigs', panel);
@@ -530,7 +556,7 @@ stepsEl.addEventListener('pointerdown', ev => {
   if (ev.shiftKey) { toggleSel(idx); return; }
   stepsEl.setPointerCapture(ev.pointerId);
   const notes = E.track(t, FIELD.mode) === 2, on = E.isOn(t, idx);
-  sdrag = { id: ev.pointerId, idx, y0: ev.clientY, painting: false, paint: !on, notes: notes && on, note0: E.step(t, idx, 2), moved: false,
+  sdrag = { id: ev.pointerId, idx, x0: ev.clientX, y0: ev.clientY, painting: false, ratchet: false, base: Math.max(1, E.step(t, idx, 8)), paint: !on, notes: notes && on, note0: E.step(t, idx, 2), moved: false,
             long: setTimeout(() => { if (sdrag && !sdrag.moved) { toggleSel(idx); sdrag = null; } }, 450) };
 });
 stepsEl.addEventListener('pointermove', ev => {
@@ -544,10 +570,23 @@ stepsEl.addEventListener('pointermove', ev => {
     if (n !== E.step(t, sdrag.idx, 2)) { E.setStep(t, sdrag.idx, 2, n); S.lastNote = n; renderSeq(); pop(steps[sdrag.idx % 16].el, 'Note', noteName(n), n / 127, false, false); }
     return;
   }
+  const dy = (sdrag.y0 - ev.clientY) / S.scale, dx = (ev.clientX - sdrag.x0) / S.scale;
   const target = document.elementFromPoint(ev.clientX, ev.clientY);
   const j = steps.findIndex(s => s.el === (target && target.closest('.step')));
+  const under = j < 0 ? -1 : S.stepPage * 16 + j;
+  // the first clear move decides: up or down on the step = ratchets, across = painting
+  if (!sdrag.painting && !sdrag.ratchet && Math.abs(dy) >= 8 && Math.abs(dy) > Math.abs(dx)) {
+    sdrag.ratchet = true; sdrag.moved = true; clearTimeout(sdrag.long); keepForUndo('ratchet');
+    if (!E.isOn(t, sdrag.idx)) setOn(sdrag.idx, true);
+  }
+  if (sdrag.ratchet) {
+    const r = Math.max(1, Math.min(8, sdrag.base + Math.round(dy / 14)));
+    if (r !== E.step(t, sdrag.idx, 8)) { E.setStep(t, sdrag.idx, 8, r); renderSeq(); }
+    pop(steps[sdrag.idx % 16].el, 'Ratchet', r > 1 ? 'x' + r : 'NON', (r - 1) / 7, false, false);
+    return;
+  }
   if (j < 0) return;
-  const idx = S.stepPage * 16 + j;
+  const idx = under;
   if (idx === sdrag.idx && !sdrag.painting) return;
   if (!sdrag.painting) { sdrag.painting = true; sdrag.moved = true; clearTimeout(sdrag.long); keepForUndo('peindre'); setOn(sdrag.idx, sdrag.paint); }
   if (idx < E.track(t, FIELD.active)) setOn(idx, sdrag.paint);
@@ -743,7 +782,8 @@ function renderSeq () {
     st.velo.style.width = on ? Math.round(E.step(t, idx, 1) / 127 * 60) + '%' : '0';
     st.lks.innerHTML = locks ? '<i></i>'.repeat(Math.min(4, locks)) : '';
     const a = E.step(t, idx, 6), b = E.step(t, idx, 7), rt = E.step(t, idx, 8);
-    st.cond.textContent = on ? [b ? a + ':' + b : '', rt > 1 ? 'x' + rt : ''].filter(Boolean).join(' ') : '';
+    st.cond.textContent = on && b ? a + ':' + b : '';
+    st.rt.innerHTML = on && rt > 1 ? '<i></i>'.repeat(rt) : '';
   }
   // the pages of a long track
   if (mini.children.length !== pages) {
@@ -760,7 +800,7 @@ function renderSeq () {
   });
   mini.style.visibility = pages > 1 ? '' : 'hidden';
   clearSel.style.display = S.sel.size ? '' : 'none';
-  hintText.textContent = S.sel.size ? `${S.sel.size} pas choisis : tourne un réglage pour le verrouiller (jaune), règle-les en bas` : 'clic = poser · glisser = peindre · appui long ou Maj + clic = verrou · appui long sur un son = menu';
+  hintText.textContent = S.sel.size ? `${S.sel.size} pas choisis : tourne un réglage pour le verrouiller (jaune), règle-les en bas (DURÉE = longueur de la note)` : 'clic = poser · glisser = peindre · tirer vers le haut = ratchet · appui long = verrou · appui long sur un son = menu';
   trigs.forEach((tr, f) => { tr.el.classList.toggle('live', S.sel.size > 0); tr.value.textContent = S.sel.size ? trigText(f) : '-'; });
 }
 

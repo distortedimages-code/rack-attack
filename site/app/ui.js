@@ -213,7 +213,7 @@ function writeTrack (t, tr) {
 const top = el('div', 'abs top', stage);
 el('div', 'logo', top).innerHTML = 'RACK<i>·</i>ATTACK';
 const pageKeys = {};
-for (const [id, label] of [['seq', 'Séquenceur'], ['son', 'Son']]) {
+for (const [id, label] of [['seq', 'Séquenceur'], ['son', 'Son'], ['fx', 'Effets']]) {
   const b = el('button', 'key', top, label);
   b.addEventListener('click', () => showPage(id));
   pageKeys[id] = b;
@@ -818,11 +818,90 @@ function renderSon () {
 }
 
 //==============================================================================
+// the Effets page: the 4 effects, each with its type, its output and only the settings of that type
+// (as the plug-in's page)
+const FX_NAMES = [
+  [],
+  ['SPEED', 'DEPTH', null, 'DELAY'],
+  ['SPEED', 'DEPTH', null, null, 'FEEDBK', null, null, null, 'POLAR.'],
+  ['SPEED', 'DEPTH', null, null, 'FEEDBK', 'CENTER', 'SPACING', null, 'POLAR.'],
+  [null, 'DRIVE', 'POST G.', null, null, 'CUTOFF'],
+  [null, null, null, 'LENGTH', 'FEEDBK', 'CUTOFF', null, null, 'POLAR.', 'AUTOPAN', 'SYNC'],
+  ['SPEED', 'DEPTH', 'SYNC', 'LENGTH', 'FEEDBK', 'LO CUT', 'HI CUT', 'SPREAD'],
+  ['SIZE', 'SHAPE', 'DECAY', 'PREDLY', null, 'LO CUT', 'HI CUT', null, 'DIFFUS.', 'DAMPING'],
+  [null, null, null, null, 'S&H', 'DRIVE', 'GAIN'],
+];
+const FX = 4;      // the effect object, for the names of its values
+const fxPage = el('div', 'abs', stage);
+place(fxPage, 0, 0, 1360, 848);
+const fxHead = el('div', 'abs kitname', fxPage);
+place(fxHead, 16, 64);
+fxHead.innerHTML = '<span class="dim">EFFETS</span>  4 EFFETS DU KIT';
+const fxBody = place(el('div', 'abs fxpage', fxPage), 16, 116, 1328, 660);
+const fxHint = place(el('div', 'abs fxhint', fxPage), 16, 790, 1328, 30);
+fxHint.textContent = 'Delay, ModDelay et Reverb ne marchent que sur FX1 et FX2. Chaque son choisit son effet : page Son › Sortie › FX.';
+const fxCols = [];
+function fxCell (parent, e, a, label) {
+  const cell = el('div', 'cell', parent);
+  const o = { a, el: cell, lab: el('span', 'lab', cell, label), ring: ring(cell, 36), val: el('span', 'val', cell) };
+  const names = () => (a <= 1 ? E.valueNames(a, FX) : []);
+  dragValue(cell, {
+    get: () => E.fx(e, a), set: v => { E.setFx(e, a, v); renderFx(); },
+    min: 0, max: () => (names().length ? names().length - 1 : 127), sens: 160, reset: () => E.fx(e, a),
+    tap: async () => {
+      const n = names();
+      if (!n.length) return;
+      const b = boxOf(cell), cur = E.fx(e, a);
+      const id = await menu([{ header: `FX${e + 1} : ${label.toLowerCase()}` }, ...n.map((t, i) => ({ id: i + 1, label: t, ticked: i === cur }))], b.x, b.y + b.h);
+      if (id) { E.setFx(e, a, id - 1); renderFx(); }
+    },
+  });
+  return o;
+}
+for (let e = 0; e < 4; ++e) {
+  const k = el('div', 'card', fxBody);
+  const title = el('h3', '', k, 'FX' + (e + 1));
+  const head = el('div', 'krow', k);
+  const type = fxCell(head, e, 0x00, 'TYPE'), out = fxCell(head, e, 0x01, 'SORTIE');
+  type.el.classList.add('choice', 'wide'); out.el.classList.add('choice', 'wide');
+  const grid = el('div', 'krow fxgrid', k);
+  const knobs = [];
+  for (let i = 0; i < 11; ++i) knobs.push(fxCell(grid, e, 0x02 + i, ''));
+  const none = el('div', 'fxnone', k, 'Pas d\u2019effet : choisis un type.');
+  fxCols.push({ title, type, out, knobs, none });
+}
+function renderFx () {
+  fxCols.forEach((c, e) => {
+    const t = E.fx(e, 0x00), types = E.valueNames(0x00, FX), outs = E.valueNames(0x01, FX);
+    c.title.textContent = `FX${e + 1} · ${upper(types[t] || String(t))}`;
+    for (const [o, names] of [[c.type, types], [c.out, outs]]) {
+      const v = E.fx(e, o.a);
+      setRing(o.ring, v / Math.max(1, names.length - 1), false);
+      o.val.textContent = fitText(upper(names[v] ?? String(v)), 9);
+    }
+    const labels = FX_NAMES[t] || [];
+    let shown = 0;
+    c.knobs.forEach((o, i) => {
+      const label = labels[i];
+      o.el.style.display = label ? '' : 'none';
+      if (!label) return;
+      ++shown;
+      o.lab.textContent = label;
+      const v = E.fx(e, o.a);
+      setRing(o.ring, v / 127, false);
+      o.val.textContent = String(v);
+    });
+    c.none.style.display = shown ? 'none' : '';
+  });
+}
+
+//==============================================================================
 // drawing the state
 
 function render () {
   renderTop(); renderMorph(); renderHeader(); renderVoices(); renderSound(); renderSeq();
   if (S.page === 'son') renderSon();
+  if (S.page === 'fx') renderFx();
 }
 
 function renderHeader () {
@@ -1228,6 +1307,7 @@ function showPage (p) {
   S.page = p;
   seqPage.style.display = p === 'seq' ? '' : 'none';
   sonPage.style.display = p === 'son' ? '' : 'none';
+  fxPage.style.display = p === 'fx' ? '' : 'none';
   render();
 }
 

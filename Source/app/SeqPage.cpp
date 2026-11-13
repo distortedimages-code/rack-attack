@@ -101,6 +101,12 @@ void SeqPage::timerCallback()
 {
     if (! isShowing())
         return;
+    // Shift let go: out of the lock mode, as when a held trig is let go on an Elektron
+    if (shiftHeld && ! juce::ModifierKeys::getCurrentModifiersRealtime().isShiftDown())
+    {
+        shiftHeld = false;
+        selection.clear();
+    }
     const bool playing = seq.playheadPpq() >= 0.0;
     if (wasPlaying && ! playing)
         stopWaveStart = nowMs();          // a wave runs over the steps when it stops
@@ -1054,7 +1060,8 @@ void SeqPage::paintSequencer (juce::Graphics& g, const Track& tr, double ppq)
         g.fillRect (chip);
         px::drawText (g, chipText, chip.reduced (10, 0), juce::Justification::centredLeft, px::label (14.0f), px::black);
         h.removeFromLeft (14);
-        px::drawText (g, fr ("les potards du son verrouillent ces pas"), h.withTrimmedRight (180), juce::Justification::centredLeft,
+        px::drawText (g, shiftHeld ? fr ("les potards verrouillent ces pas · lâche Maj pour finir") : fr ("les potards du son verrouillent ces pas"),
+                      h.withTrimmedRight (180), juce::Justification::centredLeft,
                       px::text (26.0f), px::grey);
         g.setColour (px::cell);
         g.fillRect (clearBox);
@@ -1652,6 +1659,7 @@ void SeqPage::mouseDown (const juce::MouseEvent& e)
             if (shift)
             {
                 toggleSelection (idx);
+                shiftHeld = ! selection.empty();
                 drag.hit = {};
                 break;
             }
@@ -1745,7 +1753,7 @@ void SeqPage::mouseDrag (const juce::MouseEvent& e)
             // up / down turns the knob from where it is: the whole range in about 200 pixels
             // (finer with Shift), a list one choice per 12 pixels
             const int maxV = paramMax (slots[(size_t) drag.hit.index].address);
-            const double fine = e.mods.isShiftDown() ? 0.25 : 1.0;
+            const double fine = e.mods.isShiftDown() && selection.empty() ? 0.25 : 1.0;   // Shift held for locks: no fine steps
             const double delta = maxV >= 24 ? dy * maxV / 200.0 * fine : dy / 12.0;
             if (drag.moved)
                 setParam (drag.hit.index, drag.startValue + juce::roundToInt (delta));

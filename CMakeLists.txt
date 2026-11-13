@@ -27,7 +27,7 @@ endif()
 
 #==============================================================================
 # SysEx core, no JUCE inside: shared by the Labo, the future plugin and the tests.
-add_library(ra_core STATIC Source/core/RaSysex.cpp Source/core/RaKit.cpp Source/core/RaSeq.cpp Source/core/RaMorph.cpp Source/sim/RaSynth.cpp)
+add_library(ra_core STATIC Source/core/RaSysex.cpp Source/core/RaKit.cpp Source/core/RaSeq.cpp Source/core/RaMorph.cpp Source/core/RaFactory.cpp Source/sim/RaSynth.cpp)
 target_compile_features(ra_core PUBLIC cxx_std_17)
 set_target_properties(ra_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

@@ -106,6 +106,15 @@ Kit::Change Kit::apply (const Parsed& p)
             }
             break;
 
+        case cmd::PATD:
+            if (pl.size() >= 3 && pl[1] == kEditBuffer && pl[2] < numSounds)
+                if (auto d = dumpData (p, 2, kPatternDataSize))
+                {
+                    patterns[pl[2]] = *d;
+                    c = { Change::What::pattern, pl[2], -1 };
+                }
+            break;
+
         case cmd::SNDP:
             if (pl.size() == 6 && pl[1] == kEditBuffer && pl[2] < numSounds)
             {
@@ -209,11 +218,32 @@ Bytes Kit::effectDump (std::uint8_t device, int effect) const
     return build (device, payload);
 }
 
+Bytes Kit::patternDump (std::uint8_t device, int sound) const
+{
+    Bytes payload { cmd::PATD, kEditBuffer, (std::uint8_t) sound };
+    payload.insert (payload.end(), patterns[(size_t) sound].begin(), patterns[(size_t) sound].end());
+    return build (device, payload);
+}
+
+void Kit::setPatternData (int i, const Bytes& data)
+{
+    if (i >= 0 && i < numSounds && (data.empty() || (int) data.size() == kPatternDataSize))
+        patterns[(size_t) i] = data;
+}
+
+int Kit::patternsRead() const
+{
+    return (int) std::count_if (patterns.begin(), patterns.end(), [] (const Bytes& b) { return ! b.empty(); });
+}
+
 std::vector<Bytes> Kit::allDumps (std::uint8_t device) const
 {
     std::vector<Bytes> out { programDump (device) };
     for (int i = 0; i < numSounds; ++i)  out.push_back (soundDump (device, i));
     for (int i = 0; i < numEffects; ++i) out.push_back (effectDump (device, i));
+    for (int i = 0; i < numSounds; ++i)
+        if (hasPattern (i))
+            out.push_back (patternDump (device, i));
     return out;
 }
 

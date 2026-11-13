@@ -760,8 +760,24 @@ void Engine::sendKit (const ra::Kit& k)
         Step wait; wait.kind = Step::Kind::pause; wait.ms = 40; queue (wait);
     }
 
+    // the internal patterns the kit has (Waldorf's files have them)
+    for (int i = 0; i < ra::Kit::numSounds; ++i)
+        if (k.hasPattern (i))
+        {
+            Step s;
+            s.kind = Step::Kind::send;
+            s.sysex = k.patternDump (dev, i);
+            s.label = "envoi pattern " + twoDigits (i + 1);
+            s.quiet = true;
+            queue (s);
+            Step wait; wait.kind = Step::Kind::pause; wait.ms = 60; queue (wait);
+        }
+
     queueKitRead (false, [this, k]
     {
+        for (int i = 0; i < ra::Kit::numSounds; ++i)
+            if (k.hasPattern (i))
+                kit.setPatternData (i, k.patternData (i));
         auto diff = kit.differences (k);
         if (diff.empty())
             finishTask ("sendKit", true, "Kit envoyé et vérifié. Pour le garder sur la machine : Shift + Store."_fr);
@@ -794,6 +810,52 @@ void Engine::sendSound (const ra::Bytes& soundData, int slot)
         bool ok = r != nullptr && kit.soundData (slot) == soundData;
         finishTask ("sendSound", ok, ok ? "Son envoyé dans le son "_fr + twoDigits (slot + 1) + " et vérifié."_fr
                                         : "Le son "_fr + twoDigits (slot + 1) + " n'a pas pu être vérifié."_fr);
+    }));
+}
+
+void Engine::readPatterns()
+{
+    auto dev = (std::uint8_t) deviceId.load();
+    auto count = std::make_shared<int> (0);
+    for (int i = 0; i < ra::Kit::numSounds; ++i)
+        queue (request (ra::patternRequest (dev, i), ra::cmd::PATD, "pattern " + twoDigits (i + 1), 1000,
+                        [this, count] (const ra::Parsed* r)
+        {
+            if (r != nullptr)
+                ++*count;
+            progress (*count, ra::Kit::numSounds, "Lecture des patterns internes"_fr);
+        }));
+    queue (callStep ([this, count]
+    {
+        finishTask ("readPatterns", *count > 0, *count == ra::Kit::numSounds ? "Les 24 patterns internes sont lus."_fr
+                                               : *count > 0 ? juce::String (*count) + " patterns internes lus sur 24."_fr
+                                                            : "La machine n'a pas envoyé ses patterns internes."_fr);
+    }));
+}
+
+void Engine::sendPatterns (const std::vector<std::pair<int, ra::Bytes>>& patterns)
+{
+    auto dev = (std::uint8_t) deviceId.load();
+    for (auto& [sound, data] : patterns)
+    {
+        if (sound < 0 || sound >= ra::Kit::numSounds || (int) data.size() != ra::kPatternDataSize)
+            continue;
+        ra::Bytes payload { ra::cmd::PATD, ra::kEditBuffer, (std::uint8_t) sound };
+        payload.insert (payload.end(), data.begin(), data.end());
+        Step s;
+        s.kind = Step::Kind::send;
+        s.sysex = ra::build (dev, payload);
+        s.label = "envoi pattern " + twoDigits (sound + 1);
+        s.quiet = true;
+        queue (s);
+        Step wait; wait.kind = Step::Kind::pause; wait.ms = 60; queue (wait);
+        kit.setPatternData (sound, data);
+    }
+    const int n = (int) patterns.size();
+    queue (callStep ([this, n]
+    {
+        finishTask ("sendPatterns", true, juce::String (n) + (n > 1 ? " patterns internes envoyés"_fr : " pattern interne envoyé"_fr)
+                                          + ". Pour les jouer depuis la machine : Pattern Mode d'un son sur On ou Latch (page Son, Sortie, PAT.INT)."_fr);
     }));
 }
 

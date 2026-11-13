@@ -9,6 +9,7 @@
 #include "../Source/app/FakeRackAttack.h"
 #include "../Source/app/Library.h"
 #include "../Source/app/MorphControl.h"
+#include "../Source/core/RaFactory.h"
 #include "../Source/app/Session.h"
 #include "../Source/app/Text.h"
 
@@ -408,6 +409,85 @@ int main()
         runFor (300);
         CHECK (morph.differs() && morph.data().end (Side::a, 2, 0x29) == 7);
         std::printf ("morph: ok\n");
+    }
+
+    // 10c. Waldorf's files: a zip holding a zip holding a MIDI file of one program with its patterns, imported into
+    // the library; the kit goes to the unit with its patterns; the unit's patterns are read back
+    {
+        ra::Kit k;
+        ra::fillDemoKit (k, 4);
+        k.setName ("Usine Test");
+        ra::InternalPattern ip;
+        ip.length = 8; ip.steps[0] = 3; ip.steps[4] = 1;
+        k.setPatternData (2, ip.toData());
+        for (int s = 0; s < 24; ++s)
+            if (s != 2)
+                k.setPatternData (s, ra::InternalPattern().toData());
+        // the SysEx of a Waldorf file: to buffer 0x30, then "store into program 12"
+        ra::Bytes trk;
+        auto addEvent = [&trk] (const ra::Bytes& m)
+        {
+            trk.push_back (0x00);
+            trk.push_back (0xF0);
+            const auto n = (std::uint32_t) (m.size() - 1);
+            if (n >= 128) trk.push_back ((std::uint8_t) (0x80 | (n >> 7)));
+            trk.push_back ((std::uint8_t) (n & 0x7F));
+            trk.insert (trk.end(), m.begin() + 1, m.end());
+        };
+        for (auto& m : k.allDumps (0))
+        {
+            auto p = ra::parse (m);
+            auto payload = p.payload;
+            payload[1] = 0x30;
+            addEvent (ra::build (0, payload));
+        }
+        addEvent (ra::build (0, { 0x07, 0x01, 0x30, 0x0B }));
+        trk.insert (trk.end(), { 0x00, 0xFF, 0x2F, 0x00 });
+        ra::Bytes smf { 'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0, 96, 'M', 'T', 'r', 'k' };
+        for (int sh : { 24, 16, 8, 0 }) smf.push_back ((std::uint8_t) (trk.size() >> sh));
+        smf.insert (smf.end(), trk.begin(), trk.end());
+
+        auto zipOf = [] (const juce::String& name, const juce::MemoryBlock& content)
+        {
+            juce::ZipFile::Builder b;
+            b.addEntry (new juce::MemoryInputStream (content, true), 0, name, juce::Time::getCurrentTime());
+            juce::MemoryOutputStream stream;
+            b.writeToStream (stream, nullptr);
+            return stream.getMemoryBlock();
+        };
+        const auto inner = zipOf ("ra_test/test_kit.mid", juce::MemoryBlock (smf.data(), smf.size()));
+        const auto outer = zipOf ("Sounds/ra_kits.zip", inner);
+        auto zipFile = juce::File::createTempFile (".zip");
+        zipFile.replaceWithData (outer.getData(), outer.getSize());
+
+        Library lib (juce::File::createTempFile ("bib"));
+        const auto r = lib.importWaldorf (zipFile);
+        CHECK (r.kits == 1 && r.sets.contains ("ra kits"));
+        bool found = false;
+        for (auto& item : lib.kits())
+            if (item.group == juce::String::fromUTF8 ("Usine · ra kits") && item.title == "P12 Usine Test")
+            {
+                found = true;
+                auto loaded = Library::loadKit (item.file);
+                CHECK (loaded && loaded->patternsRead() == 24 && loaded->patternData (2) == ip.toData());
+                engine.sendKit (*loaded);
+                CHECK (waitTask (out, "sendKit", 20000));
+                CHECK (fake.edit.hasPattern (2) && fake.edit.patternData (2) == ip.toData());
+            }
+        CHECK (found);
+        zipFile.deleteFile();
+
+        // the unit's patterns read back; a track sent as an internal pattern
+        engine.readPatterns();
+        CHECK (waitTask (out, "readPatterns", 20000));
+        CHECK (engine.getKit().patternsRead() == 24 && engine.getKit().patternData (2) == ip.toData());
+        ra::seq::Track t;
+        ra::seq::fillEvery (t, 4);
+        engine.sendPatterns ({ { 7, ra::trackToInternal (t, 1).toData() } });
+        CHECK (waitTask (out, "sendPatterns", 5000));
+        auto back7 = ra::InternalPattern::fromData (fake.edit.patternData (7));
+        CHECK (back7 && back7->hits() == 4 && back7->steps[0] != 0 && back7->steps[4] != 0 && back7->mode == 1);
+        std::printf ("waldorf files: ok\n");
     }
 
     // 11. The unit goes quiet: the connection shows it

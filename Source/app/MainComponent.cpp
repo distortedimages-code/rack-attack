@@ -147,6 +147,12 @@ MainComponent::MainComponent (AppContext& c)
     }
 
     addAndMakeVisible (morphFader);
+    seqPage.onStatus = [this] (const juce::String& text, bool ok) { statusLine.show (text, ok ? ui::accent : ui::bad); };
+    libraryPage.onPatternsToSequencer = [this] (const ra::Kit& kit)
+    {
+        showPage (0);                                   // the sequencer
+        seqPage.importInternal (kit);
+    };
     addAndMakeVisible (statusLine);
     addChildComponent (bar);
 
@@ -163,6 +169,13 @@ MainComponent::MainComponent (AppContext& c)
     measureWizard.stopSequencer = [this] { ctx.sequencer.stop(); };
     measureWizard.settings = [this] { return &ctx.settings(); };
     toolsPage.openMeasure = [this] { showMeasure(); };
+    toolsPage.openCompare = [this]
+    {
+        measureWizard.setVisible (true);
+        measureWizard.toFront (true);
+        measureWizard.startCompare();
+    };
+    measureWizard.simulatorCalibration = [this] { return ctx.simulatorCalibration(); };
     toolsPage.installUpdate = [this] { showUpdateDialog(); };
     toolsPage.loadMeasures = [this] { chooseMeasures(); };
     toolsPage.forgetMeasures = [this] { ctx.forgetMeasures(); };
@@ -314,7 +327,7 @@ void MainComponent::runAudit()
 
     showMeasure();
     check ("Mesure 1/5");
-    for (auto screen : { "audio", "ready", "run", "done" })
+    for (auto screen : { "audio", "ready", "run", "done", "compare", "compare-done" })
     {
         measureWizard.demo (screen);
         check ("Mesure " + juce::String (screen));
@@ -477,10 +490,12 @@ void MainComponent::progressChanged (int done, int total, const juce::String& wh
     bar.setTextToDisplay (what);
 }
 
-void MainComponent::taskFinished (const juce::String&, bool ok, const juce::String& message)
+void MainComponent::taskFinished (const juce::String& task, bool ok, const juce::String& message)
 {
     bar.setVisible (false);
     statusLine.show (message, ok ? ui::accent : ui::bad);
+    if (task == "readPatterns")
+        seqPage.patternsRead (ok);
 }
 
 //==============================================================================

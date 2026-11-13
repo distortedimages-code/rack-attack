@@ -24,7 +24,7 @@ public:
     // What changed when a message was applied
     struct Change
     {
-        enum class What { nothing, program, sound, effect, whole };
+        enum class What { nothing, program, sound, effect, whole, pattern };
         What what = What::nothing;
         int index = -1;       // sound or effect number
         int address = -1;     // -1 = the whole block
@@ -54,12 +54,23 @@ public:
     const Bytes& soundData (int i) const     { return sounds[(size_t) i]; }
     void setSoundData (int i, const Bytes& data);   // exactly kSoundDataSize bytes
 
+    // The internal patterns of the sounds (the unit's Pattern Play), when a file or the unit gave them.
+    bool hasPattern (int i) const            { return i >= 0 && i < numSounds && ! patterns[(size_t) i].empty(); }
+    int patternsRead() const;
+    const Bytes& patternData (int i) const   { return patterns[(size_t) i]; }
+    void setPatternData (int i, const Bytes& data); // exactly kPatternDataSize bytes, or empty: none
+
     //==========================================================================
     // Dumps addressed to the edit buffer, ready to send.
     Bytes programDump (std::uint8_t device) const;
     Bytes soundDump (std::uint8_t device, int sound) const;
     Bytes effectDump (std::uint8_t device, int effect) const;
-    std::vector<Bytes> allDumps (std::uint8_t device) const;   // program, 24 sounds, 4 effects
+    Bytes patternDump (std::uint8_t device, int sound) const;
+    // where a program dump goes (its two location bytes, as the unit sent them): files from elsewhere take the
+    // unit's own when they are sent
+    const Bytes& getProgramLocation() const      { return programLocation; }
+    void setProgramLocation (const Bytes& l)     { if (l.size() == 2) programLocation = l; }
+    std::vector<Bytes> allDumps (std::uint8_t device) const;   // program, 24 sounds, 4 effects, the patterns it has
 
     // A single sound as its own dump (sound files), and back.
     static Bytes soundToSyx (const Bytes& soundData);
@@ -76,6 +87,7 @@ private:
     Bytes program;
     std::array<Bytes, numSounds> sounds;
     std::array<Bytes, numEffects> effects;
+    std::array<Bytes, numSounds> patterns;          // empty: not known
     Bytes programLocation { 0x00, kEditBuffer };   // as the unit sent it
     bool programRead = false;
     std::array<bool, numSounds> soundRead {};

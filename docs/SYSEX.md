@@ -70,7 +70,8 @@ ra-editor les utilise réellement avec la machine, mais une seule source : à co
 | GLBR | `00` | GLBD : `14 ??` + 199 octets GDAT |
 | GLBP | `PAH PAL VAL` | — |
 | MODR | `04 20 00` = « initialiser le programme courant » (commentaire du code : `MCMD MOV1 MOV2`) | |
-| PATR / PATD / PATP | ❓ format inconnu | |
+| PATR / PATD / PATP | PATD : `13 BUFN SNDN` + 143 octets (voir § 8) ✅ (fichiers d'usine Waldorf) ; PATR `03 BUFN SNDN` probable ⚠️ | |
+| `07` (dans les fichiers d'usine) | `07 01 30 PRGN` après les dumps d'un programme : « ranger le tampon `30` dans le programme PRGN » ✅ | |
 
 - `BUFN = 20h` : le tampon d'édition (le programme en cours). ✅ (ra-editor + messages Electra One)
 - `SNDN` : numéro du son, `00`–`17` (sons 1 à 24). `EFXN` : `00`–`03` (FX 1 à 4).
@@ -250,11 +251,25 @@ Delay, ModDelay et Reverb ne sont disponibles que sur FX1 et FX2. ⚠️
 | `18` | Global Pattern Mode | ordre On/Off ❓ | ⚠️ |
 | `01`, `0A`, `0B`, `15`, `17`, `19`–`C6` | ❓ | | |
 
-## 8. Pattern (PATR / PATD / PATP) ❓
+## 8. Pattern (PATR / PATD / PATP) ✅ (format) ⚠️ (envoi à la machine)
 
-Le format des pas n'est documenté dans aucune source accessible. On sait par le manuel qu'un pattern a 1 à 128 pas, que chaque pas est vide ou porte l'une des 3 vélocités du pattern (Vel. 1/2/3), et qu'il y a un pattern par son (24 par programme).
+Retrouvé dans les fichiers de sons d'usine de Waldorf (fichiers MIDI pleins de SysEx : par programme, PRGD, 24 SNDD, 24 PATD et 4 EFXD vers le tampon `30`, puis `07 01 30 PRGN`). Sur les 3 600 patterns des trois jeux d'usine, le PATD fait toujours 143 octets : 15 réglages puis 128 pas.
 
-À reconstituer sur la machine (test T6) : programmer des patterns connus (un seul pas, puis deux, puis trois vélocités différentes, longueurs 16 / 17 / 128), demander leur dump, comparer. Trois pistes probables : un octet par pas (`0`–`3`), 2 bits par pas regroupés dans des octets de 7 bits (128 pas → 37 octets), ou une liste de pas allumés.
+| Octet | Réglage | Valeurs |
+|---|---|---|
+| `00` | Pattern Mode | comme l'octet `6C` du son : Off, On, Latch, Toggle, One Shot ✅ |
+| `01` | Length − 1 | `00`–`7F` (1 à 128 pas) ✅ |
+| `02` | Step Clk | liste de valeurs de note, `04` = 1/16 (16 pas = 1 mesure), `07` = 1/8, `02` = 1/32 ✅ ; liste complète reconstituée ⚠️ |
+| `03` | Note Length | même liste ⚠️ |
+| `04` | Swing | Off, 58,3 … 75 % (`00`–`05`) ⚠️ |
+| `05` | Start When | ⚠️ (`01` le plus courant) |
+| `06` | Start Where | Current / Step 1 ⚠️ |
+| `07`–`09` | Vel. 1, 2, 3 | 64, 96, 127 par défaut ✅ |
+| `0A` | Group | Off, Trigger A, B, C, A+B+C (les kits « Trigger » s'en servent) ⚠️ |
+| `0B`–`0E` | ? | toujours 0 |
+| `0F`–`8E` | les 128 pas | `0` vide, `1`–`3` Vel. 1–3 ✅ |
+
+Les octets `5F`–`6B` du son restent à 0 dans les fichiers d'usine : les réglages du pattern sont dans le PATD, pas dans le son. Reste à vérifier sur la machine qu'elle accepte un PATD vers le tampon d'édition (`20`) et répond à `PATR 20 SNDN`.
 
 ## 9. Ce que le RackAttack envoie de lui-même
 

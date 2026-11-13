@@ -24,6 +24,7 @@ public:
     std::function<bool()> isSimulation;
     std::function<void (bool)> setSimulation;
     std::function<void()> openMeasure;                      // the measuring assistant
+    std::function<void()> openCompare;                      // the same, to compare a kit with the simulator
     std::function<void()> installUpdate;                    // the update dialog
     std::function<void()> loadMeasures, forgetMeasures;     // file chooser / back to the manual
     std::function<juce::String()> measuresSource;
@@ -45,6 +46,7 @@ private:
     juce::TextButton checkButton { "Vérifier les mises à jour"_fr }, installButton { "Installer" };
     juce::ToggleButton autoCheck { "Vérifier une fois par jour"_fr };
     juce::ToggleButton simulationToggle { "Mode simulation : le RackAttack en logiciel, sans la machine" };
+    juce::TextButton compareButton { "Comparer au simulateur..." };
     juce::TextButton measureButton { "Mesurer mon RackAttack..." }, loadButton { "Charger des mesures..." },
                      forgetButton { "Revenir au manuel" };
     juce::Label measuresLabel;

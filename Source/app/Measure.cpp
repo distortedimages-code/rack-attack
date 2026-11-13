@@ -1871,4 +1871,298 @@ bool load (const juce::File& file, Calibration& c, juce::String& error)
     c = std::move (out);
     return true;
 }
+
+//==============================================================================
+// Comparing the unit with the simulator, sound by sound
+
+namespace
+{
+    struct Look
+    {
+        bool heard = false;
+        double levelDb = -120.0, pitchHz = 0.0, lengthMs = 0.0, brightHz = 0.0;
+    };
+
+    Look lookAt (const std::vector<float>& x, double sr)
+    {
+        Look l;
+        float peak = 0.0f;
+        for (auto v : x)
+            peak = std::max (peak, std::abs (v));
+        if (peak < 1.0e-3f)
+            return l;                                   // under -60 dBFS: nothing heard
+        int onset = 0;
+        while (onset < (int) x.size() && std::abs (x[(size_t) onset]) < peak * 0.1f)
+            ++onset;
+        l.heard = true;
+        l.levelDb = 20.0 * std::log10 (std::max (1.0e-9, rmsOf (x, onset, (int) (0.15 * sr))));
+
+        // the length: 10 ms frames, until 40 dB under the loudest one
+        const int frame = std::max (1, (int) (0.01 * sr));
+        std::vector<double> e;
+        for (int i = onset; i + frame <= (int) x.size(); i += frame)
+            e.push_back (rmsOf (x, i, frame));
+        const double top = e.empty() ? 0.0 : *std::max_element (e.begin(), e.end());
+        int last = 0;
+        for (int k = 0; k < (int) e.size(); ++k)
+            if (e[(size_t) k] > top * 0.01)
+                last = k;
+        l.lengthMs = (last + 1) * 10.0;
+
+        // the pitch, when there is a clear one
+        double purity = 0.0;
+        const double f = peakFrequency (x, onset + (int) (0.01 * sr), (int) (0.12 * sr), sr, 25.0, 8000.0, &purity);
+        l.pitchHz = purity > 10.0 && l.lengthMs >= 50.0 ? f : 0.0;
+
+        // the brightness: the spectral centroid (power, the bins within 50 dB of the strongest) over the sound itself
+        int n = 1024;
+        while (n < 4096 && n < (int) (l.lengthMs * sr / 1000.0))
+            n *= 2;
+        std::vector<std::complex<double>> a ((size_t) n);
+        for (int i = 0; i < n; ++i)
+        {
+            const int at = onset + i;
+            const double v = at < (int) x.size() ? x[(size_t) at] : 0.0;
+            a[(size_t) i] = v * (0.5 - 0.5 * std::cos (2.0 * pi * i / (n - 1)));
+        }
+        fft (a);
+        double strongest = 0.0;
+        for (int k = 1; k < n / 2; ++k)
+            strongest = std::max (strongest, std::abs (a[(size_t) k]));
+        double sum = 0.0, weighted = 0.0;
+        for (int k = 1; k < n / 2; ++k)
+        {
+            const double m = std::abs (a[(size_t) k]), hz = k * sr / n;
+            if (hz < 20.0 || m < strongest * 0.003)
+                continue;
+            sum += m * m;
+            weighted += m * m * hz;
+        }
+        l.brightHz = sum > 0.0 ? weighted / sum : 0.0;
+        return l;
+    }
+
+    juce::String two (int n)   { return juce::String (n).paddedLeft ('0', 2); }
+}
+
+double SoundCompare::score() const
+{
+    if (heard[0] != heard[1])
+        return 10.0;
+    if (! heard[0])
+        return 0.0;
+    double s = std::abs (levelDb[0] - levelDb[1]) / 3.0;
+    if (pitchHz[0] > 0.0 && pitchHz[1] > 0.0)
+        s += std::abs (12.0 * std::log2 (pitchHz[0] / pitchHz[1]));
+    else if ((pitchHz[0] > 0.0) != (pitchHz[1] > 0.0))
+        s += 0.5;
+    if (lengthMs[0] > 0.0 && lengthMs[1] > 0.0)
+        s += std::abs (std::log2 (lengthMs[0] / lengthMs[1])) * 3.0;
+    if (brightHz[0] > 0.0 && brightHz[1] > 0.0)
+        s += std::abs (std::log2 (brightHz[0] / brightHz[1])) * 2.0;
+    return s;
+}
+
+juce::String SoundCompare::differences() const
+{
+    if (heard[0] != heard[1])
+        return heard[0] ? "muet dans le simulateur"_fr : "muet sur la machine"_fr;
+    if (! heard[0])
+        return "muet des deux côtés"_fr;
+    std::vector<std::pair<double, juce::String>> d;
+    auto num = [] (double v, int decimals) { return juce::String (v, decimals).replace (".", ","); };
+    const double dl = levelDb[0] - levelDb[1];
+    if (std::abs (dl) >= 2.0)
+        d.push_back ({ std::abs (dl) / 3.0, (dl > 0 ? "plus fort (+"_fr : "plus faible ("_fr) + num (dl, 1) + " dB)" });
+    if (pitchHz[0] > 0.0 && pitchHz[1] > 0.0)
+    {
+        const double st = 12.0 * std::log2 (pitchHz[0] / pitchHz[1]);
+        if (std::abs (st) >= 0.5)
+            d.push_back ({ std::abs (st), (st > 0 ? "plus aigu (+"_fr : "plus grave ("_fr) + num (st, 1) + " demi-tons)"_fr });
+    }
+    if (lengthMs[0] > 0.0 && lengthMs[1] > 0.0)
+    {
+        const double r = lengthMs[0] / lengthMs[1];
+        if (r >= 1.2 || r <= 1.0 / 1.2)
+            d.push_back ({ std::abs (std::log2 (r)) * 3.0, (r > 1 ? "plus long (+"_fr : "plus court ("_fr) + juce::String ((int) std::lround ((r - 1.0) * 100.0)) + " %)" });
+    }
+    if (brightHz[0] > 0.0 && brightHz[1] > 0.0)
+    {
+        const double oct = std::log2 (brightHz[0] / brightHz[1]);
+        if (std::abs (oct) >= 0.3)
+            d.push_back ({ std::abs (oct) * 2.0, (oct > 0 ? "plus brillant (+"_fr : "plus sourd ("_fr) + num (oct, 1) + " octave)" });
+    }
+    if (d.empty())
+        return "proche"_fr;
+    std::sort (d.begin(), d.end(), [] (auto& a, auto& b) { return a.first > b.first; });
+    juce::StringArray words;
+    for (auto& w : d)
+        words.add (w.second);
+    return "sur la machine : "_fr + words.joinIntoString (", ");
+}
+
+juce::StringArray Comparison::summary (int most) const
+{
+    auto sorted = sounds;
+    std::sort (sorted.begin(), sorted.end(), [] (auto& a, auto& b) { return a.score() > b.score(); });
+    juce::StringArray lines;
+    for (auto& s : sorted)
+        if (s.score() >= 1.0 && lines.size() < most)
+            lines.add ("Son "_fr + two (s.sound + 1) + " : " + s.differences());
+    if (lines.isEmpty())
+        lines.add ("Tous les sons sont proches (à 2 dB, un demi-ton, 20 % de longueur près)."_fr);
+    return lines;
+}
+
+Compare::Compare (Rig& u, const ra::Kit& k, const ra::synth::Calibration& c, int deviceId, int ch, int base)
+    : unit (u), kit (k), cal (c), device (deviceId), channel (ch), baseNote (base)
+{
+}
+
+std::vector<float> Compare::shot (Rig& r, int s)
+{
+    const int note = baseNote + s;
+    r.wait (60);
+    const auto from = r.mark();
+    r.send (juce::MidiMessage::noteOn (channel, note, (juce::uint8) 100));
+    r.wait (300);
+    r.send (juce::MidiMessage::noteOff (channel, note));
+    r.wait (1700);
+    std::vector<float> x;
+    r.read (from, (int) (2.0 * r.sampleRate()), x);
+    return x;
+}
+
+Comparison Compare::run()
+{
+    Comparison c;
+    c.kitName = juce::String (kit.name()).trim();
+    const double sr = unit.sampleRate();
+
+    // the simulator as the app has it, with the same kit
+    SynthRig sim (cal, channel, baseNote, sr, 0, false);
+    sim.noiseLevel = 0.0f;
+    for (auto& m : kit.allDumps (ra::kBroadcast))
+        sim.send (juce::MidiMessage (m.data(), (int) m.size()));
+    sim.wait (50);
+
+    // the sounds' internal patterns off on the unit, so a note plays the sound once
+    std::vector<int> patterned;
+    for (int s = 0; s < ra::Kit::numSounds; ++s)
+        if (kit.hasSound (s) && kit.soundValue (s, 0x6C) != 0)
+        {
+            patterned.push_back (s);
+            const auto m = ra::soundParameter ((std::uint8_t) device, s, 0x6C, 0);
+            unit.send (juce::MidiMessage (m.data(), (int) m.size()));
+        }
+    unit.wait (patterned.empty() ? 50 : 300);
+
+    auto* report = new juce::DynamicObject();
+    juce::Array<juce::var> rows;
+    for (int s = 0; s < ra::Kit::numSounds; ++s)
+    {
+        if (unit.shouldStop())
+        {
+            c.message = "Comparaison arrêtée."_fr;
+            break;
+        }
+        if (onProgress)
+            onProgress (s, ra::Kit::numSounds, "Son "_fr + two (s + 1) + " : la machine, puis le simulateur"_fr);
+        const auto real = shot (unit, s);
+        const auto virt = shot (sim, s);
+        const auto a = lookAt (real, sr), b = lookAt (virt, sr);
+        SoundCompare sc;
+        sc.sound = s;
+        sc.heard = { a.heard, b.heard };
+        sc.levelDb = { a.levelDb, b.levelDb };
+        sc.pitchHz = { a.pitchHz, b.pitchHz };
+        sc.lengthMs = { a.lengthMs, b.lengthMs };
+        sc.brightHz = { a.brightHz, b.brightHz };
+        c.sounds.push_back (sc);
+        c.recordings.push_back ({ "son-" + two (s + 1) + "-machine.wav", real, sr });
+        c.recordings.push_back ({ "son-" + two (s + 1) + "-simulateur.wav", virt, sr });
+    }
+    if (onProgress)
+        onProgress (ra::Kit::numSounds, ra::Kit::numSounds, "Fini"_fr);
+
+    // the internal patterns back as they were
+    for (auto s : patterned)
+    {
+        const auto m = ra::soundParameter ((std::uint8_t) device, s, 0x6C, kit.soundValue (s, 0x6C));
+        unit.send (juce::MidiMessage (m.data(), (int) m.size()));
+    }
+
+    // the levels side by side: the interface's gain is not known, so the unit's are moved by the median difference
+    std::vector<double> diffs;
+    for (auto& s : c.sounds)
+        if (s.heard[0] && s.heard[1])
+            diffs.push_back (s.levelDb[0] - s.levelDb[1]);
+    double offset = 0.0;
+    if (! diffs.empty())
+    {
+        std::nth_element (diffs.begin(), diffs.begin() + (long) diffs.size() / 2, diffs.end());
+        offset = diffs[diffs.size() / 2];
+        for (auto& s : c.sounds)
+            if (s.heard[0])
+                s.levelDb[0] -= offset;
+    }
+
+    report->setProperty ("kind", "comparaison");
+    report->setProperty ("kit", c.kitName);
+    report->setProperty ("simulator", juce::String (cal.source));
+    report->setProperty ("sampleRate", sr);
+    report->setProperty ("levelOffsetDb", offset);
+    for (auto& s : c.sounds)
+    {
+        auto* o = new juce::DynamicObject();
+        o->setProperty ("sound", s.sound + 1);
+        for (int side = 0; side < 2; ++side)
+        {
+            auto* v = new juce::DynamicObject();
+            v->setProperty ("heard", s.heard[(size_t) side]);
+            v->setProperty ("levelDb", s.levelDb[(size_t) side]);
+            v->setProperty ("pitchHz", s.pitchHz[(size_t) side]);
+            v->setProperty ("lengthMs", s.lengthMs[(size_t) side]);
+            v->setProperty ("brightnessHz", s.brightHz[(size_t) side]);
+            o->setProperty (side == 0 ? "machine" : "simulateur", juce::var (v));
+        }
+        o->setProperty ("score", s.score());
+        o->setProperty ("differences", s.differences());
+        rows.add (juce::var (o));
+    }
+    report->setProperty ("sounds", rows);
+    c.report = juce::var (report);
+    c.ok = c.message.isEmpty() && ! c.sounds.empty();
+    if (c.ok)
+        c.message = juce::String ((int) c.sounds.size()) + " sons comparés."_fr;
+    return c;
+}
+
+juce::File save (const Comparison& c, const juce::File& folder)
+{
+    if (! folder.createDirectory())
+        return {};
+    const auto file = folder.getNonexistentChildFile ("RackAttack-comparaison-" + c.when.formatted ("%Y-%m-%d-%Hh%M"), ".racompare", false);
+    juce::ZipFile::Builder zip;
+    auto addText = [&zip] (const juce::String& name, const juce::String& content)
+    {
+        zip.addEntry (new juce::MemoryInputStream (content.toRawUTF8(), content.getNumBytesAsUTF8(), true), 9, name, juce::Time::getCurrentTime());
+    };
+    addText ("report.json", juce::JSON::toString (c.report));
+    addText ("LISEZMOI.txt",
+             "Comparaison d'un Waldorf RackAttack avec le simulateur de RackAttack Editor, kit « "_fr + c.kitName + " », le "_fr
+             + c.when.formatted ("%d/%m/%Y à %H:%M"_fr) + ".\n\n" + c.summary (24).joinIntoString ("\n")
+             + "\n\nChaque son est enregistré deux fois (enregistrements/son-NN-machine.wav et son-NN-simulateur.wav) : "_fr
+               "de quoi régler le simulateur. Ces enregistrements viennent de ta machine : garde-les pour toi.\n"_fr);
+    for (auto& rec : c.recordings)
+    {
+        auto block = wav (rec.samples, rec.rate);
+        zip.addEntry (new juce::MemoryInputStream (block, true), 0, "enregistrements/" + rec.file, juce::Time::getCurrentTime());
+    }
+    juce::FileOutputStream out (file);
+    if (! out.openedOk() || ! zip.writeToStream (out, nullptr))
+        return {};
+    out.flush();
+    return file;
+}
 }

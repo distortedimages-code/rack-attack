@@ -1,5 +1,6 @@
 // Tests of the SysEx core, against messages known to work with a real RackAttack.
 
+#include "../Source/core/RaFactory.h"
 #include "../Source/core/RaKit.h"
 #include "../Source/core/RaMorph.h"
 #include "../Source/core/RaSysex.h"
@@ -254,6 +255,94 @@ int main()
         routed.setSoundValue (4, 0x5A, 90);
         back.load (Morph::Side::b, routed);
         CHECK (back.end (Morph::Side::b, 4, 0x5A) == 30 && back.end (Morph::Side::b, 4, 0x27) == k2.soundValue (4, 0x27));
+    }
+
+    // Waldorf's files: a Standard MIDI File of SysEx, a program with sounds, patterns and effects, stored as P07
+    {
+        auto dump = [] (std::uint8_t cmdByte, std::uint8_t loc, int size, std::uint8_t fill)
+        {
+            Bytes payload { cmdByte, 0x30, loc };
+            for (int i = 0; i < size; ++i)
+                payload.push_back ((std::uint8_t) ((fill + i) & 0x7F));
+            return build (0, payload);
+        };
+        std::vector<Bytes> msgs;
+        {
+            Bytes prg { cmd::PRGD, 0x30, 0x00 };
+            const char* name = "Test Kit        ";
+            prg.push_back (0);
+            for (int i = 0; i < 16; ++i) prg.push_back ((std::uint8_t) name[i]);
+            while ((int) prg.size() < 3 + kProgramDataSize) prg.push_back (0);
+            msgs.push_back (build (0, prg));
+        }
+        for (int s = 0; s < 24; ++s) msgs.push_back (dump (cmd::SNDD, (std::uint8_t) s, kSoundDataSize, (std::uint8_t) s));
+        InternalPattern ip;
+        ip.mode = 2; ip.length = 12; ip.stepClock = 7; ip.noteLength = 4; ip.swing = 3; ip.group = 1;
+        ip.velocity = { 40, 80, 120 };
+        ip.steps[0] = 3; ip.steps[3] = 1; ip.steps[6] = 2; ip.steps[20] = 3;   // the last one past the length
+        for (int s = 0; s < 24; ++s)
+        {
+            Bytes payload { cmd::PATD, 0x30, (std::uint8_t) s };
+            auto d = (s == 5 ? ip : InternalPattern()).toData();
+            payload.insert (payload.end(), d.begin(), d.end());
+            msgs.push_back (build (0, payload));
+        }
+        for (int e = 0; e < 4; ++e) msgs.push_back (dump (cmd::EFXD, (std::uint8_t) e, kEffectDataSize, (std::uint8_t) (10 * e)));
+        msgs.push_back (build (0, { 0x07, 0x01, 0x30, 0x06 }));
+
+        // into a MIDI file: a header, one track, a tempo meta event, then the SysEx events
+        Bytes trk { 0x00, 0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20, 0x00, 0x90, 0x24, 0x64 };
+        for (auto& m : msgs)
+        {
+            trk.push_back (0x00);
+            trk.push_back (0xF0);
+            const auto n = (std::uint32_t) (m.size() - 1);
+            if (n >= 128) trk.push_back ((std::uint8_t) (0x80 | (n >> 7)));
+            trk.push_back ((std::uint8_t) (n & 0x7F));
+            trk.insert (trk.end(), m.begin() + 1, m.end());
+        }
+        trk.insert (trk.end(), { 0x00, 0xFF, 0x2F, 0x00 });
+        Bytes smf { 'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0, 96, 'M', 'T', 'r', 'k' };
+        const auto len = (std::uint32_t) trk.size();
+        for (int sh : { 24, 16, 8, 0 }) smf.push_back ((std::uint8_t) (len >> sh));
+        smf.insert (smf.end(), trk.begin(), trk.end());
+
+        CHECK (isSmf (smf) && ! isSmf (msgs[0]));
+        const auto read = smfSysex (smf);
+        CHECK (read.size() == msgs.size() && read.front() == msgs.front() && read.back() == msgs.back());
+        const auto bank = readBank (read);
+        CHECK (bank.size() == 1 && bank[0].number == 6 && bank[0].hasKit());
+        const auto& k = bank[0].kit;
+        CHECK (k.isComplete() && k.name() == "Test Kit" && k.patternsRead() == 24);
+        CHECK (k.soundValue (3, 0) == 3 && k.effectValue (2, 1) == 21);
+        CHECK (k.getProgramLocation() == Bytes ({ 0x00, kEditBuffer }));
+        auto back = InternalPattern::fromData (k.patternData (5));
+        CHECK (back && back->mode == 2 && back->length == 12 && back->stepClock == 7 && back->group == 1 && back->swing == 3);
+        CHECK (back->hits() == 3 && back->steps[20] == 3 && back->velocity[1] == 80);
+        CHECK (back->toData() == ip.toData());
+        // the kit file keeps the patterns, and they go to the edit buffer
+        auto again = Kit::fromSyx (k.toSyx());
+        CHECK (again && again->patternsRead() == 24 && again->patternData (5) == k.patternData (5));
+        CHECK (k.allDumps (0).size() == 29 + 24 && parse (k.patternDump (0, 5)).payload[1] == kEditBuffer);
+
+        // a file of patterns alone
+        std::vector<Bytes> only (read.begin() + 25, read.begin() + 49);
+        const auto pats = readBank (only);
+        CHECK (pats.size() == 1 && ! pats[0].hasKit() && pats[0].kit.patternsRead() == 24);
+
+        // into the sequencer's track, and back
+        seq::Track t;
+        t.name = "Caisse";
+        bool approx = true;
+        internalToTrack (*back, t, &approx);
+        CHECK (! approx && t.name == "Caisse" && t.length == 12 && t.division == seq::Division::eighth);
+        CHECK (t.steps[0].on && t.steps[0].velocity == 120 && t.steps[3].velocity == 40 && t.steps[6].velocity == 80);
+        CHECK (! t.steps[1].on && ! t.steps[20].on && t.steps[0].length == 4);     // 1/16 notes on 1/8 steps: half a step
+        const auto out = trackToInternal (t, 1);
+        CHECK (out.length == 12 && out.stepClock == 7 && out.mode == 1 && out.hits() == 3);
+        CHECK (out.velocity[0] == 40 && out.velocity[1] == 80 && out.velocity[2] == 120 && out.steps[0] == 3 && out.steps[3] == 1);
+        CHECK (swingPercent (0) == 50 && swingPercent (1) == 58 && swingPercent (5) == 75 && internalSwing (67) == 3);
+        CHECK (std::string (stepClockName (4)) == "1/16" && stepClockBeats (10) == 1.0);
     }
 
     if (failures == 0)

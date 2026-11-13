@@ -58,6 +58,8 @@ public:
     std::function<juce::PropertiesFile*()> settings;
 
     void start();                 // back to the first screen
+    void startCompare();          // the same steps, to compare the kit on the unit with the simulator
+    std::function<ra::synth::Calibration()> simulatorCalibration;   // what the app's simulator follows
     void demo (const juce::String& what);   // screenshots: "audio", "ready", "run", "done"
     bool isBusy() const;          // measuring or playing the test sound
 
@@ -67,6 +69,10 @@ public:
 
 private:
     enum class Screen { intro, audio, ready, running, done };
+    enum class Mode { measure, compare };
+    Mode mode = Mode::measure;
+    void startComparing();
+    void compared (const measure::Comparison&, const juce::File&);
 
     struct Worker : public juce::Thread
     {

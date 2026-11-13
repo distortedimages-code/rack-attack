@@ -37,6 +37,7 @@ constexpr int kSoundDataSize = 109;
 constexpr int kProgramDataSize = 40;
 constexpr int kEffectDataSize = 18;
 constexpr int kGlobalDataSize = 199;
+constexpr int kPatternDataSize = 143;   // a sound's internal pattern: 15 settings, then 128 steps (Waldorf's factory files)
 
 // Sum of the bytes from CMD to the last data byte, truncated to 7 bits.
 std::uint8_t checksum (const std::uint8_t* data, std::size_t size);
@@ -50,6 +51,7 @@ Bytes globalRequest (std::uint8_t device);
 Bytes programRequest (std::uint8_t device, std::uint8_t program = 0, std::uint8_t buffer = kEditBuffer);
 Bytes soundRequest (std::uint8_t device, int sound, std::uint8_t buffer = kEditBuffer);       // sound 0..23
 Bytes effectRequest (std::uint8_t device, int effect, std::uint8_t buffer = kEditBuffer);     // effect 0..3
+Bytes patternRequest (std::uint8_t device, int sound, std::uint8_t buffer = kEditBuffer);     // the internal pattern of sound 0..23
 Bytes soundParameter (std::uint8_t device, int sound, int address, int value, std::uint8_t buffer = kEditBuffer);
 
 // What a SysEx message (F0 .. F7) is.

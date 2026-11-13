@@ -236,6 +236,59 @@ int main()
         folder.deleteRecursively();
     }
 
+
+    //==========================================================================
+    // Comparing a kit: the simulator against itself is close everywhere; against a "unit" whose decays are twice
+    // as long and whose pitches are a fifth up, the differences show, sound by sound
+    {
+        ra::Kit kit;
+        ra::fillDemoKit (kit, 2);
+        kit.setSoundValue (3, 0x6C, 2);                  // an internal pattern on: switched off for the comparison
+        // the "unit" has the kit already (the user sent it before comparing)
+        auto loadKit = [&kit] (measure::Rig& into)
+        {
+            for (auto& m : kit.allDumps (0x7F))
+                into.send (juce::MidiMessage (m.data(), (int) m.size()));
+        };
+        measure::SynthRig same (Calibration::defaults(), 1, 36);
+        loadKit (same);
+        measure::Compare cmp (same, kit, Calibration::defaults(), 0x7F, 1, 36);
+        int progress = 0;
+        cmp.onProgress = [&] (int done, int, const juce::String&) { progress = done; };
+        const auto self = cmp.run();
+        expect (self.ok && self.sounds.size() == 24 && progress == 24, "comparaison : " + self.message);
+        double worst = 0.0;
+        for (auto& snd : self.sounds)
+            worst = std::max (worst, snd.score());
+        expect (worst < 1.0, "le simulateur contre lui-même : écart maximal "_fr + juce::String (worst, 2));
+        expect (self.summary().size() == 1 && self.summary()[0].startsWith ("Tous"), "résumé : "_fr + self.summary()[0]);
+
+        auto other = Calibration::defaults();
+        for (auto& d : other.decayMs) d *= 2.0f;
+        for (auto& h : other.pitchHz) h *= 1.5f;
+        measure::SynthRig unit (other, 1, 36);
+        loadKit (unit);
+        measure::Compare cmp2 (unit, kit, Calibration::defaults(), 0x7F, 1, 36);
+        const auto d = cmp2.run();
+        int longer = 0, higher = 0;
+        for (auto& snd : d.sounds)
+        {
+            if (snd.heard[0] && snd.lengthMs[0] > snd.lengthMs[1] * 1.2) ++longer;
+            if (snd.pitchHz[0] > 0.0 && snd.pitchHz[1] > 0.0 && snd.pitchHz[0] > snd.pitchHz[1] * 1.3) ++higher;
+        }
+        expect (longer >= 6 && higher >= 3, "différences vues : "_fr + juce::String (longer) + " plus longs, " + juce::String (higher) + " plus aigus");
+        expect (d.summary().size() >= 3 && d.summary()[0].contains ("sur la machine"), "résumé : "_fr + d.summary()[0]);
+        const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("ra-compare-test");
+        folder.deleteRecursively();
+        const auto file = measure::save (d, folder);
+        juce::ZipFile zip (file);
+        expect (file.hasFileExtension ("racompare") && zip.getNumEntries() == 2 + 48, "fichier de comparaison : "_fr + juce::String (zip.getNumEntries()));
+        Calibration back;
+        juce::String error;
+        expect (! measure::load (file, back, error), "une comparaison n'est pas un fichier de mesures"_fr);
+        folder.deleteRecursively();
+    }
+
     std::printf (failures == 0 ? "MeasureTests: all passed\n" : "MeasureTests: %d failed\n", failures);
     return failures == 0 ? 0 : 1;
 }

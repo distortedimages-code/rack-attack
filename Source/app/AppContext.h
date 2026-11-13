@@ -67,6 +67,12 @@ private:
 
     juce::File measuresFile;
     std::unique_ptr<ra::synth::Calibration> measured;
+
+public:
+    // what the simulator follows: the measures loaded, or the manual's numbers
+    ra::synth::Calibration simulatorCalibration() const   { return measured != nullptr ? *measured : ra::synth::Calibration::defaults(); }
+
+private:
     std::unique_ptr<SimDevice> simOwner;
     std::atomic<SimDevice*> simPtr { nullptr };
     std::atomic<bool> simActive { false };

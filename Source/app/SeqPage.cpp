@@ -1,4 +1,6 @@
 #include "SeqPage.h"
+
+#include "../core/RaFactory.h"
 #include "Text.h"
 
 using namespace ra::seq;
@@ -2013,6 +2015,92 @@ void SeqPage::keepForUndo (const juce::String& what)
     undoWhat = what;
 }
 
+int SeqPage::importInternal (const ra::Kit& kit, bool all)
+{
+    keepForUndo (fr ("patterns internes"));
+    int filled = 0, approximate = 0;
+    std::vector<int> swings;
+    seq.edit ([&] (Pattern& p)
+    {
+        for (int i = 0; i < numTracks; ++i)
+        {
+            if (! kit.hasPattern (i))
+                continue;
+            auto ip = ra::InternalPattern::fromData (kit.patternData (i));
+            if (! ip || (ip->isEmpty() && ! all))
+                continue;
+            bool approx = false;
+            ra::internalToTrack (*ip, p.tracks[(size_t) i], &approx);
+            approximate += approx ? 1 : 0;
+            if (! ip->isEmpty())
+            {
+                ++filled;
+                swings.push_back (ip->swing);
+            }
+        }
+        // one swing for the whole pattern here: the most used one
+        if (! swings.empty())
+        {
+            std::array<int, 6> count {};
+            for (auto sw : swings) ++count[(size_t) juce::jlimit (0, 5, sw)];
+            const auto most = (int) (std::max_element (count.begin(), count.end()) - count.begin());
+            p.swing = (std::uint8_t) ra::swingPercent (most);
+        }
+    });
+    selection.clear();
+    startWipe();
+    repaint();
+    showToast (filled > 0 ? fr ("PATTERNS INTERNES : ") + juce::String (filled) + fr (" PISTES") : fr ("AUCUN PATTERN DANS CE KIT"),
+               filled > 0 ? px::white : px::red);
+    if (onStatus)
+        onStatus (filled > 0 ? juce::String (filled) + fr (" pistes remplies avec les patterns internes du kit")
+                               + (approximate > 0 ? fr (" (") + juce::String (approximate) + fr (" avec une valeur de pas approchée)") : juce::String())
+                               + fr (". OPTIONS › Annuler pour revenir.")
+                             : fr ("Ce kit n'a pas de pattern interne."), filled > 0);
+    return filled;
+}
+
+void SeqPage::patternsRead (bool ok)
+{
+    if (! waitingForPatterns)
+        return;
+    waitingForPatterns = false;
+    if (ok)
+        importInternal (engine.getKit(), true);
+}
+
+void SeqPage::sendInternal (bool all)
+{
+    if (engine.isBusy())
+    {
+        showToast (fr ("LA MACHINE EST OCCUPÉE"), px::red);
+        return;
+    }
+    const auto& kit = engine.getKit();
+    std::vector<std::pair<int, ra::Bytes>> out;
+    seq.read ([&] (const Pattern& p)
+    {
+        for (int i = 0; i < numTracks; ++i)
+            if (all || i == track)
+            {
+                // the sound's Pattern Mode stays as it is (Son › Sortie › PAT.INT)
+                const int mode = kit.hasSound (i) ? kit.soundValue (i, 0x6C) : 0;
+                auto ip = ra::trackToInternal (p.tracks[(size_t) i], mode);
+                ip.swing = ra::internalSwing (p.swing);
+                if (kit.hasPattern (i))
+                    if (auto old = ra::InternalPattern::fromData (kit.patternData (i)))
+                    {
+                        ip.group = old->group;           // the unit's own settings stay
+                        ip.startWhen = old->startWhen;
+                        ip.startWhere = old->startWhere;
+                    }
+                out.push_back ({ i, ip.toData() });
+            }
+    });
+    engine.sendPatterns (out);
+    showToast (all ? fr ("SÉQUENCE → PATTERNS INTERNES") : fr ("PISTE → PATTERN INTERNE"), px::yellow);
+}
+
 void SeqPage::initTracks (bool all)
 {
     // the steps emptied, 16 steps at 1/16 in steps mode; the names (and the tempo) stay. OPTIONS > Annuler brings it back
@@ -2053,6 +2141,11 @@ void SeqPage::showOptions()
     m.addItem (20, fr ("Effacer tous les pas"));
     m.addItem (21, fr ("Effacer tous les verrous"));
     m.addItem (22, fr ("Init séquence : tout vide, 16 pas, 1/16 (le tempo reste)"));
+    m.addSectionHeader (fr ("PATTERNS INTERNES DE LA MACHINE"));
+    const int kitPatterns = engine.getKit().patternsRead();
+    m.addItem (40, kitPatterns == 24 ? fr ("Patterns internes du kit → séquence") : fr ("Lire les patterns internes → séquence"));
+    m.addItem (41, fr ("Cette piste → pattern interne du son"));
+    m.addItem (42, fr ("Toute la séquence → patterns internes"));
     m.addSeparator();
     m.addItem (30, undo != nullptr ? fr ("Annuler : ") + undoWhat : fr ("Annuler"), undo != nullptr);
 
@@ -2103,6 +2196,20 @@ void SeqPage::showOptions()
             case 21: onAll (fr ("effacer tous les verrous"), [] (Track& tr) { ra::seq::clearLocks (tr); });
                      self->showToast (fr ("TOUS LES VERROUS EFFACÉS"), px::yellow); break;
             case 22: self->initTracks (true); break;
+            case 40:
+                if (self->engine.getKit().patternsRead() == 24)
+                    self->importInternal (self->engine.getKit(), true);
+                else if (self->engine.isBusy())
+                    self->showToast (fr ("LA MACHINE EST OCCUPÉE"), px::red);
+                else
+                {
+                    self->waitingForPatterns = true;
+                    self->engine.readPatterns();
+                    self->showToast (fr ("LECTURE DES PATTERNS…"));
+                }
+                break;
+            case 41: self->sendInternal (false); break;
+            case 42: self->sendInternal (true); break;
             case 30:
                 if (self->undo != nullptr)
                 {

@@ -303,7 +303,8 @@ std::vector<std::string> Kit::differences (const Kit& o) const
 
 //==============================================================================
 // The simulator's playable kits (demo mode, the web version): a drum kit made for the
-// simulator's default numbers, a little different in each of the 50 programs.
+// simulator's default numbers, a little different in each of the 50 programs. As on the unit and in
+// Waldorf's own sounds, Envelope 2 shapes the level; Envelope 1 is the short one for the pitch drop.
 void fillDemoKit (Kit& k, int p)
 {
     struct Recipe
@@ -312,7 +313,7 @@ void fillDemoKit (Kit& k, int p)
         int shape1, pitch1, shape2, pitch2, mix1, mix2, fm;
         int filter, cutoff, reso;
         int attack, decay, sustain, release;
-        int pitchEnv;          // Env 2 -> pitch of both oscillators (64 = none)
+        int pitchEnv;          // Env 1 -> pitch of both oscillators (64 = none)
         int crack, crackSpeed, crackLength;
         int send, xorGroup, tuned;
     };
@@ -355,16 +356,15 @@ void fillDemoKit (Kit& k, int p)
         put (0x09, r.fm);
         for (int a : { 0x07, 0x0C, 0x16, 0x20, 0x2D, 0x31, 0x38, 0x3D })  put (a, 0);   // mod sources: Env 1
         for (int a : { 0x08, 0x0D, 0x17, 0x21, 0x2E, 0x32, 0x39, 0x3E, 0x53 }) put (a, 0);   // controls: velocity
-        put (0x05, r.pitchEnv); put (0x07, 1);             // Env 2 -> pitch
-        put (0x14, r.pitchEnv); put (0x16, 1);
+        put (0x05, r.pitchEnv); put (0x14, r.pitchEnv);     // Env 1 -> pitch
         put (0x1A, r.mix1); put (0x1B, r.mix2); put (0x1C, 0);
         put (0x1D, r.crack); put (0x24, r.crackSpeed); put (0x25, r.crackLength);
         put (0x26, r.filter); put (0x27, r.cutoff); put (0x28, r.reso); put (0x29, 0); put (0x2A, 64);
-        if (s == 20) { put (0x2B, 90); put (0x2D, 1); }   // the bass: Env 2 opens the filter
+        if (s == 20) { put (0x2B, 90); put (0x2D, 0); }   // the bass: Env 1 opens the filter
         put (0x35, 108); put (0x3A, 64 + ((s % 5) - 2) * 6);
         put (0x37, 90);                                    // a little velocity on the level
-        put (0x3F, r.attack); put (0x40, r.decay); put (0x41, r.sustain); put (0x42, r.release); put (0x43, 20);
-        put (0x45, 0); put (0x46, 40); put (0x47, 0); put (0x48, 0); put (0x49, 0);
+        put (0x3F, 0); put (0x40, 40); put (0x41, 0); put (0x42, 0); put (0x43, 0);
+        put (0x45, r.attack); put (0x46, r.decay); put (0x47, r.sustain); put (0x48, r.release); put (0x49, 20);
         put (0x4B, 60); put (0x4C, 0); put (0x4D, 0); put (0x4E, 0);
         put (0x4F, 40); put (0x50, 1); put (0x51, 0); put (0x52, 64);
         put (0x55, 1); put (0x56, 0); put (0x57, r.send); put (0x58, r.tuned);
@@ -384,5 +384,36 @@ void fillDemoKit (Kit& k, int p)
     k.setEffectValue (1, 5, 96);   // delay length
     k.setEffectValue (1, 6, 50);   // delay feedback
     k.setEffectValue (1, 12, 0);   // no sync
+}
+}
+
+namespace ra
+{
+bool upgradeOldDemoSound (std::uint8_t* d)
+{
+    if (! (d[0x45] == 0 && d[0x46] == 40 && d[0x47] == 0 && d[0x48] == 0 && d[0x49] == 0 && d[0x43] == 20))
+        return false;
+    for (int i = 0; i < 6; ++i)
+        std::swap (d[0x3F + i], d[0x45 + i]);
+    for (int a : { 0x07, 0x0C, 0x16, 0x20, 0x2D, 0x31, 0x38, 0x3D })      // modulation sources: Env 1 <-> Env 2
+        if (d[a] <= 1)
+            d[a] = (std::uint8_t) (1 - d[a]);
+    return true;
+}
+
+int upgradeOldDemoKit (Kit& k)
+{
+    int n = 0;
+    for (int s = 0; s < Kit::numSounds; ++s)
+        if (k.hasSound (s) && k.soundData (s).size() >= (size_t) kSoundDataSize)
+        {
+            auto d = k.soundData (s);
+            if (upgradeOldDemoSound (d.data()))
+            {
+                k.setSoundData (s, d);
+                ++n;
+            }
+        }
+    return n;
 }
 }

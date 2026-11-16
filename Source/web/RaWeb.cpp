@@ -602,6 +602,19 @@ RA_EXPORT (ra_pattern_load) int raPatternLoad (const std::uint8_t* data, int siz
     return model->pattern.load (std::vector<std::uint8_t> (data, data + size)) ? 1 : 0;
 }
 RA_EXPORT (ra_kit_save) int raKitSave()                             { return toScratch (model->kit.toSyx()); }
+// a kit kept by this browser before 0.5.9: its demo sounds to Envelope 2 for the level (the morph's ends upgrade
+// themselves when restored)
+RA_EXPORT (ra_kit_upgrade_demo) int raKitUpgradeDemo()
+{
+    const int n = ra::upgradeOldDemoKit (model->kit);
+    if (n > 0)
+    {
+        model->morph.reset (model->kit);
+        refreshContext();
+    }
+    return n;
+}
+
 RA_EXPORT (ra_kit_load) int raKitLoad (const std::uint8_t* data, int size)
 {
     auto k = ra::Kit::fromSyx (ra::Bytes (data, data + size));

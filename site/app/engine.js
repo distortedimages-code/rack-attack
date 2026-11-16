@@ -295,6 +295,7 @@ export class Engine {
       try {
         localStorage.setItem('ra.pattern', b64(this.patternBytes()));
         localStorage.setItem('ra.kit', b64(this.scratch(this.x.ra_kit_save())));
+        localStorage.setItem('ra.format', '2');
       } catch (e) { /* private mode: nothing kept */ }
     }, 300);
   }
@@ -302,6 +303,8 @@ export class Engine {
     try {
       const p = localStorage.getItem('ra.pattern'), k = localStorage.getItem('ra.kit');
       if (k) this.withBytes(unb64(k), (ptr, n) => this.x.ra_kit_load(ptr, n));
+      // kept before 0.5.9: demo sounds made when Envelope 1 shaped the level in the simulator
+      if (k && localStorage.getItem('ra.format') !== '2') { this.x.ra_kit_upgrade_demo(); localStorage.setItem('ra.format', '2'); }
       if (p) this.withBytes(unb64(p), (ptr, n) => this.x.ra_pattern_load(ptr, n));
       const m = localStorage.getItem('ra.morph');
       if (m) this.withBytes(unb64(m), (ptr, n) => this.x.ra_morph_restore(ptr, n));    // the kit becomes its blend

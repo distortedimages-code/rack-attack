@@ -59,9 +59,9 @@ struct Calibration
     float detuneSemitones = 2.0f;             // Detune 127 (manual: 0..200 cents)
     float cutoffModSemitones = 96.0f;         // a full Cutoff Mod / Ctrl
     float fmMaxIndex = 8.0f;                  // FM 100 %: "phase overflows by a factor of 8"
-    float selfOscillation = 114.0f;           // resonance from which the filter rings by itself
+    float selfOscillation = 128.0f;           // resonance from which the filter rings by itself (128: never, as measured)
     int tunedRootNote = 60;                   // the note that plays a tuned sound at its own pitch
-    bool env1ToAmp = true;                    // Envelope 1 shapes the level of every sound
+    int ampEnvelope = 2;                      // the envelope that shapes the level of every sound: 1, 2 (0: none, the note's length)
     bool velocityToAmp = false;               // velocity changes the level even without a control set
 
     struct Sample

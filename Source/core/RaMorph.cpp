@@ -212,7 +212,12 @@ bool Morph::restore (const std::vector<std::uint8_t>& data)
     size_t at = 10;
     for (auto* ends : { &a, &b })
     {
-        for (auto& s : ends->s) { std::copy_n (data.begin() + (long) at, s.size(), s.begin()); at += s.size(); }
+        for (auto& s : ends->s)
+        {
+            std::copy_n (data.begin() + (long) at, s.size(), s.begin());
+            at += s.size();
+            upgradeOldDemoSound (s.data());             // a morph kept by 0.5.8 or before, with the demo kits
+        }
         for (auto& e : ends->e) { std::copy_n (data.begin() + (long) at, e.size(), e.begin()); at += e.size(); }
     }
     return true;

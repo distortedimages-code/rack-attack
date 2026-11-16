@@ -125,6 +125,19 @@ int main()
     }
 
     //==========================================================================
+    // RA_MEASURE_SIM=<file>: the guided measurement on the simulator as it is by default, its report written to the
+    // file (to set it beside a real unit's report.json)
+    if (const char* path = std::getenv ("RA_MEASURE_SIM"))
+    {
+        measure::SynthRig sim (Calibration::defaults(), 1, 36, 44100.0);
+        measure::Bench bench (sim, 0x7F, 1, 36, 5);
+        const auto r = bench.run();
+        juce::File (juce::String (path)).replaceWithText (juce::JSON::toString (r.report));
+        std::printf ("simulator measured: %s\n", r.message.toRawUTF8());
+        return 0;
+    }
+
+    //==========================================================================
     const auto want = truth();
     measure::SynthRig rig (want, 1, 36);
     measure::Bench bench (rig, 0x7F, 1, 36, 5);
@@ -178,7 +191,8 @@ int main()
     within (c.sustainLevel[64], want.sustainLevel[64], 0.03, "sustain 64");
     expect (c.velocityToAmp, "la vélocité joue sur le volume"_fr);
     within (c.velocityGain[64], want.velocityGain[64], 0.04, "vélocité 64"_fr);
-    expect (c.env1ToAmp, "l'enveloppe 1 règle le volume"_fr);
+    expect (c.ampEnvelope == 2, "l'enveloppe 2 règle le volume : "_fr + juce::String (c.ampEnvelope));
+    expect (r.report["ampProbe"]["takes"].size() == 11, "les essais de l'ampli sont notés"_fr);
     within (c.selfOscillation, want.selfOscillation, 3.0, "le filtre siffle à partir de"_fr);
     near (c.resonanceK[48], want.resonanceK[48], 0.15, "amortissement 48");
     near (c.resonanceK[96], want.resonanceK[96], 0.3, "amortissement 96");
@@ -233,6 +247,25 @@ int main()
         near (back.cutoffHz[64], c.cutoffHz[64], 1e-5, "coupure relue");
         expect (back.fallCurves.size() == 9 && back.samples[2].data.size() == c.samples[2].data.size(), "courbes et cymbales relues");
         expect (std::abs (back.samples[0].data[100] - c.samples[0].data[100]) < 1e-6f, "échantillons intacts"_fr);
+        expect (back.ampEnvelope == 2, "l'enveloppe de l'ampli relue"_fr);
+
+        // as 0.5.4 wrote it for a unit whose filter never rang by itself: the manual's 114 in the calibration, -1 in
+        // the report, and no ampEnvelope (Envelope 1 tried only)
+        measure::Result old;
+        old.calibration = Calibration::defaults();
+        old.calibration.selfOscillation = 114.0f;
+        for (int v = 0; v < 128; ++v)
+            old.calibration.resonanceK[(size_t) v] = v <= 112 ? Calibration::defaults().resonanceK[(size_t) v]
+                                                              : 2.0f * (1.0f - (float) v / 114.0f);
+        auto* rep = new juce::DynamicObject();
+        rep->setProperty ("selfOscillation", -1);
+        old.report = juce::var (rep);
+        const auto oldFile = measure::save (old, folder, "old-");
+        Calibration fromOld;
+        expect (measure::load (oldFile, fromOld, error), "ancien fichier relu " + error);
+        expect (fromOld.selfOscillation >= 128.0f && fromOld.resonanceK[120] > 0.0f && fromOld.resonanceK[127] > 0.0f,
+                "ancien fichier : le filtre ne siffle toujours pas seul (résonance 120 : "_fr + juce::String (fromOld.resonanceK[120], 4) + ")");
+        expect (fromOld.ampEnvelope == 2, "ancien fichier : l'enveloppe 2 règle le volume"_fr);
         folder.deleteRecursively();
     }
 

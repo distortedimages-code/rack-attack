@@ -27,8 +27,8 @@ static std::array<std::uint8_t, soundBytes> plainSound()
     s[0x1A] = 127; s[0x1B] = 0; s[0x1C] = 0; s[0x1D] = 0; s[0x24] = 64; s[0x25] = 3;
     s[0x26] = 0; s[0x27] = 127; s[0x28] = 0; s[0x29] = 0;                      // filter bypass
     s[0x35] = 127;
-    s[0x3F] = 0; s[0x40] = 127; s[0x41] = 127; s[0x42] = 0; s[0x43] = 0;       // Env 1: sustain full
-    s[0x45] = 0; s[0x46] = 40; s[0x47] = 0; s[0x48] = 0; s[0x49] = 0;
+    s[0x3F] = 0; s[0x40] = 40; s[0x41] = 0; s[0x42] = 0; s[0x43] = 0;
+    s[0x45] = 0; s[0x46] = 127; s[0x47] = 127; s[0x48] = 0; s[0x49] = 0;       // Env 2 (the amp's): sustain full
     s[0x4C] = 0; s[0x4D] = 0; s[0x4E] = 0; s[0x50] = 0; s[0x51] = 0; s[0x53] = 0;
     s[0x55] = 1; s[0x56] = 0; s[0x57] = 0; s[0x58] = 0; s[0x5A] = 0; s[0x5B] = 127; s[0x5E] = 0;
     return s;
@@ -100,8 +100,8 @@ int main()
         syn.prepare (sr);
         syn.setGlobalChannel (1);
         auto s = plainSound();
-        s[0x41] = 0;
-        s[0x40] = 40;                     // short decay
+        s[0x47] = 0;
+        s[0x46] = 40;                     // short decay
         syn.setSound (0, s.data());
         note (syn, 1, 36, 127);
         const double decayMs = cal.decayMs[40];
@@ -113,21 +113,34 @@ int main()
         CHECK (syn.activeVoices() == 0);
     }
 
-    // Filter: low-pass at cutoff 64 with resonance past the self-oscillation point rings at ~440 Hz
+    // Filter: as measured on a unit, it never rings by itself (no input, resonance 120: silence); with a calibration
+    // that has a self-oscillation point, past it the low-pass rings at the cutoff
+    for (const bool rings : { false, true })
     {
         Synth syn;
         syn.prepare (sr);
         syn.setGlobalChannel (1);
+        auto c = Calibration::defaults();
+        if (rings)
+        {
+            c.selfOscillation = 114.0f;
+            for (int v = 0; v < 128; ++v)
+                c.resonanceK[(size_t) v] = 2.0f * (1.0f - (float) v / c.selfOscillation);
+        }
+        syn.setCalibration (c);
         auto s = plainSound();
         s[0x1A] = 0;                      // no oscillator: the filter alone
         s[0x26] = 1; s[0x27] = 64; s[0x28] = 120;
         syn.setSound (0, s.data());
         note (syn, 1, 36, 127);
         auto x = run (syn, 1.0);
-        const double f = frequency (x, 24000);
-        std::printf ("self-oscillation at cutoff 64: %.1f Hz, level %.3f\n", f, rms (x, 24000, x.size()));
-        CHECK (std::abs (f - 440.0) < 25.0);
-        CHECK (rms (x, 24000, x.size()) > 0.01);
+        const double f = frequency (x, 24000), level = rms (x, 24000, x.size());
+        std::printf ("resonance 120 %s, cutoff 64 (%.1f Hz): %.1f Hz, level %.4f\n", rings ? "past self-oscillation" : "as measured",
+                     c.cutoffHz[64], f, level);
+        if (rings)
+            CHECK (std::abs (f - c.cutoffHz[64]) < 25.0 && level > 0.01);
+        else
+            CHECK (level < 1e-4);
     }
 
     // Crack: Length 3 at 100 Hz gives three dips, then a steady level
@@ -205,7 +218,7 @@ int main()
             syn.prepare (sr);
             syn.setGlobalChannel (1);
             auto s = plainSound();
-            s[0x41] = 0; s[0x40] = 50;
+            s[0x47] = 0; s[0x46] = 50;
             s[0x55] = 0; s[0x57] = 127; s[0x56] = 0;
             syn.setSound (0, s.data());
             std::array<std::uint8_t, fxBytes> fx {};
@@ -231,7 +244,7 @@ int main()
             syn.prepare (sr);
             syn.setGlobalChannel (1);
             auto s = plainSound();
-            s[0x41] = 0; s[0x40] = 10;                       // a click
+            s[0x47] = 0; s[0x46] = 10;                       // a click
             s[0x55] = 0; s[0x57] = 127; s[0x56] = 0;
             syn.setSound (0, s.data());
             std::array<std::uint8_t, fxBytes> fx {};

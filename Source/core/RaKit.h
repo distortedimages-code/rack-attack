@@ -97,4 +97,10 @@ private:
 // The simulator's playable kit for program p (0..49): named "SIM 01".., 24 drum and
 // tuned sounds, reverb, delay, chorus and overdrive. Only sounds, effects and the name change.
 void fillDemoKit (Kit&, int program);
+
+// Up to 0.5.8 the demo kits (and the simulator) used Envelope 1 for the level and Envelope 2 for the pitch drop.
+// A sound still made that way (Envelope 2 at 0 / 40 / 0 / 0 / 0, Envelope 1's shape at 20) gets its two envelopes
+// and their modulation sources swapped, so it sounds the same now that Envelope 2 shapes the level, as on the unit.
+bool upgradeOldDemoSound (std::uint8_t* sound);      // kSoundDataSize bytes; true if it was one
+int upgradeOldDemoKit (Kit&);                        // the sounds upgraded
 }

@@ -632,6 +632,7 @@ Result Bench::run()
             levels (r);
             attacks (r);
             falls (r);
+            ampProbe (r);
             filter (r);
             speeds (r);
             samples (r);
@@ -849,7 +850,7 @@ void Bench::levels (Result& r)
 {
     auto& c = r.calibration;
     Points volume, velocity, sustain;
-    double env1Left = 1.0;
+    double env1Left = 1.0, env2Left = 1.0;
     group ("On mesure les volumes", [&]
     {
         volume.clear(); velocity.clear(); sustain.clear();
@@ -870,16 +871,23 @@ void Bench::levels (Result& r)
             velocity.push_back ({ vel, amplitude (play (p), 60, 230) });
         }
 
-        // Envelope 1 falling at once to nothing: does the sound stop?
+        // Each envelope falling at once to nothing: does the sound stop? (On the unit measured in 2026, Envelope 1
+        // didn't: Envelope 2 is the one Waldorf's sounds use for the level.)
         reset ({ { env1 + decayOf, 0 }, { env1 + sustainOf, 0 } });
         env1Left = amplitude (play ({ 500, 40 }), 300, 480) / std::max (1e-9, ref);
+        reset ({ { env2 + decayOf, 0 }, { env2 + sustainOf, 0 } });
+        env2Left = amplitude (play ({ 500, 40 }), 300, 480) / std::max (1e-9, ref);
+        ampEnvelope = env1Left < 0.1 ? 1 : env2Left < 0.1 ? 2 : 0;
 
-        if (env1Left < 0.1)
+        if (ampEnvelope != 0)
+        {
+            reset ({ { envAt() + decayOf, 0 } });
             for (int s : everyEight())
             {
-                set (env1 + sustainOf, s);
+                set (envAt() + sustainOf, s);
                 sustain.push_back ({ s, amplitude (play ({ 640, 40 }), 480, 620) });
             }
+        }
 
         reset ({});
         const double again = amplitude (play ({ 260, 40 }), 60, 230);
@@ -891,6 +899,8 @@ void Bench::levels (Result& r)
     report->setProperty ("velocity", toVar (velocity));
     report->setProperty ("sustain", toVar (sustain));
     report->setProperty ("env1Left", env1Left);
+    report->setProperty ("env2Left", env2Left);
+    report->setProperty ("ampEnvelope", ampEnvelope);
 
     auto normalise = [] (Points p)
     {
@@ -918,9 +928,10 @@ void Bench::levels (Result& r)
             c.velocityGain = linTable (floor (vel, velocity.back().second), c.velocityGain);
     }
 
-    c.env1ToAmp = env1Left < 0.1;
-    if (! c.env1ToAmp)
-        warn ("L'enveloppe 1 ne semble pas régler le volume : les enveloppes ne sont pas mesurées."_fr);
+    if (ampEnvelope != 0)
+        c.ampEnvelope = ampEnvelope;
+    else
+        warn ("Aucune enveloppe ne semble régler le volume : les enveloppes ne sont pas mesurées."_fr);
     if (sustain.size() >= 8 && sustain.back().second > noise * 20.0)
     {
         c.sustainLevel = linTable (floor (normalise (sustain), sustain.back().second), c.sustainLevel);
@@ -932,8 +943,9 @@ void Bench::levels (Result& r)
 void Bench::attacks (Result& r)
 {
     auto& c = r.calibration;
-    if (! c.env1ToAmp)
+    if (ampEnvelope == 0)
         return;
+    const int env = envAt();
     Points pts;
     bool instant = false;
     group ("On mesure les attaques", [&]
@@ -943,7 +955,7 @@ void Bench::attacks (Result& r)
         const double ref = amplitude (play ({ 260, 40 }), 60, 230);
         for (int v : everyEight())
         {
-            set (env1 + attackOf, v);
+            set (env + attackOf, v);
             Play p { 7000, 40 };
             p.holdUntil = [this, ref] (const Shot& s)
             {
@@ -969,7 +981,7 @@ void Bench::attacks (Result& r)
             if (total >= 2.0)
                 pts.push_back ({ v, total });
         }
-        set (env1 + attackOf, 0);
+        set (env + attackOf, 0);
     });
     report->setProperty ("attack", toVar (pts));
     if (clean (pts).size() >= 4)
@@ -987,8 +999,9 @@ void Bench::attacks (Result& r)
 void Bench::falls (Result& r)
 {
     auto& c = r.calibration;
-    if (! c.env1ToAmp)
+    if (ampEnvelope == 0)
         return;
+    const int env = envAt();
 
     // the moment the envelope falls under a level, looking from "fromMs", in ms after
     // "originMs" (the note on or the note off)
@@ -1011,10 +1024,10 @@ void Bench::falls (Result& r)
         ref = amplitude (play ({ 260, 40 }), 60, 230);
         const double leadMs = ms (lead);
 
-        reset ({ { env1 + sustainOf, 0 } });
+        reset ({ { env + sustainOf, 0 } });
         for (int v : everyEight())
         {
-            set (env1 + decayOf, v);
+            set (env + decayOf, v);
             Play p { 7000, 40 };
             p.holdUntil = [this, ref, leadMs, &fallsUnder] (const Shot& s) { return fallsUnder (envelope (s.x), 0.4 * ref, leadMs + 1.0, leadMs) >= 0.0; };
             const double t = fallsUnder (envelope (play (p).x), 0.5 * ref, leadMs + 1.0, leadMs);
@@ -1031,11 +1044,11 @@ void Bench::falls (Result& r)
                 best = std::abs (std::log (std::max (0.1, t) / 120.0));
                 d0 = v;
             }
-        set (env1 + decayOf, d0);
+        set (env + decayOf, d0);
         for (int i = 0; i < 9; ++i)
         {
             const int shape = (int) std::lround (i * 127.0 / 8.0);
-            set (env1 + shapeOf, shape);
+            set (env + shapeOf, shape);
             Play p { 8000, 40 };
             p.holdUntil = [this, ref, leadMs, &fallsUnder] (const Shot& s)
             {
@@ -1045,13 +1058,13 @@ void Bench::falls (Result& r)
             };
             shapes.push_back (envelope (play (p).x));
         }
-        set (env1 + shapeOf, 0);
+        set (env + shapeOf, 0);
 
         // release, from a full sustain
         reset ({});
         for (int v : everyEight (8))
         {
-            set (env1 + releaseOf, v);
+            set (env + releaseOf, v);
             Play p { 220, 7000 };
             p.afterUntil = [this, ref, &fallsUnder] (const Shot& s) { return fallsUnder (envelope (s.x), 0.4 * ref, ms (s.noteOffAt) + 1.0, ms (s.noteOffAt)) >= 0.0; };
             const auto s = play (p);
@@ -1059,7 +1072,7 @@ void Bench::falls (Result& r)
             if (t >= 0.0)
                 release.push_back ({ v, t });
         }
-        set (env1 + releaseOf, 10);
+        set (env + releaseOf, 10);
 
         const double again = amplitude (play ({ 260, 40 }), 60, 230);
         if (std::abs (again / std::max (1e-9, ref) - 1.0) > 0.12)
@@ -1141,6 +1154,62 @@ void Bench::falls (Result& r)
         warn ("Les temps de relâchement n'ont pas pu être mesurés."_fr);
 }
 
+int Bench::envAt() const   { return ampEnvelope == 1 ? env1 : env2; }
+
+//==============================================================================
+// How the amp follows its modulation (Vol Mod and Vol Ctrl): the other envelope falls, and the level is written
+// down every 5 ms for a few settings. Only recorded, for the record (report.json, "ampProbe"): the simulator's
+// rule comes from it later.
+void Bench::ampProbe (Result& r)
+{
+    auto& c = r.calibration;
+    const int other = ampEnvelope == 1 ? env2 : env1, src = ampEnvelope == 1 ? 1 : 0;
+    // a decay of about 150 ms, from what was measured
+    int d = 64;
+    for (int v = 0; v < 128; ++v)
+        if (std::abs (std::log (std::max (1.0f, c.decayMs[(size_t) v]) / 150.0f)) < std::abs (std::log (std::max (1.0f, c.decayMs[(size_t) d]) / 150.0f)))
+            d = v;
+    struct Setting { int mod, ctrl, velocity; };
+    const Setting settings[] { { 64, 64, 127 }, { 0, 64, 127 }, { 32, 64, 127 }, { 96, 64, 127 }, { 127, 64, 127 },
+                               { 64, 127, 127 }, { 64, 127, 40 }, { 64, 0, 127 }, { 64, 0, 40 },
+                               { 0, 127, 127 }, { 0, 127, 40 } };
+    juce::Array<juce::var> traces;
+    group ("On regarde comment l'ampli suit ses modulations"_fr, [&]
+    {
+        traces.clear();
+        reset ({});
+        const double ref = std::max (1e-9, amplitude (play ({ 260, 40 }), 60, 230));
+        reset ({ { other + decayOf, d }, { other + sustainOf, 0 }, { aVolModSrc, src }, { aVolCtrlSrc, 0 } });
+        for (auto& st : settings)
+        {
+            set (aVolMod, st.mod);
+            set (aVolCtrl, st.ctrl);
+            Play p { 600, 40 };
+            p.velocity = st.velocity;
+            const auto e = envelope (play (p).x);
+            juce::Array<juce::var> trace;
+            for (int k = 0; k <= 120; ++k)
+            {
+                const size_t i = (size_t) (ms (lead) + 5.0 * k);
+                trace.add (i < e.size() ? std::round (1000.0 * e[i] / ref) / 1000.0 : 0.0);
+            }
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("volMod", st.mod);
+            o->setProperty ("volCtrl", st.ctrl);
+            o->setProperty ("velocity", st.velocity);
+            o->setProperty ("level", trace);
+            traces.add (juce::var (o));
+        }
+        reset ({});
+    });
+    auto* o = new juce::DynamicObject();
+    o->setProperty ("source", src == 0 ? "Env1" : "Env2");
+    o->setProperty ("decay", d);
+    o->setProperty ("everyMs", 5);
+    o->setProperty ("takes", traces);
+    report->setProperty ("ampProbe", juce::var (o));
+}
+
 //==============================================================================
 void Bench::filter (Result& r)
 {
@@ -1149,7 +1218,7 @@ void Bench::filter (Result& r)
     Points cutoff, rings;
     int threshold = -1;
     std::vector<std::pair<int, double>> damping;
-    juce::Array<juce::var> types;
+    juce::Array<juce::var> types, modTries;
     double modDepth = 0.0;
 
     group ("On mesure le filtre", [&]
@@ -1261,20 +1330,31 @@ void Bench::filter (Result& r)
             types.add (bands);
         }
 
-        // 3. how far a modulation moves the cutoff: Envelope 2 at its top, a quarter of the depth
-        reset ({ { o1Shape, 5 }, { o1Pitch, 64 }, { mixO1, 4 }, { fType, 1 }, { fReso, 127 }, { aVolume, 70 },
-                 { fCutoff, nearest (c.cutoffHz, 300.0) } });
-        double p0 = 0.0, p1 = 0.0;
+        // 3. how far a modulation moves the cutoff: an envelope at its top (both are open), the full depth, in each
+        // of the two slots and from each envelope (0.5.4 tried a quarter from Envelope 2 and saw half a semitone)
+        modTries.clear();
+        const int low = nearest (c.cutoffHz, 150.0);
+        reset ({ { o1Shape, 5 }, { o1Pitch, 64 }, { mixO1, 4 }, { fType, 1 }, { fReso, 120 }, { aVolume, 70 }, { fCutoff, low } });
+        double p0 = 0.0;
         const double f0 = peakFrequency (playLoud ({ 420, 40 }).x, lead + at (120), at (290), sr, 20.0, sr * 0.45, &p0);
-        reset ({ { o1Shape, 5 }, { o1Pitch, 64 }, { mixO1, 4 }, { fType, 1 }, { fReso, 127 }, { aVolume, 70 },
-                 { fCutoff, nearest (c.cutoffHz, 300.0) }, { fMod1, 80 }, { fMod1Src, 1 } });
-        const double f1 = peakFrequency (playLoud ({ 420, 40 }).x, lead + at (120), at (290), sr, 20.0, sr * 0.45, &p1);
-        modDepth = p0 > 20.0 && p1 > 20.0 ? 12.0 * std::log2 (f1 / f0) / 0.25 : 0.0;
+        for (auto [slot, source] : { std::pair { fMod1, 1 }, std::pair { fMod2, 1 }, std::pair { fMod1, 0 } })
+        {
+            const int srcAddr = slot == fMod1 ? fMod1Src : fMod2Src;
+            set (srcAddr, source);
+            set (slot, 112);                                  // +75 %
+            double p1 = 0.0;
+            const double f1 = peakFrequency (playLoud ({ 420, 40 }).x, lead + at (120), at (290), sr, 20.0, sr * 0.45, &p1);
+            set (slot, 64);
+            const double depth = p0 > 20.0 && p1 > 20.0 ? 12.0 * std::log2 (f1 / f0) / 0.75 : 0.0;
+            modTries.add (depth);
+            modDepth = std::max (modDepth, depth);
+        }
     });
 
     report->setProperty ("damping", toVar (damping));
     report->setProperty ("filterTypesDb", types);
     report->setProperty ("cutoffModSemitones", modDepth);
+    report->setProperty ("cutoffModTries", modTries);      // Mod 1 from Env 2, Mod 2 from Env 2, Mod 1 from Env 1
     if (modDepth > 2.0 && modDepth < 200.0)
         c.cutoffModSemitones = (float) modDepth;
 
@@ -1319,37 +1399,47 @@ void Bench::speeds (Result& r)
     else
         warn ("La vitesse du crack n'a pas pu être mesurée."_fr);
 
+    int lfoMod = 0;
     group ("On mesure les LFO", [&]
     {
         lfo.clear();
-        reset ({ { aVolMod, 127 }, { aVolModSrc, 2 } });
-        double expected = 0.0, last = 0.0;
-        for (int v = 127; v >= 0; v -= 8)
+        for (int mod : { 32, 127 })               // -50 %: the level follows the LFO halfway (as Waldorf's sounds use Vol Mod)
         {
-            const double durMs = expected > 0.0 ? juce::jlimit (700.0, 4500.0, 4.5 / expected * 1000.0) : 1500.0;
-            if (expected > 0.0 && expected < 0.8)
+            if (! lfo.empty())
                 break;
-            set (l1Speed, v);
-            const auto e = envelope (play ({ durMs, 40 }).x);
-            const int from = (int) ms (lead) + 100, count = (int) e.size() - from - 60;
-            double f = count > 200 ? frequencyOf (e, from, count, 1000.0) : 0.0;
-            const double minHz = 2.5 / (count / 1000.0);
-            if (f < minHz || f > 150.0)
-                f = 0.0;
-            if (f > 0.0)
+            lfoMod = mod;
+            reset ({ { aVolMod, mod }, { aVolModSrc, 2 } });
+            double expected = 0.0, last = 0.0;
+            for (int v = 127; v >= 0; v -= 8)
             {
-                lfo.push_back ({ v, f });
-                expected = last > 0.0 ? f * f / last : f / 1.6;
-                last = f;
+                const double durMs = expected > 0.0 ? juce::jlimit (700.0, 4500.0, 4.5 / expected * 1000.0) : 1500.0;
+                if (expected > 0.0 && expected < 0.8)
+                    break;
+                set (l1Speed, v);
+                const auto e = envelope (play ({ durMs, 40 }).x);
+                const int from = (int) ms (lead) + 100, count = (int) e.size() - from - 60;
+                double f = count > 200 ? frequencyOf (e, from, count, 1000.0) : 0.0;
+                const double minHz = 2.5 / (count / 1000.0);
+                if (f < minHz || f > 150.0)
+                    f = 0.0;
+                if (f > 0.0)
+                {
+                    lfo.push_back ({ v, f });
+                    expected = last > 0.0 ? f * f / last : f / 1.6;
+                    last = f;
+                }
+                else if (expected > 0.0)
+                    expected /= 1.6;
+                else if (v > 127 - 24)
+                    continue;                       // too fast to see, maybe: the next ones
+                else
+                    expected = 0.5;
             }
-            else if (expected > 0.0)
-                expected /= 1.6;
-            else
-                expected = 0.5;
+            set (l1Speed, 64);
         }
-        set (l1Speed, 64);
     });
     report->setProperty ("lfo", toVar (lfo));
+    report->setProperty ("lfoVolMod", lfoMod);
     if (clean (lfo).size() >= 4)
         c.lfoHz = logTable (lfo, c.lfoHz, 4);
     else
@@ -1709,7 +1799,7 @@ namespace
         o->setProperty ("fmMaxIndex", c.fmMaxIndex);
         o->setProperty ("selfOscillation", c.selfOscillation);
         o->setProperty ("tunedRootNote", c.tunedRootNote);
-        o->setProperty ("env1ToAmp", c.env1ToAmp);
+        o->setProperty ("ampEnvelope", c.ampEnvelope);
         o->setProperty ("velocityToAmp", c.velocityToAmp);
         juce::Array<juce::var> samples;
         for (int i = 0; i < 3; ++i)
@@ -1853,7 +1943,21 @@ bool load (const juce::File& file, Calibration& c, juce::String& error)
     out.fmMaxIndex = number ("fmMaxIndex", out.fmMaxIndex);
     out.selfOscillation = number ("selfOscillation", out.selfOscillation);
     out.tunedRootNote = (int) number ("tunedRootNote", (float) out.tunedRootNote);
-    out.env1ToAmp = json.hasProperty ("env1ToAmp") ? (bool) json["env1ToAmp"] : out.env1ToAmp;
+    // up to 0.5.8, a unit whose filter never rang by itself still got the manual's point (114) past which it does:
+    // the report says what was heard, and the resonance goes on as measured instead
+    const auto report = juce::JSON::parse (text (zip, "report.json"));
+    if (report.hasProperty ("selfOscillation") && (int) report["selfOscillation"] < 0 && out.selfOscillation < 128.0f)
+    {
+        const int last = juce::jlimit (8, 120, (int) out.selfOscillation - 2) / 8 * 8;     // the last resonance measured
+        for (int v = last + 1; v < 128; ++v)
+            out.resonanceK[(size_t) v] = out.resonanceK[(size_t) last] * std::exp2 (-0.088f * (float) (v - last));
+        out.selfOscillation = 128.0f;
+    }
+    // up to 0.5.8 only Envelope 1 was tried: "false" there says nothing about Envelope 2
+    if (json.hasProperty ("ampEnvelope"))
+        out.ampEnvelope = juce::jlimit (0, 2, (int) json["ampEnvelope"]);
+    else if (json.hasProperty ("env1ToAmp") && (bool) json["env1ToAmp"])
+        out.ampEnvelope = 1;
     out.velocityToAmp = json.hasProperty ("velocityToAmp") ? (bool) json["velocityToAmp"] : out.velocityToAmp;
     out.source = json["source"].toString().toStdString();
 

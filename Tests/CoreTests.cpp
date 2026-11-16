@@ -347,5 +347,26 @@ int main()
 
     if (failures == 0)
         std::printf ("CoreTests: all passed\n");
+    // A demo sound kept by 0.5.8 (Envelope 1 for the level, Envelope 2 for the pitch) upgrades to today's demo sound
+    {
+        ra::Kit now;
+        ra::fillDemoKit (now, 3);
+        auto old = now.soundData (0);
+        for (int i = 0; i < 6; ++i)
+            std::swap (old[(size_t) (0x3F + i)], old[(size_t) (0x45 + i)]);
+        old[0x07] = 1; old[0x16] = 1;                            // the pitch drop came from Envelope 2
+        for (int a : { 0x0C, 0x20, 0x2D, 0x31, 0x38, 0x3D }) old[(size_t) a] = 0;
+        ra::Kit kept;
+        ra::fillDemoKit (kept, 3);
+        kept.setSoundData (0, old);
+        CHECK (ra::upgradeOldDemoKit (kept) == 1);           // a demo sound from before 0.5.9
+        const auto& got = kept.soundData (0);
+        bool same = true;
+        for (int a : { 0x3F, 0x40, 0x41, 0x42, 0x45, 0x46, 0x47, 0x48, 0x49, 0x07, 0x16 })
+            same = same && got[(size_t) a] == now.soundData (0)[(size_t) a];
+        CHECK (same);                                        // its envelopes are today's
+        CHECK (ra::upgradeOldDemoKit (kept) == 0);           // and once only
+    }
+
     return failures == 0 ? 0 : 1;
 }

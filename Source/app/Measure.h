@@ -90,7 +90,7 @@ public:
     Result run();                             // blocking, on the measuring thread
     void tone();                              // three test notes (the unit's sound 24 is changed)
 
-    static constexpr int expectedSteps = 255;
+    static constexpr int expectedSteps = 270;
 
 private:
     struct Shot
@@ -131,12 +131,15 @@ private:
     void filter (Result&);
     void speeds (Result&);
     void samples (Result&);
+    void ampProbe (Result&);
+    int envAt() const;                        // the envelope that shapes the level: its first address
 
     Rig& rig;
     const int device, channel, baseNote, freeChannel, sound;
     std::array<int, ra::synth::soundBytes> state {};
     double sr = 48000.0, noise = 1e-5, refHz = 700.0;
     int latency = 0, lead = 0, refPitch = 100, envWindow = 128;
+    int ampEnvelope = 0;                      // measured: 1, 2, or 0 when no envelope shapes the level
     int done = 0;
     bool touched = false, clipped = false;
     juce::String what;

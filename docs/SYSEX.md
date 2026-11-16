@@ -128,9 +128,9 @@ Formes d'oscillateur `SHAPE` : `0` Triangle · `1` Sine · `2` Square · `3` Saw
 | `24` | Crack Speed | façade : 1 Hz–5 kHz | ⚠️ |
 | `25` | Crack Length | façade : 1–49, inf | ⚠️ |
 | **Filtre** ||||
-| `26` | Filter Type | ra-editor : `0` Bypass · `1` Low · `2` Band · `3` High · `4` Notch · `5` Shelf · `6` Bell · `7` S&H — **ordre à vérifier** (le manuel liste Low, High, Band) | ⚠️ |
-| `27` | Cutoff | 0–127 | ✅ (messages Electra One) |
-| `28` | Resonance | 0–127 | ⚠️ |
+| `26` | Filter Type | `0` Bypass · `1` Low · `2` Band · `3` High · `4` Notch · `5` Shelf · `6` Bell · `7` S&H — ordre de ra-editor confirmé par la mesure guidée d'une machine (nov. 2026) : réponses en fréquence de chaque type | ✅ |
+| `27` | Cutoff | 0–127 ; mesuré : un demi-ton par pas, `64` ≈ 495 Hz (si 4), 26 Hz à `16`, 18,8 kHz à `127` | ✅ (messages Electra One, mesure) |
+| `28` | Resonance | 0–127 ; mesuré : résonance forte dès le milieu, mais le filtre ne siffle jamais tout seul, même à `126` | ✅ (mesure) |
 | `29` | Drive | 0–127 | ⚠️ |
 | `2A` | Keytrack | façade : −200 %…+196 % (réf. E3) | ⚠️ |
 | `2B` | Cutoff Mod 1 | bipolaire | ⚠️ |
@@ -144,8 +144,8 @@ Formes d'oscillateur `SHAPE` : `0` Triangle · `1` Sine · `2` Square · `3` Saw
 | `33`–`34` | ❓ | | |
 | **Ampli** ||||
 | `35` | Volume | | ⚠️ |
-| `36` | Volume Mod | bipolaire | ⚠️ |
-| `37` | Volume Ctrl | bipolaire | ⚠️ |
+| `36` | Volume Mod | bipolaire. Les sons d'usine : presque tous à `0` (−100 %) depuis l'enveloppe 2. Le simulateur (hypothèse) : négatif, le volume suit sa source ; positif, rien (la mesure 0.5.4 : +100 % depuis le LFO 1 ne fait pas varier le volume) | ⚠️ |
+| `37` | Volume Ctrl | bipolaire. Les sons d'usine : `127` (+100 %) avec la vélocité, ou `64`. Le simulateur (hypothèse) : positif, le volume suit le contrôle (sensibilité à la vélocité) | ⚠️ |
 | `38` | Volume Mod Src | MOD | ⚠️ |
 | `39` | Volume Ctrl Src | CTRL | ⚠️ |
 | `3A` | Pan | centre ❓ | ⚠️ |
@@ -153,7 +153,7 @@ Formes d'oscillateur `SHAPE` : `0` Triangle · `1` Sine · `2` Square · `3` Saw
 | `3C` | Pan Ctrl | bipolaire | ⚠️ |
 | `3D` | Pan Mod Src | MOD | ⚠️ |
 | `3E` | Pan Ctrl Src | CTRL | ⚠️ |
-| **Enveloppes** (ADSR) ||||
+| **Enveloppes** (ADSR) — **l'enveloppe 2 règle le volume** : sur la machine mesurée (nov. 2026), l'enveloppe 1 à zéro ne coupe pas le son ; les sons d'usine de Waldorf gardent l'enveloppe 1 pour les clics et la hauteur (programme Init : enveloppe 1 toute à 0, enveloppe 2 Decay 80), et le manuel dit de la grosse caisse 909 : « Envelope 2 Decay controls its length ». Câblée sur l'ampli ou passant par Vol Mod : à trancher avec la mesure 0.5.9 ||||
 | `3F`–`42` | Env1 Attack, Decay, Sustain, Release | 0–127 (Release à 0 : pas de release) | ⚠️ |
 | `43` | Env1 Shape | façade : Exp → Linear → In → Co (s'applique à Decay et Release) | ⚠️ |
 | `44` | ❓ | | |

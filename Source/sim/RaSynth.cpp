@@ -382,24 +382,70 @@ namespace
 }
 
 //==============================================================================
+namespace
+{
+    // a measured curve, (value, physical value) by increasing value: read between its points on a log scale, and
+    // past its ends with the slope given (in octaves per step)
+    float logCurve (const std::vector<std::pair<float, float>>& pts, float v, float octavesPerStep)
+    {
+        if (v <= pts.front().first)
+            return pts.front().second * std::exp2 ((v - pts.front().first) * octavesPerStep);
+        if (v >= pts.back().first)
+            return pts.back().second * std::exp2 ((v - pts.back().first) * octavesPerStep);
+        for (size_t i = 1; i < pts.size(); ++i)
+            if (v <= pts[i].first)
+            {
+                const auto& [x0, y0] = pts[i - 1];
+                const auto& [x1, y1] = pts[i];
+                return y0 * std::pow (y1 / y0, (v - x0) / (x1 - x0));
+            }
+        return pts.back().second;
+    }
+}
+
+// Where the manual has numbers, they stay; what was measured on a real RackAttack (November 2026, the guided
+// measurement) replaces the rest: the cutoff, the volume, the resonance, how far a pitch modulation goes, and
+// which envelope shapes the level (Envelope 2: Envelope 1 left the level alone on the unit, and Waldorf's factory
+// sounds keep it for clicks and pitch, e.g. Envelope 1 all at 0 in their init program and many kits).
 Calibration Calibration::defaults()
 {
+    // cutoff: one semitone a step, 64 = 495 Hz (about B4, two semitones above the manual's 440 Hz); bent at the bottom
+    static const std::vector<std::pair<float, float>> cutoff {
+        { 16, 26.1f }, { 24, 49.9f }, { 32, 78.1f }, { 40, 122.0f }, { 48, 195.1f }, { 56, 310.8f }, { 64, 494.9f },
+        { 72, 783.2f }, { 80, 1244.2f }, { 88, 1974.3f }, { 96, 3135.3f }, { 104, 4977.2f }, { 112, 7900.1f },
+        { 120, 12544.7f }, { 127, 18818.6f } };
+    // resonance: the filter's damping (2 = none); it rings longer and longer but never on its own
+    static const std::vector<std::pair<float, float>> damping {
+        { 0, 1.618f }, { 8, 1.329f }, { 16, 1.283f }, { 24, 0.775f }, { 32, 0.537f }, { 40, 0.435f }, { 48, 0.295f },
+        { 56, 0.209f }, { 64, 0.143f }, { 72, 0.0995f }, { 80, 0.0597f }, { 88, 0.0377f }, { 96, 0.0257f },
+        { 104, 0.01486f }, { 112, 0.00913f } };
+
+    // pitch: the manual's curve (0.0079 Hz .. 18.7 kHz), about a tenth of a semitone higher on the unit
+    static const std::vector<std::pair<float, float>> pitch {
+        { 68, 20.610f }, { 72, 32.702f }, { 76, 51.910f }, { 80, 82.407f }, { 84, 130.822f }, { 88, 207.624f },
+        { 92, 329.502f }, { 96, 523.270f }, { 100, 830.398f }, { 104, 1318.36f }, { 108, 2092.43f }, { 112, 3321.24f },
+        { 116, 5273.16f }, { 120, 8371.85f }, { 124, 13290.6f }, { 127, 18788.8f } };
+    const float manual68 = 0.0079f * std::pow (18700.0f / 0.0079f, 68.0f / 127.0f);
+
     Calibration c;
     for (int v = 0; v < 128; ++v)
     {
         const float t = (float) v / 127.0f;
-        c.pitchHz[(size_t) v] = 0.0079f * std::pow (18700.0f / 0.0079f, t);   // manual: 0.0079 Hz .. 18.7 kHz
-        c.cutoffHz[(size_t) v] = 440.0f * std::exp2 (((float) v - 64.0f) / 12.0f);   // manual: 64 rings at 440 Hz
+        c.pitchHz[(size_t) v] = v >= 68 ? logCurve (pitch, (float) v, 0.0f)
+                                        : 0.0079f * std::pow (18700.0f / 0.0079f, t) * (pitch.front().second / manual68);
+        c.cutoffHz[(size_t) v] = logCurve (cutoff, (float) v, 1.0f / 12.0f);
         c.attackMs[(size_t) v] = v == 0 ? 0.0f : 0.5f * std::exp2 (t * 14.0f);
         c.decayMs[(size_t) v] = 1.0f * std::exp2 (t * 14.0f);
         c.releaseMs[(size_t) v] = 1.0f * std::exp2 (t * 14.0f);
         c.lfoHz[(size_t) v] = 0.02f * std::exp2 (t * 11.0f);
-        c.crackHz[(size_t) v] = std::pow (5000.0f, t);                             // manual: 1 Hz .. 5 kHz
-        c.volumeGain[(size_t) v] = t * t;
+        c.crackHz[(size_t) v] = std::pow (5000.0f, t);                             // manual: 1 Hz .. 5 kHz (measured: the same)
+        c.volumeGain[(size_t) v] = t;                                              // measured: straight
         c.velocityGain[(size_t) v] = t * t;
         c.sustainLevel[(size_t) v] = t;
-        c.resonanceK[(size_t) v] = 2.0f * (1.0f - (float) v / c.selfOscillation);
+        c.resonanceK[(size_t) v] = logCurve (damping, (float) v, -0.0880f);      // past 112: -0.7 dB of damping a step
     }
+    c.pitchModSemitones = 31.8f;                                                   // measured (manual: unknown)
+    c.detuneSemitones = 2.0f;                                                      // measured 1.98 (manual: 200 cents)
     return c;
 }
 
@@ -513,6 +559,24 @@ struct Synth::Impl
     }
 
     float msToSamples (float ms) const   { return ms * (float) sr / 1000.0f; }
+
+    // a strong resonance can lift a band by 40 dB: past about 4 (12 dB over full scale) it flattens, as a digital
+    // filter's numbers would
+    static float softLimit (float y)
+    {
+        const float a = std::abs (y);
+        return a <= 2.0f ? y : std::copysign (2.0f + 2.0f * std::tanh ((a - 2.0f) * 0.5f), y);
+    }
+
+    static float ampModulation (float mod, float source, float ctrl, float controller)
+    {
+        float g = 1.0f;
+        if (mod < 0.0f) g -= -mod * (1.0f - source);
+        if (ctrl > 0.0f) g -= ctrl * (1.0f - controller);
+        else if (ctrl < 0.0f) g -= -ctrl * controller;
+        return std::clamp (g, 0.0f, 1.0f);
+    }
+    const Env& ampEnv (const Voice& v) const   { return cal.ampEnvelope == 1 ? v.e1 : v.e2; }
 
     void envStart (Env& e, const std::uint8_t* p)
     {
@@ -791,9 +855,11 @@ struct Synth::Impl
         v.a2 = v.g * v.a1;
         v.a3 = v.g * v.a2;
 
-        // level (Envelope 1 is applied every sample) and place
+        // level (the amp's envelope is applied every sample) and place. As the factory sounds use them: a negative
+        // Vol Mod makes the level follow its source (-100 %: all the way), a positive Vol Ctrl makes it follow its
+        // controller (+100 % velocity: velocity sensitive). The other signs can't make it louder than Volume.
         v.level = cal.volumeGain[s[aVolume]] * (cal.velocityToAmp ? cal.velocityGain[(size_t) juce_clampVel (v.velocity)] : 1.0f)
-                * std::clamp (1.0f + bip (s[aVolMod]) * modValue (v, s[aVolModSrc]) + bip (s[aVolCtrl]) * ctrlValue (v, s[aVolCtrlSrc]), 0.0f, 2.0f);
+                * ampModulation (bip (s[aVolMod]), modValue (v, s[aVolModSrc]), bip (s[aVolCtrl]), ctrlValue (v, s[aVolCtrlSrc]));
         float pan = bip (s[aPan]) + bip (s[aPanMod]) * modValue (v, s[aPanModSrc]) + bip (s[aPanCtrl]) * ctrlValue (v, s[aPanCtrlSrc]);
         pan = std::clamp (pan, -1.0f, 1.0f);
         const int out = s[dryOut];
@@ -892,15 +958,15 @@ struct Synth::Impl
             return x;
         if (type == 7)
         {
-            // S&H: a lower sample rate, set by the resonance
-            const float rate = 44100.0f * std::pow (2.6f / 44100.0f, uni (s[fReso]));
+            // S&H: a lower sample rate, set by the resonance (2.6 Hz at the end); measured at 64: about 15 kHz
+            const float rate = std::max (2.6f, 44100.0f * std::pow (1.0f - (float) s[fReso] / 127.0f, 1.5f));
             v.shCount += rate / (float) sr;
             if (v.shCount >= 1.0f)
             {
                 v.shCount -= std::floor (v.shCount);
                 v.shHold = x;
             }
-            return v.shHold;
+            return 0.4f * v.shHold;                     // measured at 64: about 8 dB under the input
         }
         const float k = v.k;
         const float v3 = x - v.ic2;
@@ -919,9 +985,9 @@ struct Synth::Impl
         const float lp = v2, bp = v1, hp = x - std::max (k, 0.0f) * v1 - v2;
         switch (type)
         {
-            case 1: return lp;
-            case 2: return bp * std::max (k, 0.15f);
-            case 3: return hp;
+            case 1: return softLimit (lp);
+            case 2: return softLimit (2.0f * bp);      // measured: not normalised, 6 dB above the band of a 2-pole
+            case 3: return softLimit (hp);
             case 4: return x - std::max (k, 0.0f) * v1;
             case 5:
             {
@@ -984,14 +1050,15 @@ struct Synth::Impl
                 }
                 y *= v.fade;
             }
-            const float amp = v.level * (cal.env1ToAmp ? v.e1.level : 1.0f);
+            const float amp = v.level * (cal.ampEnvelope != 0 ? ampEnv (v).level : 1.0f);
             const float wet = y * amp;
             L[i] += wet * v.panL;
             R[i] += wet * v.panR;
             fxIn[fxi][(size_t) i] += wet * send;
             peak = std::max (peak, std::abs (wet));
 
-            const bool envDone = cal.env1ToAmp ? v.e1.stage == Env::Stage::idle : (v.e1.stage == Env::Stage::idle && v.e2.stage == Env::Stage::idle);
+            const bool envDone = cal.ampEnvelope != 0 ? ampEnv (v).stage == Env::Stage::idle
+                                                      : (v.e1.stage == Env::Stage::idle && v.e2.stage == Env::Stage::idle);
             if (envDone && i > 0)
             {
                 v.active = false;

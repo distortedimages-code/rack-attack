@@ -1,14 +1,10 @@
-**RackAttack Editor 0.5.13** : solo et mute en glissant les sons, un stop qui arrête vraiment la machine, les kits en Mode MIDI Plug-in signalés (et passés en Native d'un clic), le canal d'« accorde mon son » au choix.
+**RackAttack Editor 0.5.14** : les écrans d'enveloppe et de LFO suivent ce qu'on entend, un LFO libre ne tire plus une hauteur au hasard à chaque note, et le kick envoyé sur un autre effet s'entend tout de suite.
 
-- **Solo et mute en glissant** : dans le séquenceur, tire un son vers le bas pour le couper (ou le remettre), vers le haut pour le mettre en solo (ou l'en sortir). Plusieurs solos possibles ; les autres sons se grisent. Aussi dans le menu du clic droit, et dans la version web.
-- **Le stop arrête tout sur la machine** : il envoie maintenant All Notes Off sur le canal de la machine et ses canaux accordés. Un son dont le pattern interne est en Latch ou Toggle continuait à jouer après le stop.
-- **Lire les noms** : quand la machine ne prend pas les Program Change, la lecture s'arrête au bout de 3 programmes au lieu de remplir la liste avec 50 fois le même nom, et dit quoi régler (Rx PrgChg sur On, le canal).
-- **Kits en Mode MIDI Plug-in ou GlobalChn** : beaucoup de kits d'usine le sont, et la machine n'écoute alors plus les notes du séquenceur (Plug-in) ou plus les sons accordés (GlobalChn). Une étiquette rouge le dit en haut du séquenceur ; un clic dessus passe le kit en Native.
-- **Accorde mon son : choix du canal** par clic droit sur la case (le canal de la machine et les canaux déjà pris sont signalés). Un clic simple prend toujours le plus haut canal libre.
-- **FX Send dans le simulateur** : un dosage sec / effet comme sur la machine (le sec reste entier jusqu'au milieu, puis s'efface), et non plus un simple envoi.
-- **La liste des programmes de la page Kit s'affiche** : elle était toute noire (mais on pouvait choisir dedans) dès qu'elle devait défiler, comme tout menu trop long pour l'écran.
-- **Le filtre en Bypass grise ses réglages** (coupure, résonance, keytrack, modulations), sur la page Son, dans le séquenceur, l'accès rapide et la version web. Ils restent réglables, pour préparer le son. Drive reste actif : il sature avant le filtre.
-- **Sortir du mode simulation** rouvre les ports MIDI à neuf et laisse un instant à la machine avant de la chercher, comme quand on rechoisissait les ports à la main.
-- Tout ce qu'apportait la 0.5.12 reste : le simulateur a les enveloppes, les LFO et l'ampli d'un vrai RackAttack.
+- **Les écrans suivent les notes** : sur Env 1 et Env 2, le point rouge part à chaque note du son (séquenceur, clavier, Écouter) et suit les temps mesurés sur la machine. Sur LFO 1 et LFO 2, un cycle avec le point à l'endroit où en est le LFO, et sa vitesse (« 1,4 s le cycle », « 3,2 Hz »).
+- **LFO libre (Sync Off) dans le simulateur** : il tourne en continu, le même pour toutes les notes du son. À Speed 0, la hauteur dérive doucement au lieu de changer au hasard à chaque coup. En Key, il repart du haut à chaque note.
+- **LFO 2 plus clair** : « Speed Mod » règle de combien la source change la vitesse du LFO 2, « Speed Ctrl » est cette source (Velocity, Modwheel, Pressure, Breath, Foot, Keytrack).
+- **Un son envoyé sur un autre effet s'entend tout de suite** : la machine ne le faisait passer dans l'effet qu'après avoir changé la sortie de l'effet et y être revenu. Le plug-in le fait maintenant tout seul.
+- **Lire les noms** : chaque programme est aussi demandé par son numéro (lecture seule). Si la machine ne prend pas les Program Change mais répond ainsi, les noms viennent de là.
+- Tout ce qu'apportait la 0.5.13 reste : solo et mute en glissant, stop qui arrête la machine, Mode MIDI des kits, canal d'« accorde mon son » au choix.
 
 Pour garder un kit sur la machine, toujours **Shift + Store**.

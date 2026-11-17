@@ -1,8 +1,8 @@
-**RackAttack Editor 0.5.9** : le simulateur réglé sur une vraie machine, et une mesure qui va plus loin.
+**RackAttack Editor 0.5.10** : la mesure guidée ne bloque plus sur un faux changement de volume.
 
-- **Le simulateur suit les mesures d'un vrai RackAttack** : la coupure du filtre (un demi-ton par pas, 64 ≈ 495 Hz), la résonance (forte dès le milieu, sans jamais siffler toute seule), le volume (linéaire), les hauteurs, la modulation de hauteur et les 8 types de filtre (l'ordre Bypass, Low, Band, High, Notch, Shelf, Bell, S&H est confirmé).
-- **L'enveloppe 2 règle le volume**, comme sur la machine et dans les sons d'usine de Waldorf (l'enveloppe 1 sert aux clics et à la hauteur). Les kits d'usine sonnent enfin comme des percussions dans le simulateur ; les kits démo sont passés à la même règle, et ceux gardés par la version web ou un morph sont mis à jour tout seuls.
-- **La mesure guidée** (*Outils › Mesurer mon RackAttack…*) trouve l'enveloppe du volume et mesure dessus les attaques, chutes et relâchements ; elle note aussi comment l'ampli suit Vol Mod et Vol Ctrl, la vitesse des LFO et la profondeur de la modulation du filtre. Une nouvelle mesure de ta machine (environ 5 minutes) complète le simulateur.
-- Un fichier de mesures d'avant (0.5.4 à 0.5.8) se recharge sans faire siffler le filtre quand la machine ne le faisait pas.
+- **Plus de pause « Le son a changé de volume »** quand personne n'a touché la machine. À la fin d'une partie, si la note de référence n'a plus le même niveau, la mesure attend le silence, renvoie tout le son de test à la machine (elle a pu rater un message) et réécoute ; si l'écart reste, la partie est refaite une fois toute seule, puis la mesure continue avec une remarque.
+- **Chaque partie commence dans le silence** : un long relâchement laissé par la partie d'avant ne fausse plus la note de référence.
+- **Une mesure arrêtée est gardée** dans Documents › RackAttack › Mesures (`RackAttack-mesure-arretee-….ramesure`) pour voir ce qui a coincé. Elle ne se charge pas comme réglage du simulateur.
+- Tout ce qu'apportait la 0.5.9 reste : le simulateur réglé sur une vraie machine, l'enveloppe 2 qui règle le volume, et la mesure qui va plus loin (enveloppes, ampli, LFO, modulation du filtre).
 
 Pour garder un kit sur la machine, toujours **Shift + Store**.

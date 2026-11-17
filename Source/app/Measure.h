@@ -132,6 +132,8 @@ private:
     void speeds (Result&);
     void samples (Result&);
     void ampProbe (Result&);
+    void waitQuiet (int maxMs);              // until the unit is silent (or maxMs)
+    bool sameLevel (double ref, const char* part);   // the reference note at the end of a part: still ref?
     int envAt() const;                        // the envelope that shapes the level: its first address
 
     Rig& rig;
@@ -140,8 +142,9 @@ private:
     double sr = 48000.0, noise = 1e-5, refHz = 700.0;
     int latency = 0, lead = 0, refPitch = 100, envWindow = 128;
     int ampEnvelope = 0;                      // measured: 1, 2, or 0 when no envelope shapes the level
+    juce::Array<juce::var> levelChecks;       // each end-of-part check, for the report
     int done = 0;
-    bool touched = false, clipped = false;
+    bool touched = false, clipped = false, noiseKnown = false;
     juce::String what;
     juce::DynamicObject::Ptr report;
     Result* result = nullptr;

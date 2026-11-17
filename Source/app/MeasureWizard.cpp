@@ -833,6 +833,8 @@ void MeasureWizard::startMeasure()
             juce::File file;
             if (r->ok && ! isTrial)
                 file = measure::save (*r, measure::defaultFolder());
+            else if (! isTrial && stepsDone.load() > 20)       // stopped: what was measured, to see what went wrong
+                file = measure::save (*r, measure::defaultFolder(), "RackAttack-mesure-arretee-");
             juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MeasureWizard> (this), r, file]
             {
                 if (safe != nullptr)
@@ -929,7 +931,11 @@ void MeasureWizard::finished (const measure::Result& r, const juce::File& file)
     else
     {
         title.setText (resultStopped ? "Mesure arrêtée"_fr : "Ça n'a pas marché"_fr, juce::dontSendNotification);
-        body.setText (r.message + "\n\nLe son 24 du kit est remis comme avant."_fr, juce::dontSendNotification);
+        body.setText (r.message + "\n\nLe son 24 du kit est remis comme avant."_fr
+                      + (file.existsAsFile() ? "\n\nCe qui a été mesuré est gardé dans « "_fr + file.getFileName()
+                                               + " » (Documents › RackAttack › Mesures) : de quoi voir ce qui a coincé."_fr
+                                             : juce::String()),
+                      juce::dontSendNotification);
     }
     details.setText (r.warnings.isEmpty() ? juce::String()
                                           : "À vérifier :\n  - "_fr + r.warnings.joinIntoString ("\n  - "), juce::dontSendNotification);

@@ -1,12 +1,12 @@
 // The web version's screens: the Séquenceur and Son pages of the plug-in, drawn the same way, on the same engine.
 import { Engine, PATTERNS_SET } from './engine.js';
-import { SECTIONS, COLUMNS, isBipolar, valueText, noteName, DIVISIONS, CONDITIONS, quickFor, TRIGS, fit as fitText } from './params.js';
+import { SECTIONS, COLUMNS, isBipolar, isIdle, valueText, noteName, DIVISIONS, CONDITIONS, quickFor, TRIGS, fit as fitText } from './params.js';
 
 const E = new Engine();
 window.raEngine = E;   // for the console, and tests
 const S = { page: 'seq', track: 0, section: 3, sel: new Set(), held: new Map(), stepPage: 0, lastNote: 60, undo: null, undoWhat: '', clip: null, scale: 1 };
 const stage = document.getElementById('stage');
-const FIELD = { mode: 0, length: 1, division: 2, mute: 3, active: 7, trigs: 8, locks: 9 };
+const FIELD = { mode: 0, length: 1, division: 2, mute: 3, active: 7, trigs: 8, locks: 9, solo: 10, audible: 11 };
 
 //==============================================================================
 // little helpers
@@ -417,22 +417,65 @@ for (let i = 0; i < 24; ++i) {
   const b = el('button', 'voice', voicesEl);
   const v = { el: b, num: el('div', 'num', b, two(i + 1)), nm: el('span', 'nm', b), tag: el('span', 'tag', b), lk: el('i', 'lk', b), strip: el('div', 'strip', b) };
   for (let k = 0; k < 16; ++k) el('i', '', v.strip);
-  let lp = 0, longDone = false;
+  // a tap selects; a drag down mutes (or brings the sound back), a drag up puts it solo (or out of solo);
+  // a long press opens the menu
+  let lp = 0, longDone = false, y0 = null, x0 = 0, dy = 0;
+  const unpull = () => { b.style.transform = ''; b.classList.remove('pull-mute', 'pull-solo', 'armed'); y0 = null; dy = 0; renderVoices(); };
   b.addEventListener('click', () => { if (longDone) { longDone = false; return; } selectTrack(i); E.audition(i, S.lastNote); });
   b.addEventListener('contextmenu', ev => { ev.preventDefault(); if (!longDone) voiceMenu(i, b); });
-  b.addEventListener('pointerdown', () => { longDone = false; lp = setTimeout(() => { longDone = true; voiceMenu(i, b); }, 600); });
-  b.addEventListener('pointerup', () => clearTimeout(lp));
-  b.addEventListener('pointerleave', () => clearTimeout(lp));
+  b.addEventListener('pointerdown', ev => {
+    longDone = false; y0 = ev.clientY; x0 = ev.clientX; dy = 0;
+    try { b.setPointerCapture(ev.pointerId); } catch (e) {}
+    lp = setTimeout(() => { if (Math.abs(dy) < 6) { longDone = true; unpull(); voiceMenu(i, b); } }, 600);
+  });
+  b.addEventListener('pointermove', ev => {
+    if (y0 === null) return;
+    const k = S.scale || 1, d = (ev.clientY - y0) / k, across = Math.abs(ev.clientX - x0) / k;
+    if (across > Math.abs(d) + 6) { dy = 0; b.style.transform = ''; b.classList.remove('pull-mute', 'pull-solo', 'armed'); return; }
+    dy = d;
+    if (Math.abs(dy) < 4) return;
+    clearTimeout(lp);
+    b.style.transform = `translateY(${Math.max(-12, Math.min(12, dy / 2))}px)`;
+    b.classList.toggle('pull-mute', dy > 0);
+    b.classList.toggle('pull-solo', dy < 0);
+    b.classList.toggle('armed', Math.abs(dy) >= PAD_PULL);
+    const muted = E.track(i, FIELD.mute) === 1, solo = E.track(i, FIELD.solo) === 1;
+    v.tag.className = 'tag ' + (dy > 0 ? 'mute' : 'solo');
+    v.tag.textContent = dy > 0 ? (muted ? '↓ SON' : '↓ MUTE') : (solo ? '↑ FIN' : '↑ SOLO');
+  });
+  const release = () => {
+    clearTimeout(lp);
+    if (y0 === null) return;
+    const d = dy;
+    unpull();
+    if (Math.abs(d) >= PAD_PULL) { longDone = true; padGesture(i, d > 0); }      // no select on the click that follows
+    else if (Math.abs(d) >= 4) longDone = true;
+  };
+  b.addEventListener('pointerup', release);
+  b.addEventListener('pointercancel', () => { clearTimeout(lp); unpull(); });
   voices.push(v);
+}
+
+const PAD_PULL = 18;     // px: a pad dragged this far mutes (down) or goes solo (up)
+function padGesture (i, down) {
+  const f = down ? FIELD.mute : FIELD.solo, was = E.track(i, f) === 1;
+  E.setTrack(i, f, was ? 0 : 1);
+  const n = two(i + 1);
+  if (down) toast(was ? `Son ${n} : rétabli` : `Son ${n} : mute`);
+  else toast(!was ? `Son ${n} : solo` : [...Array(24).keys()].some(k => E.track(k, FIELD.solo) === 1) ? `Son ${n} : fin du solo` : 'Plus de solo');
+  render();
 }
 
 async function voiceMenu (i, b) {
   const box = boxOf(b);
-  const muted = E.track(i, FIELD.mute) === 1;
-  const id = await menu([{ header: `Son ${two(i + 1)}  ${upper(E.trackName(i))}` }, { id: 1, label: 'Renommer…' }, { id: 2, label: muted ? 'Rétablir le son' : 'Couper (mute)' },
+  const muted = E.track(i, FIELD.mute) === 1, solo = E.track(i, FIELD.solo) === 1;
+  const id = await menu([{ header: `Son ${two(i + 1)}  ${upper(E.trackName(i))}` }, { id: 1, label: 'Renommer…' },
+    { id: 2, label: muted ? 'Rétablir le son  (glisse vers le bas)' : 'Couper (mute)  (glisse vers le bas)' },
+    { id: 6, label: solo ? 'Sortir du solo  (glisse vers le haut)' : 'Solo  (glisse vers le haut)' },
     { id: 3, label: 'Copier la piste' }, { id: 4, label: 'Coller la piste', disabled: !S.clip }, { id: 5, label: 'Init piste : vide, 16 pas, 1/16' }], box.x, box.y + box.h);
   if (id === 1) rename(i);
-  if (id === 2) { E.setTrack(i, FIELD.mute, muted ? 0 : 1); }
+  if (id === 2) padGesture(i, true);
+  if (id === 6) padGesture(i, false);
   if (id === 3) { S.clip = readTrack(i); toast('Piste copiée'); }
   if (id === 4 && S.clip) { keepForUndo('coller'); const n = E.trackName(i); writeTrack(i, S.clip); E.setTrackName(i, n.startsWith('SON ') ? '' : n); toast('Piste collée'); }
   if (id === 5) initTracks(false, i);
@@ -578,7 +621,7 @@ divF.el.addEventListener('click', async () => {
 });
 const muteKey = el('button', 'key', shead, 'Mute');
 muteKey.style.width = '96px';
-muteKey.addEventListener('click', () => { E.setTrack(S.track, FIELD.mute, E.track(S.track, FIELD.mute) ? 0 : 1); render(); });
+muteKey.addEventListener('click', () => padGesture(S.track, true));
 const optKey = el('button', 'key', shead, 'Options ▾');
 optKey.addEventListener('click', options);
 el('div', 'grow', shead);
@@ -836,8 +879,10 @@ for (const col of COLUMNS) {
 
 function renderSon () {
   sonTitle.innerHTML = `<span class="dim">SON ${two(S.track + 1)}</span>  ${upper(E.trackName(S.track))}`;
+  const ftype = E.sound(S.track, 0x26);
   for (const o of sonCells) {
     const a = o.def.a, v = E.sound(S.track, a), names = E.valueNames(a), max = names.length ? Math.max(1, names.length - 1) : 127;
+    o.el.classList.toggle('idle', isIdle(a, ftype));
     setRing(o.ring, v / max, isBipolar(a));
     o.val.textContent = fitText(valueText(a, v, names), 6);
     o.el.classList.toggle('choice', names.length > 0);
@@ -1086,13 +1131,13 @@ function renderHeader () {
 
 function renderVoices () {
   for (let i = 0; i < 24; ++i) {
-    const v = voices[i], muted = E.track(i, FIELD.mute) === 1, mode = E.track(i, FIELD.mode);
+    const v = voices[i], muted = E.track(i, FIELD.mute) === 1, solo = E.track(i, FIELD.solo) === 1, mode = E.track(i, FIELD.mode);
     v.el.classList.toggle('sel', i === S.track);
-    v.el.classList.toggle('muted', muted);
+    v.el.classList.toggle('muted', E.track(i, FIELD.audible) !== 1);      // muted, or another sound is solo
     v.nm.textContent = upper(E.trackName(i));
-    v.tag.className = 'tag' + (muted ? ' mute' : mode === 2 ? ' note' : '');
-    v.tag.textContent = muted ? 'MUTE' : mode === 2 ? 'NOTE' : '';
-    v.lk.style.display = !muted && mode !== 2 && E.track(i, FIELD.locks) > 0 ? '' : 'none';
+    v.tag.className = 'tag' + (muted ? ' mute' : solo ? ' solo' : mode === 2 ? ' note' : '');
+    v.tag.textContent = muted ? 'MUTE' : solo ? 'SOLO' : mode === 2 ? 'NOTE' : '';
+    v.lk.style.display = !muted && !solo && mode !== 2 && E.track(i, FIELD.locks) > 0 ? '' : 'none';
     const len = E.track(i, FIELD.active);
     for (let k = 0; k < 16; ++k) v.strip.children[k].className = k < len && E.isOn(i, k) ? 'on' : '';
   }
@@ -1116,6 +1161,7 @@ function renderSound () {
     q.val.textContent = fitText(valueText(def.a, sv.lv, E.valueNames(def.a)), 7);
     q.why.textContent = def.why; q.why.style.display = def.why ? '' : 'none';
     q.el.classList.toggle('lk', sv.locked);
+    q.el.classList.toggle('idle', isIdle(def.a, v(0x26)));
   });
   const ch = v(0x58);
   tuneKey.classList.toggle('on', ch !== 0);
@@ -1144,6 +1190,7 @@ function renderSound () {
     if (isBipolar(o.def.a)) { i.style.left = Math.min(f, 0.5) * 100 + '%'; i.style.width = Math.max(2, Math.abs(f - 0.5) * 100) + '%'; }
     else { i.style.left = '0'; i.style.width = f * 100 + '%'; }
     o.el.classList.toggle('lk', sv.locked);
+    o.el.classList.toggle('idle', isIdle(o.def.a, E.sound(S.track, 0x26)));
   }
   vtag.textContent = upper(sec.tab);
   drawViz();

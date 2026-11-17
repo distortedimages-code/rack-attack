@@ -192,6 +192,9 @@ MainComponent::MainComponent (AppContext& c)
     if (juce::SystemStats::getEnvironmentVariable ("RA_MENU", {}) == "1")       // screenshots of a menu
         juce::Timer::callAfterDelay (900, [safe = juce::Component::SafePointer<SeqPage> (&seqPage)]
                                      { if (safe != nullptr) safe->demoOptions(); });
+    if (juce::SystemStats::getEnvironmentVariable ("RA_MENU", {}) == "programs")
+        juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer<KitPage> (&kitPage)]
+                                     { if (safe != nullptr) safe->demoPrograms(); });
     startTimer (250);
 
     ctx.start();   // the first time a window opens: ports of last time, then find the unit
@@ -561,6 +564,13 @@ void MainComponent::taskFinished (const juce::String& task, bool ok, const juce:
 {
     bar.setVisible (false);
     statusLine.show (message, ok ? ui::accent : ui::bad);
+    // a kit that the plug-in can't play as it is: said where it is seen, the reason with it
+    const auto& kit = ctx.engine.getKit();
+    if (ok && (task == "kit" || task == "connect" || task == "sendKit") && kit.hasProgram() && kit.programValue (0x11) != 0)
+        statusLine.show ("Kit « "_fr + juce::String (kit.name()) + " » en Mode MIDI "_fr
+                         + (kit.programValue (0x11) == 1 ? "Plug-in : la machine n'écoute plus les notes du séquenceur"_fr
+                                                         : "GlobalChn : les sons accordés ne jouent pas"_fr)
+                         + ". Clic sur l'étiquette rouge en haut (ou page Kit › Mode MIDI) pour le passer en Native."_fr, px::yellow);
     if (task == "readPatterns")
         seqPage.patternsRead (ok);
 }

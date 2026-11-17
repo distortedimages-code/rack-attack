@@ -505,6 +505,11 @@ export class Engine {
     this.playing = false;
     const at = this.ppqAt(this.now());
     const ev = this.parse(this.x.ra_stop(at));
+    // All Notes Off on the unit's channel and each tuned one: it also stops the patterns of the unit's
+    // own sounds (a sound in Latch or Toggle mode keeps playing its pattern after our note otherwise)
+    const channels = new Set();
+    for (let s = 0; s < 24; ++s) channels.add(this.x.ra_note_for(s, 60) >> 8);
+    for (const c of channels) ev.push({ d: new Uint8Array([0xB0 | (c & 15), 123, 0]) });
     if (this.node) this.node.port.postMessage({ t: 'stop', list: ev.map(e => ({ at: -1, d: e.d })) });
     // the unit: after what was already sent ahead
     const when = Math.max(performance.now(), this.lastMidiStamp || 0) + 1;

@@ -44,6 +44,25 @@ namespace
                "et le canal (Outils)."_fr;
     }
 
+    juce::String sameProgramHelp (const juce::String& name)
+    {
+        return "Le RackAttack renvoie toujours le même programme"_fr + (name.isNotEmpty() ? " (« "_fr + name + " »)"_fr : juce::String())
+               + " : il ne prend pas les Program Change. Sur la machine, mets Rx PrgChg sur On (Global/Utility) "_fr
+                 "et vérifie que son canal global est celui des Outils. (Ou ses programmes sont vraiment tous pareils.)"_fr;
+    }
+
+    // the program's name in a PRGD answer
+    juce::String kitName (const ra::Bytes& payload)
+    {
+        ra::Parsed r;
+        r.isSysex = r.complete = r.isRackAttack = true;
+        r.command = ra::cmd::PRGD;
+        r.payload = payload;
+        ra::Kit tmp;
+        tmp.apply (r);
+        return juce::String (tmp.name());
+    }
+
     juce::String fileSafe (const juce::String& s)
     {
         auto t = s.trim().replaceCharacters ("/\\:*?\"<>|", "---------");
@@ -614,57 +633,103 @@ void Engine::selectProgram (int program)
 
 void Engine::readProgramNames()
 {
-    int back = currentProgram;
-    auto dev = (std::uint8_t) deviceId.load();
-
-    queue (callStep ([this] { capturing = true; }));
-    for (int p = 0; p < 50; ++p)
+    // One program after the other (each step queues the next), so the scan can stop early: when the
+    // unit doesn't take the Program Changes it answers with the same edit buffer every time, and the
+    // list would fill with 50 copies of the current program's name ("Init Program"...).
+    struct Scan
     {
+        int back = -1;
+        std::uint8_t dev = 0;
+        ra::Bytes start;                      // the edit buffer before the scan (the program in use)
+        std::vector<ra::Bytes> seen;          // what each program answered, in order
+        juce::StringArray names;
+        int found = 0;
+        bool stopped = false;
+    };
+    auto scan = std::make_shared<Scan>();
+    scan->back = currentProgram;
+    scan->dev = (std::uint8_t) deviceId.load();
+
+    auto finish = [this, scan]
+    {
+        queue (callStep ([this] { capturing = false; }));
+        if (scan->back >= 0)
+        {
+            Step pc;
+            pc.kind = Step::Kind::sendShort;
+            pc.shortMessage = juce::MidiMessage::programChange (channel.load(), scan->back);
+            queue (pc);
+            queue (callStep ([this, back = scan->back] { currentProgram = back; }));
+            Step wait; wait.kind = Step::Kind::pause; wait.ms = 400; queue (wait);
+        }
+        else
+            queue (callStep ([this] { currentProgram = 49; }));
+
+        queueKitRead (false, [this, scan]
+        {
+            if (scan->stopped || (scan->found == 50 && allTheSame (scan->names)))
+            {
+                for (int p = 0; p < 50; ++p)
+                    programNames.set (p, {});     // not names: the same program read again and again
+                listeners.call ([] (Listener& l) { l.programNamesChanged(); });
+                finishTask ("names", false, sameProgramHelp (scan->seen.empty() ? juce::String()
+                                                                                : juce::String (kitName (scan->seen.front()))));
+                return;
+            }
+            finishTask ("names", scan->found > 0, juce::String (scan->found) + " noms lus sur 50."
+                        + (scan->back < 0 ? " Le RackAttack est resté sur le programme 50."_fr : juce::String()));
+        });
+    };
+
+    // program p: Program Change, a pause, the edit buffer; then p + 1 (in front of anything queued later)
+    // the queued step holds the chain; the chain only sees itself weakly (no cycle, nothing leaks)
+    auto next = std::make_shared<std::function<void (int)>>();
+    std::weak_ptr<std::function<void (int)>> self = next;
+    *next = [this, scan, finish, self] (int p)
+    {
+        if (p >= 50 || scan->stopped)
+        {
+            finish();
+            return;
+        }
+        std::vector<Step> v;
         Step pc;
         pc.kind = Step::Kind::sendShort;
         pc.shortMessage = juce::MidiMessage::programChange (channel.load(), p);
         pc.quiet = true;
-        queue (pc);
-        Step wait; wait.kind = Step::Kind::pause; wait.ms = 350; queue (wait);
-        queue (request (ra::programRequest (dev), ra::cmd::PRGD, "nom P" + twoDigits (p + 1), 1200, [this, p] (const ra::Parsed* r)
+        v.push_back (pc);
+        Step wait; wait.kind = Step::Kind::pause; wait.ms = 350; v.push_back (wait);
+        v.push_back (request (ra::programRequest (scan->dev), ra::cmd::PRGD, "nom P" + twoDigits (p + 1), 1200,
+                              [this, scan, p] (const ra::Parsed* r)
         {
             if (r != nullptr)
             {
-                ra::Kit tmp;
-                tmp.apply (*r);
-                programNames.set (p, juce::String (tmp.name()));
+                scan->seen.push_back (r->payload);
+                const auto name = kitName (r->payload);
+                scan->names.add (name);
+                ++scan->found;
+                programNames.set (p, name);
                 listeners.call ([] (Listener& l) { l.programNamesChanged(); });
+                // the first three exactly the same as each other and as the program in use: the Program
+                // Changes don't reach the unit (or these programs really are the same)
+                if (scan->seen.size() == 3 && ! scan->start.empty()
+                    && scan->seen[0] == scan->start && scan->seen[1] == scan->start && scan->seen[2] == scan->start)
+                    scan->stopped = true;
             }
-            progress (p + 1, 50, "Noms des programmes");
+            progress (scan->stopped ? 50 : p + 1, 50, "Noms des programmes");
         }));
-    }
-    queue (callStep ([this] { capturing = false; }));
+        if (auto chain = self.lock())
+            v.push_back (callStep ([chain, p] { (*chain) (p + 1); }));
+        steps.insert (steps.begin(), v.begin(), v.end());
+    };
 
-    if (back >= 0)
+    queue (callStep ([this] { capturing = true; }));
+    queue (request (ra::programRequest (scan->dev), ra::cmd::PRGD, "programme en cours", 1200, [scan] (const ra::Parsed* r)
     {
-        Step pc;
-        pc.kind = Step::Kind::sendShort;
-        pc.shortMessage = juce::MidiMessage::programChange (channel.load(), back);
-        queue (pc);
-        queue (callStep ([this, back] { currentProgram = back; }));
-        Step wait; wait.kind = Step::Kind::pause; wait.ms = 400; queue (wait);
-    }
-    else
-        queue (callStep ([this] { currentProgram = 49; }));
-
-    queueKitRead (false, [this, back]
-    {
-        int found = 0;
-        for (auto& n : programNames)
-            if (n.isNotEmpty()) ++found;
-        if (found == 50 && allTheSame (programNames))
-        {
-            finishTask ("names", false, programChangeHelp());
-            return;
-        }
-        finishTask ("names", found > 0, juce::String (found) + " noms lus sur 50."
-                    + (back < 0 ? " Le RackAttack est resté sur le programme 50."_fr : juce::String()));
-    });
+        if (r != nullptr)
+            scan->start = r->payload;
+    }));
+    queue (callStep ([next] { (*next) (0); }));
 }
 
 void Engine::backupAllPrograms (const juce::File& folder)

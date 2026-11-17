@@ -54,7 +54,7 @@ private:
     {
         none, play, tempo, swing, voice,
         section, listen, param, tune,
-        mode, length, division, mute, options, initTrack, initAll, miniMap, step, trig, clearSelection
+        mode, length, division, mute, options, initTrack, initAll, miniMap, step, trig, clearSelection, midiMode
     };
     struct Hit { Zone zone = Zone::none; int index = -1; };
 
@@ -63,7 +63,7 @@ private:
     {
         ra::seq::Mode mode = ra::seq::Mode::steps;
         ra::seq::Division division = ra::seq::Division::sixteenth;
-        bool mute = false, locks = false;
+        bool mute = false, solo = false, silent = false, locks = false;   // silent: muted, or another sound is solo
         int length = 16;
         juce::String name;
         std::vector<bool> trigs;
@@ -98,6 +98,7 @@ private:
     int quickFrom = 0;
     juce::Rectangle<int> quickRow, quickHeader, tuneBox;
     void toggleTuned();
+    void showTuneMenu();                      // right click: which channel the sound's notes come on
     int paramMax (int address) const;
     int shownValue (const ra::seq::Track&, int slot) const;   // the lock of the selected steps, else the sound's
     void setParam (int slot, int value);
@@ -136,6 +137,7 @@ private:
 
     // geometry
     juce::Rectangle<int> header, mascotArea, playBox, tempoBox, swingBox, loadBox, kitBox;
+    juce::Rectangle<int> midiModeChip;        // shown when the kit isn't in MIDI mode Native (click: Native)
     std::array<juce::Rectangle<int>, ra::seq::numTracks> voices;
     juce::Rectangle<int> soundPanel, soundTitle, listenBox, vizBox;
     std::array<float, 128> shownValues {};      // what the picture shows, moving towards the values
@@ -158,7 +160,11 @@ private:
         // the first clear move decides between ratchets (up / down) and painting (across)
         bool pendingOff = false, ratchet = false, painting = false;
         int ratchetBase = 1;
+        // a sound pad: a click selects it on release; a drag down mutes it, a drag up puts it solo
+        bool pendingSelect = false, padDone = false;
+        int padDy = 0;                        // how far the pad follows the drag (down positive)
     } drag;
+    bool openSilent = false;                  // the open track doesn't sound (mute, or another solo)
     Hit hover;
 
     std::unique_ptr<juce::TextEditor> nameEditor;
@@ -168,6 +174,8 @@ private:
     void paintOverlays (juce::Graphics&, double now);
     void showPopup (int slot, const ra::seq::Track&);
     void addBurst (juce::Point<int> at, juce::Colour);
+    static constexpr int padThreshold = 18;   // px: a pad dragged this far mutes (down) or goes solo (up)
+    void padGesture (int voice, bool down);   // down: mute / sound back; up: solo / out of solo
     void showToast (const juce::String&, juce::Colour = px::white);
     void startWipe()                          { wipeStart = juce::Time::getMillisecondCounterHiRes(); }
     void paintSectionTitle (juce::Graphics&, juce::Rectangle<int> screen, const juce::String&, double t);

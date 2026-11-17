@@ -68,6 +68,7 @@ class KitPage : public juce::Component,
                 private Engine::Listener
 {
 public:
+    void demoPrograms()                   { programBox.showPopup(); }     // screenshots
     explicit KitPage (Engine&);
     ~KitPage() override;
 

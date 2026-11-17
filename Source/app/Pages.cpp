@@ -256,9 +256,11 @@ void SoundPage::refresh()
     const auto& kit = engine.getShownKit();     // the kit heard, or the end of the morph armed
     title.setText ("Son "_fr + ui::twoDigits (sound + 1) + "   " + shortShape (kit.soundValue (sound, 0x01))
                    + " / " + shortShape (kit.soundValue (sound, 0x10)), juce::dontSendNotification);
+    const int filterType = kit.soundValue (sound, 0x26);
     for (auto& p : params)
     {
         p.cell->setValue (kit.soundValue (sound, p.address));
+        p.cell->setIdle (ui::isIdle (p.address, filterType));
         if (p.source >= 0)
             p.cell->setSource (kit.soundValue (sound, p.source));
     }
@@ -1062,10 +1064,12 @@ void LibraryPage::taskFinished (const juce::String& task, bool ok, const juce::S
         programs.updateContent();
         programs.repaint();
     }
-    juce::ignoreUnused (ok, message);
     if (task == "names" || task == "backup" || task == "sendKit" || task == "sendSound" || task == "kit")
     {
-        status.show ({});
+        if (! ok && (task == "names" || task == "backup"))
+            status.show (message, ui::bad);     // here too, not only at the bottom of the window
+        else
+            status.show ({});
         programs.updateContent();
         programs.repaint();
         if (task == "backup")

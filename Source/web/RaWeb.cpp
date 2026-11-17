@@ -475,7 +475,7 @@ RA_EXPORT (ra_swing) int raSwing()                    { return model->pattern.sw
 RA_EXPORT (ra_set_swing) void raSetSwing (int s)      { model->pattern.swing = (std::uint8_t) std::clamp (s, 50, 75); }
 
 // track fields: 0 mode, 1 length, 2 division, 3 mute, 4 euclid steps, 5 euclid hits, 6 euclid rotation,
-// 7 active length, 8 trigs, 9 locks
+// 7 active length, 8 trigs, 9 locks, 10 solo, 11 audible (not muted, and solo when another is)
 RA_EXPORT (ra_track_get) int raTrackGet (int t, int field)
 {
     auto* tr = trackAt (t);
@@ -492,6 +492,8 @@ RA_EXPORT (ra_track_get) int raTrackGet (int t, int field)
         case 7: return tr->activeLength();
         case 8: return tr->countTrigs();
         case 9: return tr->countLocks();
+        case 10: return tr->solo ? 1 : 0;
+        case 11: return model->pattern.audible (t) ? 1 : 0;
         default: return 0;
     }
 }
@@ -505,7 +507,8 @@ RA_EXPORT (ra_track_set) void raTrackSet (int t, int field, int v)
         case 0: tr->mode = (Mode) std::clamp (v, 0, 2); break;
         case 1: tr->length = (std::uint8_t) std::clamp (v, 1, maxSteps); break;
         case 2: tr->division = (Division) std::clamp (v, 0, numDivisions - 1); break;
-        case 3: tr->mute = v != 0; break;
+        case 3: if (tr->mute != (v != 0)) toggleMute (model->pattern, t); break;
+        case 10: if (tr->solo != (v != 0)) toggleSolo (model->pattern, t); break;
         case 4: tr->euclid.steps = (std::uint8_t) std::clamp (v, 1, maxSteps); tr->euclid.hits = std::min (tr->euclid.hits, tr->euclid.steps); break;
         case 5: tr->euclid.hits = (std::uint8_t) std::clamp (v, 0, (int) tr->euclid.steps); break;
         case 6: tr->euclid.rotation = (std::int8_t) std::clamp (v, -maxSteps + 1, maxSteps - 1); break;

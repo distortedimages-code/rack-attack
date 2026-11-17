@@ -4,7 +4,7 @@
 
 **Page de téléchargement** : https://distortedimages-code.github.io/rack-attack/
 
-## Ce que fait l'appli (version 0.5.12)
+## Ce que fait l'appli (version 0.5.13)
 
 - **Branchement guidé** en 3 écrans : les câbles et ports MIDI, deux réglages sur la machine, puis l'appli trouve le RackAttack toute seule (y compris son Sysex ID) et lit le kit en cours.
 - **Kit** : les 24 sons en pads (écouter, volume, pan, sortie), le programme (nom, mode MIDI, triggers A/B/C), changement de programme.
@@ -13,7 +13,7 @@
 - **Bibliothèque** : lire les noms des 50 programmes, tout sauvegarder sur l'ordinateur (un fichier `.syx` par programme), enregistrer le kit en cours, renvoyer un kit ou un son à la machine. Chaque envoi est vérifié en relisant la machine. **Importer (Waldorf)…** range les fichiers de Waldorf (sons d'usine, kits bonus, patterns : `.mid`, `.syx` ou le `.zip` tel quel) dans le groupe Usine, avec les patterns internes des sons.
 - **Patterns internes** (le Pattern Play de la machine) : les patterns d'usine passent dans le séquenceur, et les pistes du séquenceur peuvent devenir les patterns internes des sons (OPTIONS du séquenceur).
 - **Morph** : deux kits complets, un dans le cœur, un dans le crâne, et un fader en bas de toutes les pages pour passer de l'un à l'autre, avec un glide réglable. Clic sur le cœur ou le crâne pour l'armer (comme les scènes de l'Octatrack) : les réglages vont alors dans ce côté seulement. Bibliothèque : clic droit « Charger dans le cœur / le crâne », morphs enregistrés. Automatisable dans le DAW et gardé avec le projet.
-- **Séquenceur** (page principale) : 24 pistes jusqu'à 128 pas, verrous de paramètres, conditions, suit le tempo du logiciel.
+- **Séquenceur** (page principale) : 24 pistes jusqu'à 128 pas, verrous de paramètres, conditions, suit le tempo du logiciel. Un son glissé vers le bas se coupe (mute), vers le haut il passe en solo. Au stop, All Notes Off arrête aussi les patterns internes des sons.
 - **Simulateur** : sans machine, le plug-in joue un RackAttack en logiciel (même architecture : 2 oscillateurs, crack, filtre multimode, 2 enveloppes, 2 LFO, 4 effets), piloté par les mêmes messages, et réglé sur les mesures d'une vraie machine (filtre, résonance, volume, hauteurs, enveloppes, LFO, ampli ; l'enveloppe 2 règle le volume, comme sur la machine). *Outils → Mode simulation*, ou le bouton du branchement guidé.
 - **Comparer au simulateur** (*Outils*) : chaque son du kit en cours joué sur la machine puis dans le simulateur, avec ce qui diffère le plus (volume, hauteur, longueur, brillance) et les enregistrements gardés dans un fichier `.racompare` privé.
 - **Mesure guidée** : *Outils → Mesurer mon RackAttack…* fait jouer à une vraie machine des sons de test (environ 5 minutes, par la carte son) et en tire un fichier `.ramesure` ; chargé avec *Charger des mesures…*, il fait sonner le simulateur comme cette machine. Le fichier contient des enregistrements des cymbales de la machine : il reste privé.

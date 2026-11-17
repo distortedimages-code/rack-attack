@@ -57,6 +57,11 @@ Bytes soundParameter (std::uint8_t device, int sound, int address, int value, st
     return build (device, { cmd::SNDP, b7 (buffer), b7 (sound), b7 (address >> 7), b7 (address), b7 (value) });
 }
 
+Bytes effectParameter (std::uint8_t device, int effect, int address, int value, std::uint8_t buffer)
+{
+    return build (device, { cmd::EFXP, b7 (buffer), b7 (effect), b7 (address >> 7), b7 (address), b7 (value) });
+}
+
 //==============================================================================
 Parsed parse (const Bytes& m)
 {

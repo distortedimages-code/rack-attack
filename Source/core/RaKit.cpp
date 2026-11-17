@@ -389,6 +389,12 @@ void fillDemoKit (Kit& k, int p)
 
 namespace ra
 {
+std::vector<int> fxOutputNudge (int output)
+{
+    const int out = std::clamp (output, 0, 8);
+    return { out == 1 ? 0 : 1, out };
+}
+
 bool upgradeOldDemoSound (std::uint8_t* d)
 {
     if (! (d[0x45] == 0 && d[0x46] == 40 && d[0x47] == 0 && d[0x48] == 0 && d[0x49] == 0 && d[0x43] == 20))

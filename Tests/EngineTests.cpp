@@ -224,6 +224,29 @@ int main()
     CHECK (params >= 120 && params <= 260);   // wide margins: build machines can be slow
     CHECK (notes >= 5 && notes <= 11);
 
+    // 10a. FX Select: the chosen effect's Output follows, set to another output and back (the unit feeds
+    //      the effect only then)
+    {
+        std::vector<juce::MidiMessage> sent;
+        engine.setTestOutput ([&] (const juce::MidiMessage& m) { sent.push_back (m); fake.receive (m); });
+        const int out = engine.getKit().effectValue (2, 0x01);
+        engine.setSoundParameter (4, 0x56, 2);
+        runFor (200);
+        std::vector<std::string> order;
+        for (auto& m : sent)
+        {
+            if (! m.isSysEx() || m.getSysExDataSize() < 9) continue;
+            auto* d = m.getSysExData();        // 3E 11 ID CMD BUFN IDX PAH PAL VAL
+            if (d[3] == ra::cmd::SNDP && d[5] == 4 && d[7] == 0x56) order.push_back ("select " + std::to_string (d[8]));
+            if (d[3] == ra::cmd::EFXP && d[5] == 2 && d[7] == 0x01) order.push_back ("out " + std::to_string (d[8]));
+        }
+        const std::vector<std::string> want { "select 2", "out " + std::to_string (out == 1 ? 0 : 1), "out " + std::to_string (out) };
+        CHECK (order == want);
+        if (order != want) for (auto& o : order) std::printf ("  %s\n", o.c_str());
+        CHECK (engine.getKit().effectValue (2, 0x01) == out);
+        engine.setTestOutput ([&fake] (const juce::MidiMessage& m) { fake.receive (m); });
+    }
+
     // 10b. The sequencer: a kick on each beat and a lock on step 5, sent just before its
     //      note and put back when the clock stops.
     {

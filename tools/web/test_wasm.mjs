@@ -35,6 +35,10 @@ check(m.ra_track_get(2, 1) === 64, 'snare length 64');
   check(t.ra_track_get(2, 10) === 1 && t.ra_track_get(2, 11) === 1 && t.ra_track_get(0, 11) === 0, 'solo silences the others');
   t.ra_track_set(2, 3, 1);
   check(t.ra_track_get(2, 3) === 1 && t.ra_track_get(2, 10) === 0 && t.ra_track_get(0, 11) === 1, 'a muted sound leaves the solo');
+  // FX Select: the message, then the chosen effect's Output to another value and back
+  const n = t.ra_sound_edit(0, 0x56, 1), b = t.bytes(n);
+  const ends = [...b].filter(x => x === 0xf7).length;
+  check(ends === 3 && b[4] === 0x20 && b[b.length - 2 - 1] === t.ra_fx_get(1, 1), 'fx select comes with its effect output: ' + ends);
 }
 check(Math.abs(m.ra_tempo() - 124) < 1e-9, 'tempo 124');
 check(m.text(m.ra_param_name(0, 0x27)) === 'Cutoff', 'parameter name: ' + m.text(m.ra_param_name(0, 0x27)));

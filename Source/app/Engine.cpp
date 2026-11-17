@@ -516,10 +516,11 @@ void Engine::readKit()
 
 void Engine::queueParameter (ra::Bytes withoutValue, int value)
 {
-    for (auto& p : pendingParams)
-        if (p.first == withoutValue)
+    // the latest one still waiting takes the new value (an effect's Output nudged twice ends on what was asked)
+    for (auto it = pendingParams.rbegin(); it != pendingParams.rend(); ++it)
+        if (it->first == withoutValue)
         {
-            p.second = value;
+            it->second = value;
             return;
         }
     pendingParams.emplace_back (std::move (withoutValue), value);
@@ -579,6 +580,13 @@ void Engine::setSoundParameter (int sound, int address, int value)
         return;
     kit.setSoundValue (sound, address, value);
     queueParameter ({ ra::cmd::SNDP, ra::kEditBuffer, (std::uint8_t) sound, (std::uint8_t) (address >> 7), (std::uint8_t) (address & 0x7F) }, value);
+    if (address == 0x56 && value >= 0 && value < ra::Kit::numEffects && kit.hasEffect (value))
+    {
+        // the unit feeds the newly chosen effect only once its Output is set again: after the choice, in that order
+        const ra::Bytes key { ra::cmd::EFXP, ra::kEditBuffer, (std::uint8_t) value, 0, 0x01 };
+        for (auto v : ra::fxOutputNudge (kit.effectValue (value, 0x01)))
+            pendingParams.emplace_back (key, v);
+    }
     ra::Kit::Change c { ra::Kit::Change::What::sound, sound, address };
     listeners.call ([&] (Listener& l) { l.kitChanged (c); });
 }

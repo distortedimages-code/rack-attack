@@ -101,6 +101,11 @@ void fillDemoKit (Kit&, int program);
 // Up to 0.5.8 the demo kits (and the simulator) used Envelope 1 for the level and Envelope 2 for the pitch drop.
 // A sound still made that way (Envelope 2 at 0 / 40 / 0 / 0 / 0, Envelope 1's shape at 20) gets its two envelopes
 // and their modulation sources swapped, so it sounds the same now that Envelope 2 shapes the level, as on the unit.
+// Seen on the unit: a sound sent to another effect (FX Select by a parameter message) isn't heard through it
+// until that effect's Output is set again. The values to send to the effect's Output (address 01), in order:
+// another output, then its own (`output`, as the kit has it: call only when the effect is known).
+std::vector<int> fxOutputNudge (int output);
+
 bool upgradeOldDemoSound (std::uint8_t* sound);      // kSoundDataSize bytes; true if it was one
 int upgradeOldDemoKit (Kit&);                        // the sounds upgraded
 }

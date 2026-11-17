@@ -53,6 +53,7 @@ Bytes soundRequest (std::uint8_t device, int sound, std::uint8_t buffer = kEditB
 Bytes effectRequest (std::uint8_t device, int effect, std::uint8_t buffer = kEditBuffer);     // effect 0..3
 Bytes patternRequest (std::uint8_t device, int sound, std::uint8_t buffer = kEditBuffer);     // the internal pattern of sound 0..23
 Bytes soundParameter (std::uint8_t device, int sound, int address, int value, std::uint8_t buffer = kEditBuffer);
+Bytes effectParameter (std::uint8_t device, int effect, int address, int value, std::uint8_t buffer = kEditBuffer);
 
 // What a SysEx message (F0 .. F7) is.
 struct Parsed

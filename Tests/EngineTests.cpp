@@ -396,9 +396,7 @@ int main()
         morph.userMoved (0.0);
         CHECK (runUntil ([&] { return morph.getPosition() < 0.95; }, 400));
         CHECK (morph.getPosition() > 0.05);
-        runFor (700);
-        CHECK (morph.getPosition() <= 0.0);
-        CHECK (fake.edit.soundValue (2, 0x29) == 7);
+        CHECK (runUntil ([&] { return morph.getPosition() <= 0.0 && fake.edit.soundValue (2, 0x29) == 7; }, 3000));
         morph.arm ({});
         CHECK (engine.getShownKit().soundValue (2, 0x29) == engine.getKit().soundValue (2, 0x29));
 

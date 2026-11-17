@@ -48,7 +48,8 @@ Bytes build (std::uint8_t device, const Bytes& payload);
 
 // Requests and parameter changes, in the formats ra-editor uses with the unit.
 Bytes globalRequest (std::uint8_t device);
-Bytes programRequest (std::uint8_t device, std::uint8_t program = 0, std::uint8_t buffer = kEditBuffer);
+Bytes programRequest (std::uint8_t device, std::uint8_t program = 0, std::uint8_t buffer = kEditBuffer);   // PRGR BUFN PRGN
+constexpr std::uint8_t kProgramMemory = 0x00;  // BUFN of the stored programs (PRGN 00..31 = P01..P50): to confirm
 Bytes soundRequest (std::uint8_t device, int sound, std::uint8_t buffer = kEditBuffer);       // sound 0..23
 Bytes effectRequest (std::uint8_t device, int effect, std::uint8_t buffer = kEditBuffer);     // effect 0..3
 Bytes patternRequest (std::uint8_t device, int sound, std::uint8_t buffer = kEditBuffer);     // the internal pattern of sound 0..23

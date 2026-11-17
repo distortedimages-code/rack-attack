@@ -138,6 +138,7 @@ int main()
 
     // 5b. A unit that ignores Program Change: said plainly, not 50 copies of the same kit
     fake.ignoresProgramChange = true;
+    fake.readsMemory = false;
     const auto scanStart = juce::Time::getMillisecondCounterHiRes();
     engine.readProgramNames();
     CHECK (waitTask (out, "names", 60000));
@@ -149,13 +150,12 @@ int main()
     CHECK (engine.getProgramNames()[0].isEmpty() && engine.getProgramNames()[49].isEmpty());   // no fake names
     CHECK (engine.getKit().name() == "PROG 11");
 
-    // 5c. Program Change ignored, but the programs answer by their number: the names come from there
-    fake.readsByNumber = true;
+    // 5c. Program Change ignored, but the stored programs can be read (PRGR 00 PRGN): the names come from there
+    fake.readsMemory = true;
     engine.readProgramNames();
     CHECK (waitTask (out, "names", 60000));
     CHECK (out.lastOk);
     CHECK (engine.getProgramNames()[0] == "PROG 01" && engine.getProgramNames()[49] == "PROG 50");
-    fake.readsByNumber = false;
     fake.ignoresProgramChange = false;
 
     // 6. Backup of the 50 programs, then back to program 11

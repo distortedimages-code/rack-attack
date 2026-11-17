@@ -158,6 +158,7 @@ private:
         int ms = 0;
         juce::String label;
         bool quiet = false;         // not shown in the on-screen journal (still in the file)
+        bool optional = false;      // no answer is fine: not counted as the unit gone quiet
         int probe = -1;             // pattern probe number
         std::function<void (const ra::Parsed*)> after;   // answer, or nullptr on time-out
         std::function<void()> call;
@@ -201,6 +202,7 @@ private:
 
     // step queue (message thread)
     std::deque<Step> steps;
+    bool waitingOptional = false;
     bool waiting = false;
     int waitingFor = -1;
     double deadline = 0;

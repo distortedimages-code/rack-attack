@@ -198,8 +198,8 @@ void Kit::setSoundData (int i, const Bytes& data)
 //==============================================================================
 Bytes Kit::programDump (std::uint8_t device) const
 {
-    Bytes payload { cmd::PRGD };
-    payload.insert (payload.end(), programLocation.begin(), programLocation.end());
+    // always to the edit buffer: a file kept "the same way" as an old answer could name a stored program
+    Bytes payload { cmd::PRGD, kEditBuffer, 0x00 };
     payload.insert (payload.end(), program.begin(), program.end());
     return build (device, payload);
 }

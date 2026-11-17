@@ -32,7 +32,7 @@ int main()
 
     // Requests in ra-editor's formats
     CHECK_EQ (hex (globalRequest (0)),     "F0 3E 11 00 04 00 04 F7");
-    CHECK_EQ (hex (programRequest (0)),    "F0 3E 11 00 01 00 20 21 F7");
+    CHECK_EQ (hex (programRequest (0)),    "F0 3E 11 00 01 20 00 21 F7");
     CHECK_EQ (hex (soundRequest (0, 23)),  "F0 3E 11 00 00 20 17 37 F7");
     CHECK_EQ (hex (effectRequest (5, 3)),  "F0 3E 11 05 05 20 03 28 F7");
 

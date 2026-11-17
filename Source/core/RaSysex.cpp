@@ -34,7 +34,9 @@ Bytes globalRequest (std::uint8_t device)
 
 Bytes programRequest (std::uint8_t device, std::uint8_t program, std::uint8_t buffer)
 {
-    return build (device, { cmd::PRGR, b7 (program), b7 (buffer) });
+    // the buffer first, then the number, as every other message (and Waldorf's own program dumps, "30 PRGN").
+    // ra-editor sends "00 20" (number first): the unit then reads its buffer 00 (the memory), program 0x20 (P33)
+    return build (device, { cmd::PRGR, b7 (buffer), b7 (program) });
 }
 
 Bytes patternRequest (std::uint8_t device, int sound, std::uint8_t buffer)

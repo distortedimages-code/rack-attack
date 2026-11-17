@@ -63,7 +63,7 @@ ra-editor les utilise réellement avec la machine, mais une seule source : à co
 |---|---|---|
 | SNDR | `BUFN SNDN` | SNDD : `10 BUFN SNDN` + 109 octets SDAT |
 | SNDP | `BUFN SNDN PAH PAL VAL` | — |
-| PRGR | `PRGN BUFN` (ra-editor envoie `00 20`) | PRGD : `11 ?? ??` + 40 octets KDAT |
+| PRGR | `BUFN PRGN` : `20 00` le programme en cours, `00 PRGN` un programme rangé (P01 = `00`) ⚠️. ra-editor envoie `00 20` : la machine lit alors le programme rangé n° 33 (vu chez Vincent : toujours le même nom) | PRGD : `11 BUFN PRGN` + 40 octets KDAT (les fichiers d'usine : `11 30 PRGN`) |
 | PRGP | `BUFN PAH PAL VAL` (ra-editor envoie `20`) | — |
 | EFXR | `BUFN EFXN` | EFXD : `15 BUFN EFXN` + 18 octets FDAT |
 | EFXP | `BUFN EFXN PAH PAL VAL` | — |

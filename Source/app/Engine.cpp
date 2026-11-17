@@ -343,7 +343,9 @@ void Engine::runSteps()
         waiting = false;
         auto after = std::move (waitingAfter);
         waitingAfter = nullptr;
-        if (waitingFor >= 0)
+        if (waitingFor >= 0 && waitingOptional)
+            log ("   pas de réponse ("_fr + waitingLabel + ") : rien de grave"_fr, false);
+        else if (waitingFor >= 0)
         {
             log ("   pas de réponse ("_fr + waitingLabel + ")");
             if (++timeouts >= 2 && connection == Connection::connected)
@@ -371,6 +373,7 @@ void Engine::runSteps()
                 sendSysex (s.sysex, s.label, ! s.quiet);
                 waiting = true;
                 waitingFor = s.expect;
+                waitingOptional = s.optional;
                 waitingLabel = s.label;
                 waitingAfter = std::move (s.after);
                 probeIndex = s.probe;
@@ -487,7 +490,24 @@ void Engine::queueKitRead (bool toCapture, std::function<void()> whenDone)
         progress (++*count, kKitBlocks, what);
     };
 
-    queue (request (ra::programRequest (dev), ra::cmd::PRGD, "programme", 1200, counted));
+    {
+        // the program in use (PRGR 20 00); no answer: the order ra-editor uses (00 20), the way the plug-in
+        // asked up to 0.5.14
+        auto program = request (ra::programRequest (dev), ra::cmd::PRGD, "programme", 1200, {});
+        program.optional = true;
+        program.after = [this, counted, dev] (const ra::Parsed* r)
+        {
+            if (r != nullptr)
+            {
+                counted (r);
+                return;
+            }
+            log ("Pas de réponse à « programme en cours » (20 00) : je redemande comme ra-editor (00 20)."_fr);
+            steps.push_front (request (ra::build (dev, { ra::cmd::PRGR, 0x00, ra::kEditBuffer }), ra::cmd::PRGD,
+                                       "programme (comme ra-editor)", 1200, counted));
+        };
+        queue (program);
+    }
     for (int i = 0; i < ra::Kit::numSounds; ++i)
         queue (request (ra::soundRequest (dev, i), ra::cmd::SNDD, "son " + twoDigits (i + 1), 1200, counted));
     for (int i = 0; i < ra::Kit::numEffects; ++i)
@@ -670,7 +690,7 @@ void Engine::readProgramNames()
         std::vector<ra::Bytes> direct;        // the same program asked by its number (PRGR PRGN 20, as ra-editor)
         juce::StringArray names;
         int found = 0;
-        bool stopped = false, byNumber = false;
+        bool stopped = false, byNumber = false, editMoved = false;
 
         static ra::Bytes data (const ra::Bytes& payload)   // the 40 bytes, without the location
         {
@@ -735,24 +755,34 @@ void Engine::readProgramNames()
         {
             scan->seen.push_back (r != nullptr ? r->payload : ra::Bytes());
         }));
-        // the same program asked by its number: read only, and maybe the way when the unit doesn't take the
-        // Program Changes (ra-editor asks PRGR with the program's number after its Program Change)
-        v.push_back (request (ra::programRequest (scan->dev, (std::uint8_t) (p + 1)), ra::cmd::PRGD,
-                              "nom P" + twoDigits (p + 1) + " par son numéro"_fr, 1200,
-                              [this, scan, p] (const ra::Parsed* r)
+        // the same program read in the memory (PRGR 00 PRGN): read only, the way when the unit doesn't take
+        // the Program Changes. Optional, and asked again only if the unit answered the first time
+        std::function<void (const ra::Parsed*)> decide = [this, scan, p] (const ra::Parsed* r)
         {
             scan->direct.push_back (r != nullptr ? r->payload : ra::Bytes());
             const auto start = Scan::data (scan->start);
             const auto edit = Scan::data (scan->seen.back());
-            const auto byNumber = Scan::data (scan->direct.back());
-            const bool editMoved = ! edit.empty() && edit != start;
-            bool numberMoved = ! byNumber.empty() && byNumber != start;
-            for (size_t k = 0; k + 1 < scan->direct.size(); ++k)
-                numberMoved = numberMoved || (! byNumber.empty() && Scan::data (scan->direct[k]) != byNumber);
-            if (! editMoved && numberMoved && ! scan->byNumber)
+            scan->editMoved = scan->editMoved || (! edit.empty() && edit != start);
+
+            // after three programs: the program in use never moved (no Program Change), but the memory gives
+            // different programs: the names come from the memory, the first three included
+            if (p == 2 && ! scan->editMoved && ! scan->byNumber)
             {
-                scan->byNumber = true;
-                log ("Le RackAttack ne change pas de programme, mais répond quand on lui demande un programme par son numéro : les noms viennent de là."_fr);
+                const auto a = Scan::data (scan->direct[0]), b = Scan::data (scan->direct[1]), c = Scan::data (scan->direct[2]);
+                if (! a.empty() && ! b.empty() && ! c.empty() && (a != b || b != c))
+                {
+                    scan->byNumber = true;
+                    log ("Le RackAttack ne change pas de programme, mais donne ses programmes rangés quand on les lui demande : les noms viennent de là."_fr);
+                    scan->names.clear();
+                    scan->found = 0;
+                    for (int k = 0; k < 2; ++k)
+                    {
+                        const auto name = kitName (scan->direct[(size_t) k]);
+                        scan->names.add (name);
+                        ++scan->found;
+                        programNames.set (k, name);
+                    }
+                }
             }
             const auto& used = scan->byNumber ? scan->direct.back() : scan->seen.back();
             if (! used.empty())
@@ -763,18 +793,23 @@ void Engine::readProgramNames()
                 programNames.set (p, name);
                 listeners.call ([] (Listener& l) { l.programNamesChanged(); });
             }
-            // the first three exactly the same as each other and as the program in use, both ways: the
+            // the first three exactly the same as the program in use, and nothing else from the memory: the
             // Program Changes don't reach the unit (or these programs really are the same)
-            if (scan->seen.size() == 3 && ! scan->byNumber && ! start.empty())
-            {
-                bool same = true;
-                for (int k = 0; k < 3; ++k)
-                    same = same && Scan::data (scan->seen[(size_t) k]) == start
-                                && Scan::data (scan->direct[(size_t) k]) == Scan::data (scan->direct[0]);
-                scan->stopped = same;
-            }
+            if (p == 2 && ! scan->editMoved && ! scan->byNumber && ! start.empty())
+                scan->stopped = true;
             progress (scan->stopped ? 50 : p + 1, 50, "Noms des programmes");
-        }));
+        };
+        const bool askMemory = scan->direct.empty() || ! scan->direct.front().empty();
+        if (askMemory)
+        {
+            auto memory = request (ra::programRequest (scan->dev, (std::uint8_t) p, ra::kProgramMemory), ra::cmd::PRGD,
+                                   "nom P" + twoDigits (p + 1) + " dans la mémoire"_fr, 500, decide);
+            memory.optional = true;
+            memory.quiet = true;
+            v.push_back (memory);
+        }
+        else
+            v.push_back (callStep ([decide] { decide (nullptr); }));
         if (auto chain = self.lock())
             v.push_back (callStep ([chain, p] { (*chain) (p + 1); }));
         steps.insert (steps.begin(), v.begin(), v.end());

@@ -131,6 +131,13 @@ int main()
     {
         measure::SynthRig sim (Calibration::defaults(), 1, 36, 44100.0);
         measure::Bench bench (sim, 0x7F, 1, 36, 5);
+        juce::String last;
+        bench.onProgress = [&] (int done, int total, const juce::String& what)
+        {
+            if (what != last && std::getenv ("RA_MEASURE_STEPS") != nullptr)
+                std::printf ("%3d %% (%d/%d) %s\n", done * 100 / total, done, total, what.toRawUTF8());
+            last = what;
+        };
         const auto r = bench.run();
         juce::File (juce::String (path)).replaceWithText (juce::JSON::toString (r.report));
         std::printf ("simulator measured: %s\n", r.message.toRawUTF8());
@@ -171,6 +178,62 @@ int main()
     expect (redone == 1, "la partie où la machine a été touchée est refaite"_fr);
     expect (std::abs (steps - measure::Bench::expectedSteps) < 60, "nombre d'étapes prévu : "_fr + juce::String (steps));
     expect (seconds < 600.0, "moins de dix minutes : " + juce::String (seconds, 0) + " s");
+
+    // A unit that misses a parameter message (the volume put back after the volume part), and a level that really
+    // moves during the falls: no pause for either (0.5.9 asked to put a volume back that nobody had touched), the
+    // message is sent again, the part with the moved level is done again, and the measurement goes to the end
+    {
+        struct Lossy : measure::SynthRig
+        {
+            using measure::SynthRig::SynthRig;
+            bool armed = false, dropped = false;
+            int levelPauses = 0;
+            void send (const juce::MidiMessage& m) override
+            {
+                if (m.isSysEx() && m.getSysExDataSize() >= 9)
+                {
+                    const auto* d = m.getSysExData();         // after F0: 3E 11 dev 20 buffer sound hi lo value
+                    if (d[3] == 0x20 && d[7] == 0x35 && d[8] == 127)
+                        armed = true;
+                    if (armed && ! dropped && d[3] == 0x20 && d[7] == 0x35 && d[8] == 100)
+                    {
+                        dropped = true;
+                        return;
+                    }
+                }
+                measure::SynthRig::send (m);
+            }
+            bool pause (int why) override
+            {
+                levelPauses += why == levelChanged ? 1 : 0;
+                return measure::SynthRig::pause (why);
+            }
+        };
+        Lossy lossy (Calibration::defaults(), 1, 36);
+        measure::Bench b (lossy, 0x7F, 1, 36, 5);
+        bool moved = false;
+        b.onProgress = [&] (int, int, const juce::String& what)
+        {
+            if (! moved && what.contains ("chutes"))
+            {
+                lossy.gain *= 0.7f;
+                moved = true;
+            }
+        };
+        const auto lr = b.run();
+        expect (lr.ok && lossy.dropped, "la mesure va au bout malgré un message perdu : "_fr + lr.message);
+        expect (lossy.levelPauses == 0, "pas de pause pour un niveau qui a bougé"_fr);
+        juce::String checks;
+        int volumesOk = 0, fallsChecks = 0;
+        for (auto& k : *lr.report["levelChecks"].getArray())
+        {
+            checks << k["part"].toString() << (k["same"] ? " ok " : " non ") << k["first"].toString() << "/" << k["soundSentAgain"].toString() << "  ";
+            volumesOk += k["part"].toString() == "volumes" && (bool) k["same"] ? 1 : 0;
+            fallsChecks += k["part"].toString() == "chutes" ? 1 : 0;
+        }
+        expect (volumesOk == 1, "le message perdu est renvoyé, les volumes tiennent : "_fr + checks);
+        expect (fallsChecks == 2, "les chutes refaites après le niveau qui a bougé : "_fr + checks);
+    }
 
     const auto& c = r.calibration;
     for (int v : { 20, 64, 90, 110, 127 })

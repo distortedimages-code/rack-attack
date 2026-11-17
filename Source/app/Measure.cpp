@@ -579,6 +579,8 @@ void Bench::group (const juce::String& label, Fn&& fn)
     {
         what = label;
         touched = false;
+        if (noiseKnown)
+            waitQuiet (2000);                 // each part starts in silence (a long release from the last one)
         rig.interrupted();
         int why = -1;
         try
@@ -595,15 +597,21 @@ void Bench::group (const juce::String& label, Fn&& fn)
         }
         if (why < 0)
             return;
-        if (why == Rig::levelChanged && ++drifts == 3)
-        {
-            warn (label + " : le niveau a bougé pendant cette partie, à vérifier."_fr);
-            return;
-        }
         rig.send (juce::MidiMessage::allNotesOff (channel));
         if (freeChannel > 0)
             rig.send (juce::MidiMessage::allNotesOff (freeChannel));
-        if (! rig.pause (why))
+        if (why == Rig::levelChanged)
+        {
+            // Nobody to ask (0.5.9 paused here, and the level hadn't been touched): the part once more, by itself,
+            // then it is kept with a word in the report
+            if (++drifts == 2)
+            {
+                warn (label + " : le niveau n'était plus le même à la fin de cette partie, à vérifier."_fr);
+                return;
+            }
+            waitQuiet (3000);
+        }
+        else if (! rig.pause (why))
             throw Stopped();
         check();
         done = doneBefore;
@@ -655,6 +663,8 @@ Result Bench::run()
     report->setProperty ("latencyMs", ms (latency + lead));
     report->setProperty ("noiseDb", juce::Decibels::gainToDecibels (noise));
     report->setProperty ("warnings", r.warnings);
+    report->setProperty ("levelChecks", levelChecks);
+    report->setProperty ("complete", r.ok);
     report->setProperty ("date", r.when.toISO8601 (true));
    #if defined (RA_VERSION)
     report->setProperty ("app", RA_VERSION);
@@ -694,6 +704,7 @@ bool Bench::start (Result& r)
         std::vector<float> x;
         rig.read (from, (int) (rig.mark() - from), x);
         noise = std::max (1e-6, rmsOf (x, 0, (int) x.size()));
+        noiseKnown = true;
     });
 
     std::vector<double> delays;
@@ -889,9 +900,7 @@ void Bench::levels (Result& r)
             }
         }
 
-        reset ({});
-        const double again = amplitude (play ({ 260, 40 }), 60, 230);
-        if (std::abs (again / std::max (1e-9, ref) - 1.0) > 0.12)
+        if (! sameLevel (ref, "volumes"))
             touched = true;
     });
 
@@ -1074,8 +1083,7 @@ void Bench::falls (Result& r)
         }
         set (env + releaseOf, 10);
 
-        const double again = amplitude (play ({ 260, 40 }), 60, 230);
-        if (std::abs (again / std::max (1e-9, ref) - 1.0) > 0.12)
+        if (! sameLevel (ref, "chutes"))
             touched = true;
     });
 
@@ -1155,6 +1163,57 @@ void Bench::falls (Result& r)
 }
 
 int Bench::envAt() const   { return ampEnvelope == 1 ? env1 : env2; }
+
+void Bench::waitQuiet (int maxMs)
+{
+    rig.send (juce::MidiMessage::allNotesOff (channel));
+    std::vector<float> x;
+    const int window = at (60);
+    for (int t = 0; t < maxMs; t += 100)
+    {
+        rig.wait (100);
+        if (rig.shouldStop())                 // only that: a pause or a touch is seen by the part itself
+            throw Stopped();
+        const auto now = rig.mark();
+        if (rig.read (std::max<std::int64_t> (0, now - window), window, x) > 0 && rmsOf (x, 0, (int) x.size()) < noise * 4.0)
+            return;
+    }
+}
+
+// The reference note again at the end of a part, against the one at its start. A part with long notes can leave a
+// release ringing, and the unit can miss a parameter message: when it is off, once more after silence and with
+// the whole test sound sent again. Each check goes in the report ("levelChecks").
+bool Bench::sameLevel (double ref, const char* part)
+{
+    const double r = std::max (1e-9, ref);
+    reset ({});
+    const double first = amplitude (play ({ 260, 40 }), 60, 230) / r;
+    double rested = first, resent = first;
+    bool same = std::abs (first - 1.0) <= 0.12;
+    if (! same)
+    {
+        waitQuiet (3000);
+        rested = amplitude (play ({ 260, 40 }), 60, 230) / r;
+        same = std::abs (rested - 1.0) <= 0.12;
+        if (! same)
+        {
+            waitQuiet (3000);
+            state.fill (-1);
+            reset ({});
+            rig.wait (100);
+            resent = amplitude (play ({ 260, 40 }), 60, 230) / r;
+            same = std::abs (resent - 1.0) <= 0.12;
+        }
+    }
+    auto* o = new juce::DynamicObject();
+    o->setProperty ("part", part);
+    o->setProperty ("first", std::round (first * 1000.0) / 1000.0);
+    o->setProperty ("afterSilence", std::round (rested * 1000.0) / 1000.0);
+    o->setProperty ("soundSentAgain", std::round (resent * 1000.0) / 1000.0);
+    o->setProperty ("same", same);
+    levelChecks.add (juce::var (o));
+    return same;
+}
 
 //==============================================================================
 // How the amp follows its modulation (Vol Mod and Vol Ctrl): the other envelope falls, and the level is written
@@ -1912,6 +1971,11 @@ bool load (const juce::File& file, Calibration& c, juce::String& error)
     if (! json.isObject())
     {
         error = "Ce fichier n'est pas un fichier de mesures.";
+        return false;
+    }
+    if (const auto rep = juce::JSON::parse (text (zip, "report.json")); rep.hasProperty ("complete") && ! (bool) rep["complete"])
+    {
+        error = "Cette mesure a été arrêtée avant la fin : elle sert à voir ce qui a coincé, pas à régler le simulateur.";
         return false;
     }
     Calibration out = Calibration::defaults();

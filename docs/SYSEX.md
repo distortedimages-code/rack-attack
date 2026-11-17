@@ -191,7 +191,7 @@ Formes d'oscillateur `SHAPE` : `0` Triangle · `1` Sine · `2` Square · `3` Saw
 |---|---|---|---|
 | `00` | ❓ | | |
 | `01`–`10` | Nom (16 caractères ASCII 32–127) | | ⚠️ |
-| `11` | MIDI Mode | `0` Native · `1` Plug-in · `2` GlobalChn | ⚠️ |
+| `11` | MIDI Mode | `0` Native · `1` Plug-in · `2` GlobalChn. Manuel p. 30 : Native = les 24 sons sur le canal global (sauf un son accordé, sur son propre canal) ; Plug-in = les 24 sons sur les canaux 1 à 12 (comme l'Attack VST), 13-16 inutilisés ; GlobalChn = canal global seul, pas de jeu polyphonique. Dans les fichiers d'usine, l'Init Program est à `0`, la plupart des kits à `1` ou `2`. Le plug-in joue en Native | ⚠️ |
 | `12` | Tempo, poids fort | 0–24 (ra-editor l'appelle `Tempo_Lo`, mais la plage 0–24 en fait le poids fort) | ⚠️ |
 | `13` | Tempo, poids faible | 0–127 | ⚠️ |
 | `14` / `15` | Trigger A : son / vélocité | son `0`–`23` | ⚠️ |

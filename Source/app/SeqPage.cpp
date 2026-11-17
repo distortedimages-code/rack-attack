@@ -205,8 +205,48 @@ void SeqPage::toggleTuned()
         return;
     }
     engine.setSoundParameter (track, 0x58, channel);
-    showToast (fr ("SON ACCORDÉ : CANAL ") + juce::String (channel));
+    showToast (fr ("SON ACCORDÉ : CANAL ") + juce::String (channel) + fr ("  ·  CLIC DROIT : UN AUTRE CANAL"));
     addBurst (tuneBox.getCentre(), px::white);
+}
+
+void SeqPage::showTuneMenu()
+{
+    const auto& kit = engine.getKit();
+    if (! kit.hasSound (track))
+        return;
+    const int current = kit.soundValue (track, 0x58);
+    const int global = juce::jlimit (1, 16, engine.channel.load());
+    juce::PopupMenu m;
+    m.addSectionHeader (fr ("CANAL DES NOTES DU SON ") + juce::String (track + 1).paddedLeft ('0', 2));
+    m.addItem (100, fr ("Non accordé (batterie)"), true, current == 0);
+    for (int c = 1; c <= 16; ++c)
+    {
+        juce::String others;
+        for (int s = 0; s < ra::Kit::numSounds; ++s)
+            if (s != track && kit.hasSound (s))
+            {
+                const int t = kit.soundValue (s, 0x58);
+                if ((t == 17 ? global : t) == c)
+                    others << (others.isEmpty() ? "" : ", ") << juce::String (s + 1).paddedLeft ('0', 2);
+            }
+        auto label = fr ("Canal ") + juce::String (c);
+        if (c == global)
+            label << fr ("   canal de la machine : ses notes font aussi jouer la batterie");
+        else if (others.isNotEmpty())
+            label << fr ("   aussi le son ") + others;
+        m.addItem (c, label, true, current == c);
+    }
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                     [safe = juce::Component::SafePointer<SeqPage> (this), sound = track] (int r)
+    {
+        auto* self = safe.getComponent();
+        if (self == nullptr || r == 0)
+            return;
+        const int channel = r == 100 ? 0 : r;
+        self->engine.setSoundParameter (sound, 0x58, channel);
+        self->showToast (channel == 0 ? fr ("SON NON ACCORDÉ") : fr ("SON ACCORDÉ : CANAL ") + juce::String (channel));
+        self->repaint();
+    });
 }
 
 bool SeqPage::isSelected (int step) const
@@ -405,6 +445,7 @@ void SeqPage::layout()
 SeqPage::Hit SeqPage::zoneAt (juce::Point<int> p) const
 {
     if (playBox.contains (p))     return { Zone::play, 0 };
+    if (! midiModeChip.isEmpty() && midiModeChip.contains (p)) return { Zone::midiMode, 0 };
     if (tempoBox.contains (p))    return { Zone::tempo, 0 };
     if (swingBox.contains (p))    return { Zone::swing, 0 };
     for (int i = 0; i < numTracks; ++i)
@@ -524,6 +565,24 @@ void SeqPage::paintHeader (juce::Graphics& g, double now, double tempo, int swin
         kitName = fr ("non lu");
     px::drawText (g, "KIT", k.removeFromLeft (46), juce::Justification::centredLeft, px::text (30.0f), px::dim);
     px::drawText (g, upper (kitName), k, juce::Justification::centredLeft, px::text (30.0f), px::white);
+
+    // the plug-in plays in MIDI mode Native (sounds on the unit's channel from the base key, tuned sounds
+    // on their own channel): a kit in Plug-in mode stays silent, one in GlobalChn plays no tuned sound
+    midiModeChip = {};
+    const auto& kit = engine.getKit();
+    if (kit.hasProgram() && kit.programValue (0x11) != 0)
+    {
+        const auto f = px::label (10.0f);
+        const auto text = (kit.programValue (0x11) == 1 ? fr ("MODE MIDI PLUG-IN") : fr ("MODE MIDI GLOBALCHN"))
+                          + fr ("  ·  CLIC : NATIVE");
+        const int x = k.getX() + textWidth (px::text (30.0f), upper (kitName)) + 14;
+        midiModeChip = juce::Rectangle<int> (x, k.getCentreY() - 11, textWidth (f, text) + 16, 22)
+                           .getIntersection (k.withTrimmedRight (6));
+        const bool hot = hover.zone == Zone::midiMode;
+        g.setColour (hot ? px::white : px::red);
+        g.fillRect (midiModeChip);
+        px::drawText (g, text, midiModeChip, juce::Justification::centred, f, px::black);
+    }
 
     // play
     {
@@ -1625,7 +1684,7 @@ void SeqPage::mouseDown (const juce::MouseEvent& e)
             }
             break;
         case Zone::listen:     engine.playSound (track); break;
-        case Zone::tune:       toggleTuned(); break;
+        case Zone::tune:       if (right) showTuneMenu(); else toggleTuned(); break;
         case Zone::param:
             if (right)
             {
@@ -1733,6 +1792,10 @@ void SeqPage::mouseDown (const juce::MouseEvent& e)
                 setTrigValue (4, right ? 0 : (drag.startValue + 1) % (int) conditions().size());
             break;
         case Zone::clearSelection: selection.clear(); break;
+        case Zone::midiMode:
+            engine.setProgramParameter (0x11, 0);
+            showToast (fr ("MODE MIDI NATIVE : SHIFT + STORE POUR LE GARDER"), px::yellow);
+            break;
         case Zone::none:
             if (soundPanel.getUnion (seqPanel).contains (e.getPosition()))
                 selection.clear();
@@ -1891,7 +1954,7 @@ void SeqPage::mouseDrag (const juce::MouseEvent& e)
         }
         case Zone::none: case Zone::play: case Zone::section: case Zone::listen: case Zone::tune:
         case Zone::mode: case Zone::division: case Zone::mute: case Zone::options: case Zone::initTrack: case Zone::initAll:
-        case Zone::miniMap: case Zone::clearSelection:
+        case Zone::miniMap: case Zone::clearSelection: case Zone::midiMode:
             break;
     }
     repaint();
@@ -1964,7 +2027,7 @@ void SeqPage::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelD
             break;
         case Zone::none: case Zone::play: case Zone::voice: case Zone::section: case Zone::listen: case Zone::mode: case Zone::tune:
         case Zone::length: case Zone::division: case Zone::mute: case Zone::options: case Zone::initTrack: case Zone::initAll:
-        case Zone::miniMap: case Zone::step: case Zone::clearSelection:
+        case Zone::miniMap: case Zone::step: case Zone::clearSelection: case Zone::midiMode:
             break;
     }
     repaint();

@@ -54,7 +54,7 @@ private:
     {
         none, play, tempo, swing, voice,
         section, listen, param, tune,
-        mode, length, division, mute, options, initTrack, initAll, miniMap, step, trig, clearSelection
+        mode, length, division, mute, options, initTrack, initAll, miniMap, step, trig, clearSelection, midiMode
     };
     struct Hit { Zone zone = Zone::none; int index = -1; };
 
@@ -98,6 +98,7 @@ private:
     int quickFrom = 0;
     juce::Rectangle<int> quickRow, quickHeader, tuneBox;
     void toggleTuned();
+    void showTuneMenu();                      // right click: which channel the sound's notes come on
     int paramMax (int address) const;
     int shownValue (const ra::seq::Track&, int slot) const;   // the lock of the selected steps, else the sound's
     void setParam (int slot, int value);
@@ -136,6 +137,7 @@ private:
 
     // geometry
     juce::Rectangle<int> header, mascotArea, playBox, tempoBox, swingBox, loadBox, kitBox;
+    juce::Rectangle<int> midiModeChip;        // shown when the kit isn't in MIDI mode Native (click: Native)
     std::array<juce::Rectangle<int>, ra::seq::numTracks> voices;
     juce::Rectangle<int> soundPanel, soundTitle, listenBox, vizBox;
     std::array<float, 128> shownValues {};      // what the picture shows, moving towards the values

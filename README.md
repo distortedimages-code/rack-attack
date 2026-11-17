@@ -4,7 +4,7 @@
 
 **Page de téléchargement** : https://distortedimages-code.github.io/rack-attack/
 
-## Ce que fait l'appli (version 0.5.10)
+## Ce que fait l'appli (version 0.5.11)
 
 - **Branchement guidé** en 3 écrans : les câbles et ports MIDI, deux réglages sur la machine, puis l'appli trouve le RackAttack toute seule (y compris son Sysex ID) et lit le kit en cours.
 - **Kit** : les 24 sons en pads (écouter, volume, pan, sortie), le programme (nom, mode MIDI, triggers A/B/C), changement de programme.
@@ -31,11 +31,12 @@ Télécharge `RackAttack-Editor-mac.dmg` (lien sur la page, toujours la dernièr
 - **l'installeur** (« Installer RackAttack Editor », AU, VST3 et appli au choix) ; comme il n'est pas signé chez Apple, macOS peut refuser de l'ouvrir : la commande Terminal du LISEZ-MOI le lance quand même ;
 - **à la main** : glisser chaque élément sur le raccourci de son dossier, puis coller la commande Terminal qui débloque l'AU et le VST3 et fait valider l'AU.
 
-Ensuite, les mises à jour se font depuis le plug-in : un bouton **Mise à jour** apparaît en haut quand une version sort (fichier vérifié, mot de passe demandé par macOS).
+Ensuite, les mises à jour se font depuis le plug-in : quand une version sort, une fenêtre le dit à l'ouverture (une fois par lancement de ton logiciel), avec ta version et ce que chaque nouvelle version apporte en bref ; **Installer** remplace le plug-in et l'appli (fichier vérifié, mot de passe demandé par macOS). Le bouton **Mettre à jour** reste en haut. Au premier lancement d'une nouvelle version, une fenêtre dit ce qu'elle apporte.
 
 ## Publier une version
 
 1. Monter `VERSION` dans `CMakeLists.txt` (`project(RackAttack VERSION x.y.z …)`) et écrire `RELEASE_NOTES.md`.
+   Première ligne : `**RackAttack Editor X.Y.Z** : ce que ça apporte.`, puis un point par ligne `- **Titre court** détails`. La fenêtre de mise à jour montre cette ligne et les titres des points.
 2. Fusionner dans `main`. C'est tout, comme pour IMPAKT : quand `main` porte une version qui n'est pas encore sortie, le workflow **release** la construit, la teste sur un Mac et la publie avec le `.dmg`, le `.zip` et son contrôle (GitHub crée le tag). Les plug-ins installés proposent alors la mise à jour.
 
 Pour regarder une version avant qu'elle sorte : *Actions* → **release** → *Run workflow* avec **Brouillon** coché, puis *Releases* → **Publish release**.

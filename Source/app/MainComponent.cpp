@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "RaNotesData.h"
 
 #include "LayoutAudit.h"
 
@@ -158,6 +159,7 @@ MainComponent::MainComponent (AppContext& c)
 
     addChildComponent (wizard);
     addChildComponent (measureWizard);
+    addChildComponent (updatePanel);
     measureWizard.onClose = [this] { measureWizard.setVisible (false); toolsPage.refreshSettings(); };
     measureWizard.useMeasures = [this] (const juce::File& f, juce::String& error)
     {
@@ -228,6 +230,42 @@ MainComponent::MainComponent (AppContext& c)
         showMeasure();
         if (measureEnv != "1")
             measureWizard.demo (measureEnv);
+    }
+
+    // the first time this version opens after another one: what it brought (its notes are built in)
+    {
+        auto& set = ctx.settings();
+        const auto lastRun = set.getValue ("lastRunVersion");
+        const auto now = Updater::currentVersion();
+        const auto notes = juce::String::fromUTF8 (RaNotesData::RELEASE_NOTES_md, RaNotesData::RELEASE_NOTES_mdSize);
+        // up to 0.5.10 nothing wrote lastRunVersion: a daily update check in the settings says it was used before
+        const bool upgraded = lastRun.isNotEmpty() ? Updater::isNewer (now, lastRun) : set.containsKey ("updateLastCheck");
+        if (upgraded && notes.contains ("RackAttack Editor " + now))
+            pendingNews = Updater::summarise (now, notes);
+        if (lastRun != now)
+        {
+            set.setValue ("lastRunVersion", now);
+            set.saveIfNeeded();
+        }
+    }
+    // screenshots: RA_UPDATE_PANEL=available or news, with this version's notes
+    const auto panelEnv = juce::SystemStats::getEnvironmentVariable ("RA_UPDATE_PANEL", {});
+    if (panelEnv.isNotEmpty())
+    {
+        const auto notes = juce::String::fromUTF8 (RaNotesData::RELEASE_NOTES_md, RaNotesData::RELEASE_NOTES_mdSize);
+        auto n = Updater::summarise (Updater::currentVersion(), notes);
+        if (panelEnv == "news")
+            updatePanel.showNews (n);
+        else
+        {
+            auto older = n;
+            older.version = "0.5.9";
+            older.headline = "Le simulateur réglé sur une vraie machine, et une mesure qui va plus loin."_fr;
+            older.points = { "Le simulateur suit les mesures d'un vrai RackAttack"_fr, "L'enveloppe 2 règle le volume"_fr,
+                             "La mesure guidée trouve l'enveloppe du volume"_fr };
+            n.version = "0.5.11";
+            updatePanel.showAvailable ({ n, older }, 3);
+        }
     }
 
     refreshUpdate();
@@ -392,6 +430,8 @@ void MainComponent::refreshUpdate()
 {
     auto& up = ctx.updater;
     bool show = up.getState() == Updater::State::Available || up.getState() == Updater::State::Installed
+             || up.getState() == Updater::State::Installing
+             || (up.getState() == Updater::State::Checking && ! up.getNewer().empty())          // looking again
              || juce::SystemStats::getEnvironmentVariable ("RA_FAKE_UPDATE", {}) == "1";     // screenshots
     updateButton.setButtonText (up.getState() == Updater::State::Installed ? "Redémarrer"_fr : "Mettre à jour"_fr);
     updateButton.setTooltip (up.getStatusText());
@@ -399,9 +439,36 @@ void MainComponent::refreshUpdate()
     resized();
 }
 
+void MainComponent::maybeShowUpdate()
+{
+    static juce::String shownUpdate;      // once a run of the host (or the app): not each time the window opens
+    static bool shownNews = false;
+    if (updatePanel.isVisible() || wizard.isVisible() || measureWizard.isVisible() || ! isShowing())
+        return;
+    if (pendingNews.has_value())
+    {
+        if (! std::exchange (shownNews, true))
+            updatePanel.showNews (*pendingNews);
+        pendingNews.reset();
+        return;
+    }
+    auto& up = ctx.updater;
+    if (up.getState() == Updater::State::Available && up.getRelease().version != shownUpdate)
+    {
+        shownUpdate = up.getRelease().version;
+        showUpdateDialog();
+    }
+}
+
 void MainComponent::showUpdateDialog()
 {
     auto& up = ctx.updater;
+    if (up.getState() == Updater::State::Available || up.getState() == Updater::State::Installing
+        || (up.getState() == Updater::State::Installed && ! up.getNewer().empty()))
+    {
+        updatePanel.showAvailable (up.getNews (3), (int) up.getNewer().size());
+        return;
+    }
     const auto& rel = up.getRelease();
     auto opts = juce::MessageBoxOptions().withAssociatedComponent (this);
 
@@ -551,6 +618,7 @@ void MainComponent::resized()
     auto r = getLocalBounds();
     wizard.setBounds (r);
     measureWizard.setBounds (r);
+    updatePanel.setBounds (r);
 
     // the top bar: the page buttons as wide as their names, then from the right the journal,
     // the zoom, the update when there is one, and the light gets what is left

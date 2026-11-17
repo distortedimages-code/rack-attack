@@ -142,10 +142,31 @@ void Updater::skipThisVersion()
 //==============================================================================
 void Updater::checkIfDue()
 {
-    if (state != State::Idle || ! getAutoCheck())
+    if (repository().isEmpty() || ! getAutoCheck() || (state != State::Idle && state != State::UpToDate))
         return;
+    // what the last check found, at once: the window can tell it as it opens
+    if (state == State::Idle)
+    {
+        const auto cache = juce::JSON::parse (settings().getValue ("updateCache"));
+        std::vector<Release> all;
+        if (const auto* list = cache.getArray())
+            for (const auto& v : *list)
+            {
+                Release r;
+                r.version = v.getProperty ("version", {}).toString();
+                r.title = v.getProperty ("title", {}).toString();
+                r.notes = v.getProperty ("notes", {}).toString();
+                r.pageUrl = v.getProperty ("page", {}).toString();
+                r.zipUrl = v.getProperty ("zip", {}).toString();
+                r.shaUrl = v.getProperty ("sha", {}).toString();
+                if (r.version.isNotEmpty() && r.zipUrl.startsWith ("https://"))
+                    all.push_back (r);
+            }
+        if (! all.empty())
+            found (all, true);
+    }
     const auto last = settings().getValue ("updateLastCheck", "0").getLargeIntValue();
-    if (juce::Time::currentTimeMillis() - last < (juce::int64) 24 * 3600 * 1000)
+    if (juce::Time::currentTimeMillis() - last < (juce::int64) 3600 * 1000)
         return;
     automatic = true;
     checkNow();
@@ -156,41 +177,92 @@ void Updater::checkNow()
     if (repository().isEmpty() || state == State::Checking || state == State::Installing)
         return;
 
+    const auto before = state;
+    const auto beforeText = status;
     setState (State::Checking, "Recherche de mise à jour…"_fr);
     settings().setValue ("updateLastCheck", juce::String (juce::Time::currentTimeMillis()));
     settings().saveIfNeeded();
 
-    const auto url = "https://api.github.com/repos/" + repository() + "/releases/latest";
-    pool.addJob ([this, weak = juce::WeakReference<Updater> (this), url]
+    // the list, not only the latest: what each version since this one brings
+    const auto url = "https://api.github.com/repos/" + repository() + "/releases?per_page=20";
+    pool.addJob ([this, weak = juce::WeakReference<Updater> (this), url, before, beforeText]
     {
         juce::MemoryBlock mb;
         const auto err = httpGet (url, mb, cancel, 10000);
-        std::optional<Release> rel;
+        std::vector<Release> all;
         if (err.isEmpty())
-            rel = parseLatestRelease (mb.toString(), assetName);
+            all = parseReleases (mb.toString(), assetName);
 
-        juce::MessageManager::callAsync ([weak, err, rel]
+        juce::MessageManager::callAsync ([weak, err, all, before, beforeText]
         {
             auto* u = weak.get();
             if (u == nullptr)
                 return;
             const bool wasAutomatic = std::exchange (u->automatic, false);
 
-            if (err.isNotEmpty() || ! rel)
+            if (err.isNotEmpty() || all.empty())
             {
-                u->setState (wasAutomatic ? State::Idle : State::Failed,
-                             "Impossible de vérifier les mises à jour : "_fr + (err.isNotEmpty() ? err : "réponse inattendue de GitHub."_fr));
+                if (wasAutomatic && before == State::Available)
+                    u->setState (before, beforeText);     // what the cache said stands
+                else
+                    u->setState (wasAutomatic ? State::Idle : State::Failed,
+                                 "Impossible de vérifier les mises à jour : "_fr + (err.isNotEmpty() ? err : "réponse inattendue de GitHub."_fr));
                 return;
             }
-
-            u->release = *rel;
-            const bool skipped = wasAutomatic && u->settings().getValue ("updateSkip") == rel->version;
-            if (isNewer (rel->version, currentVersion()) && ! skipped)
-                u->setState (State::Available, "La version "_fr + rel->version + " est disponible (tu as la "_fr + currentVersion() + ").");
-            else
-                u->setState (State::UpToDate, "Tu as la dernière version ("_fr + currentVersion() + ").");
+            u->keep (all);
+            u->found (all, wasAutomatic);
         });
     });
+}
+
+void Updater::found (const std::vector<Release>& all, bool wasAutomatic)
+{
+    newer.clear();
+    for (const auto& r : all)
+        if (isNewer (r.version, currentVersion()))
+            newer.push_back (r);
+    release = all.front();
+    const bool skipped = wasAutomatic && settings().getValue ("updateSkip") == release.version;
+    if (! newer.empty() && ! skipped)
+        setState (State::Available, "La version "_fr + release.version + " est disponible (tu as la "_fr + currentVersion() + ").");
+    else
+        setState (State::UpToDate, "Tu as la dernière version ("_fr + currentVersion() + ").");
+}
+
+void Updater::keep (const std::vector<Release>& all)
+{
+    // the newest, and every other one newer than this version (with the one this is: its news after an update)
+    juce::Array<juce::var> list;
+    for (size_t i = 0; i < all.size() && list.size() < 8; ++i)
+    {
+        const auto& r = all[i];
+        if (i > 0 && ! isNewer (r.version, currentVersion()) && r.version != currentVersion())
+            continue;
+        auto* o = new juce::DynamicObject();
+        o->setProperty ("version", r.version);
+        o->setProperty ("title", r.title);
+        o->setProperty ("notes", r.notes.substring (0, 4000));
+        o->setProperty ("page", r.pageUrl);
+        o->setProperty ("zip", r.zipUrl);
+        o->setProperty ("sha", r.shaUrl);
+        list.add (juce::var (o));
+    }
+    settings().setValue ("updateCache", juce::JSON::toString (list, true));
+    settings().saveIfNeeded();
+}
+
+std::vector<Updater::News> Updater::getNews (int maxVersions) const
+{
+    std::vector<News> out;
+    for (const auto& r : newer)
+        if ((int) out.size() < maxVersions)
+            out.push_back (summarise (r.version, r.notes));
+    return out;
+}
+
+juce::String Updater::pageOf (const juce::String& version)
+{
+    return "https://github.com/" + repository() + "/releases/tag/v" + version;
 }
 
 void Updater::install()
@@ -268,7 +340,77 @@ bool Updater::isNewer (const juce::String& candidate, const juce::String& curren
 
 std::optional<Updater::Release> Updater::parseLatestRelease (const juce::String& json, const juce::String& asset)
 {
-    const auto v = juce::JSON::parse (json);
+    return parseRelease (juce::JSON::parse (json), asset);
+}
+
+std::vector<Updater::Release> Updater::parseReleases (const juce::String& json, const juce::String& asset)
+{
+    std::vector<Release> out;
+    const auto parsed = juce::JSON::parse (json);           // kept: the list points into it
+    if (const auto* list = parsed.getArray())
+        for (const auto& v : *list)
+            if (auto r = parseRelease (v, asset))
+                out.push_back (*r);
+    std::sort (out.begin(), out.end(), [] (const Release& a, const Release& b) { return isNewer (a.version, b.version); });
+    return out;
+}
+
+// "**RackAttack Editor 0.5.10** : la mesure ne bloque plus." then "- **Plus de pause** quand..." lines: the headline,
+// and the bold start of each point (or its first words)
+Updater::News Updater::summarise (const juce::String& version, const juce::String& notes)
+{
+    News n;
+    n.version = version;
+    auto plain = [] (juce::String t)
+    {
+        t = t.replace ("**", "").replace ("`", "").trim();
+        while (t.endsWithChar ('.') || t.endsWithChar (':') || t.endsWithChar (';') || t.endsWithChar (','))
+            t = t.dropLastCharacters (1).trimEnd();
+        return t;
+    };
+    auto shorten = [] (juce::String t, int max)
+    {
+        if (t.length() <= max)
+            return t;
+        auto cut = t.substring (0, max);
+        if (cut.lastIndexOfChar (' ') > max / 2)
+            cut = cut.substring (0, cut.lastIndexOfChar (' '));
+        return cut.trimEnd() + "…";
+    };
+    for (auto line : juce::StringArray::fromLines (notes))
+    {
+        line = line.trim();
+        if (line.isEmpty())
+            continue;
+        if (line.startsWith ("- ") || line.startsWith ("* ") || line.startsWith ("• "))
+        {
+            if (n.points.size() >= 4)
+                continue;
+            auto item = line.substring (2).trim();
+            juce::String point;
+            if (item.startsWith ("**") && item.indexOf (2, "**") > 2)
+                point = item.substring (2, item.indexOf (2, "**"));
+            else
+                point = item.upToFirstOccurrenceOf (" : ", false, false).upToFirstOccurrenceOf (". ", false, false);
+            point = plain (point);
+            if (point.isNotEmpty())
+                n.points.add (shorten (point.substring (0, 1).toUpperCase() + point.substring (1), 90));
+        }
+        else if (n.headline.isEmpty())
+        {
+            // past the "RackAttack Editor 0.5.10 :" that opens it
+            auto h = line.containsChar (':') && line.upToFirstOccurrenceOf (":", false, false).contains (version)
+                         ? line.fromFirstOccurrenceOf (":", false, false) : line;
+            h = plain (h);
+            if (h.isNotEmpty() && ! h.containsIgnoreCase ("RackAttack Editor " + version))
+                n.headline = shorten (h.substring (0, 1).toUpperCase() + h.substring (1), 140);
+        }
+    }
+    return n;
+}
+
+std::optional<Updater::Release> Updater::parseRelease (const juce::var& v, const juce::String& asset)
+{
     if (! v.isObject())
         return std::nullopt;
     if ((bool) v.getProperty ("draft", false) || (bool) v.getProperty ("prerelease", false))

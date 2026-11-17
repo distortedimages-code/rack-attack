@@ -1,4 +1,6 @@
 # Publishing a version, as for IMPAKT: raise VERSION in CMakeLists.txt, write RELEASE_NOTES.md, merge into main.
+# RELEASE_NOTES.md: first line "**RackAttack Editor X.Y.Z** : what it brings.", then one "- **Short title** details"
+# per point. The editor's update window shows that line and the titles (Updater::summarise).
 # On that push, when there is no release v<VERSION> yet, this builds and tests on a Mac and publishes the release
 # v<VERSION> (GitHub creates the tag on that commit) with
 #   RackAttack-Editor-mac.dmg           for people (the site links to it): an installer (.pkg) and the bundles to drag,

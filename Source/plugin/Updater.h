@@ -21,12 +21,20 @@ public:
         juce::String version, title, notes, pageUrl, zipUrl, shaUrl;
     };
 
+    // what a version brings, in short: its headline and the titles of its points (from its release notes)
+    struct News
+    {
+        juce::String version, headline;
+        juce::StringArray points;
+    };
+
     enum class State { Disabled, Idle, Checking, UpToDate, Available, Installing, Installed, Failed };
 
     explicit Updater (std::function<juce::PropertiesFile&()> settings);
     ~Updater();
 
-    void checkIfDue();                 // automatic check: at most once a day
+    void checkIfDue();                 // automatic check, when the window opens: what the last check found at
+                                       // once (kept in the settings), and GitHub asked again after an hour
     void checkNow();
     void install();                    // download, verify, replace (macOS); elsewhere opens the page
     void skipThisVersion();
@@ -38,6 +46,8 @@ public:
     State getState() const             { return state; }
     juce::String getStatusText() const { return status; }
     const Release& getRelease() const  { return release; }
+    const std::vector<Release>& getNewer() const   { return newer; }   // every version newer than this one, newest first
+    std::vector<News> getNews (int maxVersions = 3) const;              // the same, in short
 
     juce::ChangeBroadcaster changes;
 
@@ -48,6 +58,9 @@ public:
     // Pieces kept free of networking so they can be tested.
     static bool isNewer (const juce::String& candidate, const juce::String& current);
     static std::optional<Release> parseLatestRelease (const juce::String& json, const juce::String& assetName);
+    static std::vector<Release> parseReleases (const juce::String& json, const juce::String& assetName);   // newest first
+    static News summarise (const juce::String& version, const juce::String& notes);
+    static juce::String pageOf (const juce::String& version);   // its release page
     static juce::String expectedSha (const juce::String& shaFileText);
 
     // Replaces each existing bundle in 'targets' with the bundle of the same name found in the
@@ -74,11 +87,15 @@ public:
 
 private:
     void setState (State s, const juce::String& text);
+    void found (const std::vector<Release>& all, bool automatic);   // a list of releases, from GitHub or the cache
+    void keep (const std::vector<Release>& all);                    // the cache, in the settings
+    static std::optional<Release> parseRelease (const juce::var&, const juce::String& assetName);
 
     std::function<juce::PropertiesFile&()> settings;
     State state = State::Idle;
     juce::String status;
     Release release;
+    std::vector<Release> newer;
     bool automatic = false;
 
     std::atomic<bool> cancel { false };

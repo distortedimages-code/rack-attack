@@ -67,6 +67,38 @@ static void testParsing()
     CHECK (Updater::expectedSha ("nope") == "");
 }
 
+// The list GitHub gives (newest first, but not trusted to be), and what each version brings, in short.
+static void testNews()
+{
+    const auto list = "[ " + releaseJson ("v0.5.9", false, false, true) + ", " + releaseJson ("v0.5.11", false, false, true) + ", "
+                    + releaseJson ("v0.5.12", false, true, true) + ", " + releaseJson ("v0.5.10", false, false, true) + " ]";
+    const auto all = Updater::parseReleases (list, Updater::assetName);
+    CHECK (all.size() == 3);                                   // the pre-release left out
+    if (all.size() == 3)
+        CHECK (all[0].version == "0.5.11" && all[1].version == "0.5.10" && all[2].version == "0.5.9");
+    CHECK (Updater::parseReleases ("{ \"message\": \"rate limit\" }", Updater::assetName).empty());
+
+    const auto notes = juce::String::fromUTF8 (
+        "**RackAttack Editor 0.5.10** : la mesure guidée ne bloque plus sur un faux changement de volume.\n\n"
+        "- **Plus de pause « Le son a changé de volume »** quand personne n'a touché la machine. À la fin...\n"
+        "- **Chaque partie commence dans le silence** : un long relâchement...\n"
+        "- Tout ce qu'apportait la 0.5.9 reste : le simulateur réglé sur une vraie machine.\n\n"
+        "Pour garder un kit sur la machine, toujours **Shift + Store**.\n");
+    const auto n = Updater::summarise ("0.5.10", notes);
+    CHECK (n.version == "0.5.10");
+    CHECK (n.headline == juce::String::fromUTF8 ("La mesure guidée ne bloque plus sur un faux changement de volume"));
+    CHECK (n.points.size() == 3);
+    if (n.points.size() == 3)
+    {
+        CHECK (n.points[0] == juce::String::fromUTF8 ("Plus de pause « Le son a changé de volume »"));
+        CHECK (n.points[1] == "Chaque partie commence dans le silence");
+        CHECK (n.points[2] == juce::String::fromUTF8 ("Tout ce qu'apportait la 0.5.9 reste"));
+    }
+    // notes that aren't written that way still give something short
+    const auto plain = Updater::summarise ("0.3.0", "Fixes.\n- Plug-in\n- Updates");
+    CHECK (plain.headline == "Fixes" && plain.points.size() == 2);
+}
+
 // A fake installed bundle and a fake release zip.
 static void makeBundle (const juce::File& bundle, const juce::String& version, const juce::String& payload)
 {
@@ -224,6 +256,7 @@ int main()
     juce::ScopedJuceInitialiser_GUI init;
     testVersions();
     testParsing();
+    testNews();
     testInstall();
     testElevated();
     std::printf ("%d checks, %d failures\n", checks, failures);

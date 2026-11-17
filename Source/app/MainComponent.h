@@ -9,6 +9,7 @@
 #include "AppContext.h"
 #include "ConnectWizard.h"
 #include "MeasureWizard.h"
+#include "UpdatePanel.h"
 #include "MorphFader.h"
 #include "Pages.h"
 #include "Pixel.h"
@@ -63,7 +64,10 @@ private:
         if (source == &ctx.morph)
             morphChanged();
         else
+        {
             refreshUpdate();
+            maybeShowUpdate();
+        }
     }
     void morphChanged();                 // an end armed: the page framed in yellow, a word in the status bar
     void paintOverChildren (juce::Graphics&) override;
@@ -73,6 +77,7 @@ private:
         flushJournal();
         if (light.state == Engine::Connection::searching)
             light.repaint();
+        maybeShowUpdate();               // held back while an assistant was open
     }
 
     void showZoomMenu();
@@ -83,6 +88,8 @@ private:
     void chooseMeasures();
     void refreshUpdate();
     void showUpdateDialog();
+    void maybeShowUpdate();              // once a run: this version's news after an update, or a newer version out
+    std::optional<Updater::News> pendingNews;
     void flushJournal();
 
     AppContext& ctx;
@@ -127,6 +134,7 @@ private:
 
     ConnectWizard wizard { engine, *this };
     MeasureWizard measureWizard { engine };
+    UpdatePanel updatePanel { ctx.updater };
     std::unique_ptr<juce::FileChooser> chooser;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)

@@ -5,7 +5,7 @@ if(APPLE)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 endif()
 
-project(RackAttack VERSION 0.5.10 LANGUAGES C CXX)
+project(RackAttack VERSION 0.5.11 LANGUAGES C CXX)
 
 # GitHub repository whose releases the plug-in checks for updates (public releases).
 set(RA_UPDATE_REPO "distortedimages-code/rack-attack" CACHE STRING "owner/repo checked for updates (empty = no update check)")
@@ -71,6 +71,7 @@ set(RA_APP_SOURCES
     Source/app/SimDevice.cpp
     Source/app/Measure.cpp
     Source/app/MeasureWizard.cpp
+    Source/app/UpdatePanel.cpp
     Source/app/Pixel.cpp)
 
 # Pixel fonts (SIL Open Font License, see Resources/fonts)
@@ -79,6 +80,10 @@ juce_add_binary_data(RaFonts SOURCES
     Resources/fonts/Silkscreen-Bold.ttf
     Resources/fonts/VT323-Regular.ttf)
 set_target_properties(RaFonts PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# This version's notes, for the window that tells what it brought the first time it opens
+juce_add_binary_data(RaNotes HEADER_NAME RaNotesData.h NAMESPACE RaNotesData SOURCES RELEASE_NOTES.md)
+set_target_properties(RaNotes PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 set(RA_DEFINITIONS
     RA_VERSION="${PROJECT_VERSION}"
@@ -97,6 +102,7 @@ target_link_libraries(RackAttackEditor
     PRIVATE
         ra_core
         RaFonts
+        RaNotes
         juce::juce_audio_utils
         juce::juce_audio_devices
         juce::juce_cryptography

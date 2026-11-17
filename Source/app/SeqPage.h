@@ -63,7 +63,7 @@ private:
     {
         ra::seq::Mode mode = ra::seq::Mode::steps;
         ra::seq::Division division = ra::seq::Division::sixteenth;
-        bool mute = false, locks = false;
+        bool mute = false, solo = false, silent = false, locks = false;   // silent: muted, or another sound is solo
         int length = 16;
         juce::String name;
         std::vector<bool> trigs;
@@ -158,7 +158,11 @@ private:
         // the first clear move decides between ratchets (up / down) and painting (across)
         bool pendingOff = false, ratchet = false, painting = false;
         int ratchetBase = 1;
+        // a sound pad: a click selects it on release; a drag down mutes it, a drag up puts it solo
+        bool pendingSelect = false, padDone = false;
+        int padDy = 0;                        // how far the pad follows the drag (down positive)
     } drag;
+    bool openSilent = false;                  // the open track doesn't sound (mute, or another solo)
     Hit hover;
 
     std::unique_ptr<juce::TextEditor> nameEditor;
@@ -168,6 +172,8 @@ private:
     void paintOverlays (juce::Graphics&, double now);
     void showPopup (int slot, const ra::seq::Track&);
     void addBurst (juce::Point<int> at, juce::Colour);
+    static constexpr int padThreshold = 18;   // px: a pad dragged this far mutes (down) or goes solo (up)
+    void padGesture (int voice, bool down);   // down: mute / sound back; up: solo / out of solo
     void showToast (const juce::String&, juce::Colour = px::white);
     void startWipe()                          { wipeStart = juce::Time::getMillisecondCounterHiRes(); }
     void paintSectionTitle (juce::Graphics&, juce::Rectangle<int> screen, const juce::String&, double t);

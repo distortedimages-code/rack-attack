@@ -174,7 +174,7 @@ Formes d'oscillateur `SHAPE` : `0` Triangle · `1` Sine · `2` Square · `3` Saw
 | **Tuned / Out / FX** ||||
 | `55` | Dry Out | `0` Mono 1 · `1` Stereo 1/2 · `2` Mono 2 · `3` Mono 3 · `4` Stereo 3/4 · `5` Mono 4 · `6` Mono 5 · `7` Stereo 5/6 · `8` Mono 6 | ⚠️ |
 | `56` | FX Select | `0`–`3` = FX1–FX4 | ⚠️ |
-| `57` | FX Send Mix | 0–100 % | ⚠️ |
+| `57` | FX Send Mix | 0–100 %. Un dosage sec / effet comme le Mix de l'effet (manuel p. 64-65), pas un envoi : à 0 le sec seul, au milieu le sec entier et l'effet, en haut l'effet seul. Courbe exacte à mesurer (le simulateur fait un fondu droit) | ⚠️ |
 | `58` | Tuned Channel | `0` Off · `1`–`16` · `17` Global | ⚠️ |
 | `59` | Transpose | −48…+48 (centre ❓) | ⚠️ |
 | `5A` | Low Key | C-2…G8 | ⚠️ |

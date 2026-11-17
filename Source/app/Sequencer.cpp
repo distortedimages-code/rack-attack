@@ -179,7 +179,7 @@ void Sequencer::tick (double now)
             if (fresh || std::abs (error) > kJumpPpq)
             {
                 if (running && drivenByHost && std::abs (error) > kJumpPpq)
-                    halt (now);   // loop or moved playhead: plan again from there
+                    halt (now, false);   // loop or moved playhead: plan again from there
                 anchorPpq = hostPpqValue;
             }
             else
@@ -198,7 +198,7 @@ void Sequencer::tick (double now)
     if (host)
     {
         if (running && ! drivenByHost)
-            halt (now);           // the DAW takes over from the own clock
+            halt (now, false);    // the DAW takes over from the own clock
         ownPlaying = false;
     }
     else if (ownPlaying.load())
@@ -206,7 +206,7 @@ void Sequencer::tick (double now)
         double tempo = 120.0;
         read ([&] (const ra::seq::Pattern& p) { tempo = p.tempo; });
         if (running && drivenByHost)
-            halt (now);
+            halt (now, false);
         if (! running)
         {
             ownStartMs = now;
@@ -262,17 +262,30 @@ void Sequencer::tick (double now)
     }
 }
 
-void Sequencer::halt (double now)
+void Sequencer::halt (double now, bool stopped)
 {
     events.clear();
+    std::vector<int> channels;
     {
         const juce::SpinLock::ScopedLockType sl (lock);
         player.stop (context, lastPpq, events);
+        channels.push_back (context.channel);
+        for (auto c : context.tunedChannel)
+            if (c >= 1 && c <= 16 && std::find (channels.begin(), channels.end(), (int) c) == channels.end())
+                channels.push_back (c);
     }
     engine.clearTimed();
     for (auto& e : events)
         e.ppq = lastPpq;          // all at once, now
     send (events, lastPpq, now, shownBpm.load());
+    if (stopped)
+    {
+        juce::MidiBuffer off;
+        for (auto c : channels)
+            off.addEvent (juce::MidiMessage::allNotesOff (c), 0);
+        loadBytes += 3 * (int) channels.size();
+        engine.sendTimed (off, now, kRate);
+    }
 
     running = false;
     followingHost = false;

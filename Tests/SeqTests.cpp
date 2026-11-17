@@ -284,6 +284,30 @@ int main()
         ev.clear();
         pm.render (m, ctx, 0.0, 4.0, 0.0, ev);
         CHECK (ev.empty());
+
+        // solo: when one sound is solo, only the solo ones play; mute and solo exclude each other
+        Pattern so;
+        for (int t : { 0, 1, 2 })
+            so.tracks[(size_t) t].steps[0].on = true;
+        toggleSolo (so, 1);
+        CHECK (so.anySolo() && so.audible (1) && ! so.audible (0) && ! so.audible (2));
+        Player psolo;
+        ev.clear();
+        psolo.render (so, ctx, 0.0, 1.0, 0.0, ev);
+        on = notesOn (ev);
+        CHECK (on.size() == 1 && on[0].track == 1);
+        toggleSolo (so, 2);
+        Player psolo2;
+        ev.clear();
+        psolo2.render (so, ctx, 0.0, 1.0, 0.0, ev);
+        CHECK (notesOn (ev).size() == 2);
+        toggleMute (so, 2);                 // a muted sound leaves the solo
+        CHECK (so.tracks[2].mute && ! so.tracks[2].solo && ! so.audible (2));
+        toggleSolo (so, 2);                 // and a solo one comes back from mute
+        CHECK (so.tracks[2].solo && ! so.tracks[2].mute && so.audible (2));
+        toggleSolo (so, 1);
+        toggleSolo (so, 2);
+        CHECK (! so.anySolo() && so.audible (0) && so.audible (1));
     }
 
     // Euclid mode keeps the steps' settings (here a lock on the 2nd hit)
@@ -352,6 +376,12 @@ int main()
         CHECK (q.tracks[7].euclid.rotation == -2 && q.tracks[2].division == Division::sixteenthTriplet);
         CHECK (near (q.tempo, 124.0) && q.swing == 58);
         CHECK (q.tracks[3].name == "Caisse claire" && q.tracks[16].mute);
+        CHECK (! q.tracks[16].solo);
+
+        Pattern withSolo;
+        withSolo.tracks[4].solo = true;
+        Pattern back;
+        CHECK (back.load (withSolo.save()) && back.tracks[4].solo && ! back.tracks[4].mute && back.anySolo());
 
         Pattern r;
         r.tracks[0].length = 9;

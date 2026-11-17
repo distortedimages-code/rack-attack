@@ -27,6 +27,15 @@ m.ra_model_init(3);
 check(m.text(m.ra_kit_name()) === 'SIM 04', 'kit name: ' + m.text(m.ra_kit_name()));
 check(m.text(m.ra_track_name(0)) === 'Kick', 'track 1 name');
 check(m.ra_track_get(2, 1) === 64, 'snare length 64');
+{
+  // solo (field 10) and audible (11): one solo silences the others; mute and solo exclude each other
+  const t = load();
+  t.ra_model_init(3);
+  t.ra_track_set(2, 10, 1);
+  check(t.ra_track_get(2, 10) === 1 && t.ra_track_get(2, 11) === 1 && t.ra_track_get(0, 11) === 0, 'solo silences the others');
+  t.ra_track_set(2, 3, 1);
+  check(t.ra_track_get(2, 3) === 1 && t.ra_track_get(2, 10) === 0 && t.ra_track_get(0, 11) === 1, 'a muted sound leaves the solo');
+}
 check(Math.abs(m.ra_tempo() - 124) < 1e-9, 'tempo 124');
 check(m.text(m.ra_param_name(0, 0x27)) === 'Cutoff', 'parameter name: ' + m.text(m.ra_param_name(0, 0x27)));
 check(m.text(m.ra_value_names(0, 0x01)).split('\n')[0].length > 0, 'shape names');

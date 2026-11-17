@@ -1007,7 +1007,11 @@ struct Synth::Impl
         const float crackHz = cal.crackHz[s[crackSpeed]];
         const int crackLen = s[crackLength] >= 50 ? 1 << 30 : std::max (1, (int) s[crackLength]);
         const int fxi = std::min ((int) s[fxSelect], numFx - 1);
+        // FX Send Mix is a dry/wet balance, like the effect's own Mix (manual p. 64-65), not a send:
+        // up to the middle the dry stays whole while the effect comes in, past it the dry goes away,
+        // at the top only the effect is heard (curve not measured yet: a straight crossfade)
         const float send = uni (s[fxSend]);
+        const float sendWet = std::min (1.0f, 2.0f * send), sendDry = std::min (1.0f, 2.0f * (1.0f - send));
         float peak = 0.0f;
 
         for (int i = 0; i < n; ++i)
@@ -1052,9 +1056,9 @@ struct Synth::Impl
             }
             const float amp = v.level * (cal.ampEnvelope != 0 ? ampEnv (v).level : 1.0f);
             const float wet = y * amp;
-            L[i] += wet * v.panL;
-            R[i] += wet * v.panR;
-            fxIn[fxi][(size_t) i] += wet * send;
+            L[i] += wet * sendDry * v.panL;
+            R[i] += wet * sendDry * v.panR;
+            fxIn[fxi][(size_t) i] += wet * sendWet;
             peak = std::max (peak, std::abs (wet));
 
             const bool envDone = cal.ampEnvelope != 0 ? ampEnv (v).stage == Env::Stage::idle

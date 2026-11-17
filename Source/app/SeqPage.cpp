@@ -457,12 +457,15 @@ void SeqPage::paint (juce::Graphics& g)
             o.mode = t.mode;
             o.division = t.division;
             o.mute = t.mute;
+            o.solo = t.solo;
+            o.silent = ! p.audible (i);
             o.length = t.activeLength();
             o.name = trackName (t, i);
             o.trigs = t.trigs();
             o.locks = t.countLocks() > 0;
         }
         open = p.tracks[(size_t) track];
+        openSilent = ! p.audible (track);
         tempo = p.tempo;
         swing = p.swing;
     });
@@ -572,6 +575,28 @@ void SeqPage::paintVoices (juce::Graphics& g, const std::array<Voice, numTracks>
     {
         const auto& tr = all[(size_t) i];
         auto r = voices[(size_t) i];
+        const bool dragged = drag.hit.zone == Zone::voice && drag.hit.index == i && drag.padDy != 0;
+        if (dragged)
+        {
+            // the pad follows the finger a little; the gap it leaves says what letting go will do
+            const auto home = r;
+            r = r.translated (0, juce::jlimit (-12, 12, drag.padDy / 2));
+            const bool down = drag.padDy > 0;
+            const bool armed = std::abs (drag.padDy) >= padThreshold;
+            const auto hint = down ? (tr.mute ? juce::String ("SON") : juce::String ("MUTE"))
+                                   : (tr.solo ? juce::String ("FIN SOLO") : juce::String ("SOLO"));
+            const auto c = down ? px::red : px::yellow;
+            auto gap = down ? home.withHeight (juce::jmax (0, r.getY() - home.getY()))
+                            : home.withTop (r.getBottom()).withBottom (home.getBottom());
+            if (gap.getHeight() > 2)
+            {
+                g.setColour (armed ? c : c.withAlpha (0.35f));
+                g.fillRect (gap);
+            }
+            px::drawText (g, (down ? juce::String (fr ("↓ ")) : juce::String (fr ("↑ "))) + hint,
+                          down ? home.withHeight (14).translated (0, -15) : home.withTop (home.getBottom() + 1).withHeight (14),
+                          juce::Justification::centred, px::label (9.0f), armed ? c : px::grey);
+        }
         bool keyboard = false;
         const double hit = seq.lastHitMs (i, keyboard);
         const double age = hit < 0.0 ? 1e9 : now - hit;
@@ -607,14 +632,14 @@ void SeqPage::paintVoices (juce::Graphics& g, const std::array<Voice, numTracks>
         const auto numText = juce::String (i + 1).paddedLeft ('0', 2);
         plate (top, numText, px::text (28.0f));
         px::drawText (g, numText, top, juce::Justification::centredLeft, px::text (28.0f),
-                      inverted ? px::black : (tr.mute ? px::faint : px::dim));
+                      inverted ? px::black : (tr.silent ? px::faint : px::dim));
         top.removeFromRight (12);
-        if (tr.mode == Mode::notes && ! tr.mute)
+        if (tr.mode == Mode::notes && ! tr.mute && ! tr.solo)
             px::drawText (g, "NOTE", top, juce::Justification::centredRight, px::label (9.0f), inverted ? px::black : px::grey);
         const auto name = upper (tr.name);
         plate (nameRow, name, px::label (10.0f));
         px::drawText (g, name, nameRow, juce::Justification::centredLeft, px::label (10.0f),
-                      inverted ? px::black : (tr.mute ? px::dim : px::white));
+                      inverted ? px::black : (tr.silent ? px::dim : px::white));
 
         // a strip of the page being played
         const int len = tr.length;
@@ -627,8 +652,8 @@ void SeqPage::paintVoices (juce::Graphics& g, const std::array<Voice, numTracks>
             auto b = juce::Rectangle<int> (strip.getX() + juce::roundToInt ((float) s * w), strip.getY(), juce::jmax (1, juce::roundToInt (w) - 1), strip.getHeight());
             juce::Colour c = juce::Colour (0xff222222);
             if (idx < len && tr.trigs[(size_t) idx])
-                c = tr.mute ? px::faint : px::white;
-            if (idx == playing && ! tr.mute)
+                c = tr.silent ? px::faint : px::white;
+            if (idx == playing && ! tr.silent)
                 c = px::red;
             if (idx >= len)
                 c = px::black;
@@ -636,12 +661,12 @@ void SeqPage::paintVoices (juce::Graphics& g, const std::array<Voice, numTracks>
             g.fillRect (b);
         }
 
-        if (tr.mute)
+        if (tr.mute || tr.solo)
         {
             auto chip = r.withTrimmedLeft (r.getWidth() - 50).withHeight (16).translated (-5, 5);
-            g.setColour (px::red);
+            g.setColour (tr.mute ? px::red : px::yellow);
             g.fillRect (chip);
-            px::drawText (g, "MUTE", chip, juce::Justification::centred, px::label (9.0f), px::black);
+            px::drawText (g, tr.mute ? "MUTE" : "SOLO", chip, juce::Justification::centred, px::label (9.0f), px::black);
         }
         else if (tr.locks)
         {
@@ -1138,7 +1163,7 @@ void SeqPage::paintSteps (juce::Graphics& g, const Track& tr, int playing, doubl
 
         // the step being played: the densest red, under the red line; behind it a short trail that
         // fades in a few hundredths of a second; a wave runs when it stops
-        if (playing >= 0 && ! tr.mute && ! on)
+        if (playing >= 0 && ! openSilent && ! on)
         {
             const int back = ((playing - idx) % len + len) % len;
             int level = 0;
@@ -1193,7 +1218,7 @@ void SeqPage::paintSteps (juce::Graphics& g, const Track& tr, int playing, doubl
         else
             px::drawText (g, text, label, juce::Justification::bottomLeft, px::text (26.0f), textColour);
 
-        if (idx == playing && ! tr.mute)
+        if (idx == playing && ! openSilent)
         {
             g.setColour (px::red);
             g.fillRect (stepBoxes[(size_t) i].getX() + 4, stepBoxes[(size_t) i].getY() - 10, stepBoxes[(size_t) i].getWidth() - 8, 5);
@@ -1219,7 +1244,7 @@ void SeqPage::paintMiniMap (juce::Graphics& g, const Track& tr, int playing)
         }
         const bool visible = i / stepsPerPage == page;
         juce::Colour c = trigs[(size_t) i] ? (visible ? px::white : px::grey) : (visible ? px::faint : juce::Colour (0xff1f1f1f));
-        if (i == playing && ! tr.mute)
+        if (i == playing && ! openSilent)
             c = px::red;
         g.setColour (c);
         g.fillRect (b);
@@ -1587,9 +1612,9 @@ void SeqPage::mouseDown (const juce::MouseEvent& e)
             if (right)
                 showVoiceMenu (drag.hit.index);
             else if (e.mods.isAltDown())
-                seq.edit ([&] (Pattern& p) { auto& m = p.tracks[(size_t) drag.hit.index].mute; m = ! m; });
+                seq.edit ([&] (Pattern& p) { toggleMute (p, drag.hit.index); });
             else
-                selectTrack (drag.hit.index);
+                drag.pendingSelect = true;      // on release, unless it was a drag (mute / solo)
             break;
         case Zone::section:
             if (drag.hit.index != section)
@@ -1635,7 +1660,7 @@ void SeqPage::mouseDown (const juce::MouseEvent& e)
                 d = (Division) (((int) d + (right ? numDivisions - 1 : 1)) % numDivisions);
             });
             break;
-        case Zone::mute:       seq.edit ([&] (Pattern& p) { auto& m = p.tracks[(size_t) track].mute; m = ! m; }); break;
+        case Zone::mute:       seq.edit ([&] (Pattern& p) { toggleMute (p, track); }); break;
         case Zone::options:    showOptions(); break;
         case Zone::initTrack:  initTracks (false); break;
         case Zone::initAll:    initTracks (true); break;
@@ -1850,7 +1875,21 @@ void SeqPage::mouseDrag (const juce::MouseEvent& e)
             setTrigValue (drag.hit.index, drag.startValue + dy / perUnit);
             break;
         }
-        case Zone::none: case Zone::play: case Zone::voice: case Zone::section: case Zone::listen: case Zone::tune:
+        case Zone::voice:
+        {
+            if (! drag.pendingSelect && ! drag.padDone)
+                break;
+            const int down = e.getPosition().y - drag.startY;
+            const int across = std::abs (e.getPosition().x - e.getMouseDownX());
+            if (drag.padDone || across > std::abs (down) + 6)
+            {
+                drag.padDy = 0;                 // across: nothing to do
+                break;
+            }
+            drag.padDy = down;
+            break;
+        }
+        case Zone::none: case Zone::play: case Zone::section: case Zone::listen: case Zone::tune:
         case Zone::mode: case Zone::division: case Zone::mute: case Zone::options: case Zone::initTrack: case Zone::initAll:
         case Zone::miniMap: case Zone::clearSelection:
             break;
@@ -1860,6 +1899,14 @@ void SeqPage::mouseDrag (const juce::MouseEvent& e)
 
 void SeqPage::mouseUp (const juce::MouseEvent&)
 {
+    if (drag.hit.zone == Zone::voice && drag.pendingSelect)
+    {
+        const int i = drag.hit.index;
+        if (std::abs (drag.padDy) >= padThreshold)
+            padGesture (i, drag.padDy > 0);
+        else if (! drag.moved || std::abs (drag.padDy) < 4)
+            selectTrack (i);
+    }
     if (drag.hit.zone == Zone::step && drag.pendingOff && drag.lastStep >= 0)
     {
         const int idx = drag.lastStep;
@@ -1962,12 +2009,34 @@ bool SeqPage::keyPressed (const juce::KeyPress& k)
 //==============================================================================
 // Menus and renaming
 
+void SeqPage::padGesture (int voice, bool down)
+{
+    if (voice < 0 || voice >= numTracks)
+        return;
+    bool mute = false, solo = false, others = false;
+    seq.edit ([&] (Pattern& p)
+    {
+        if (down) toggleMute (p, voice); else toggleSolo (p, voice);
+        mute = p.tracks[(size_t) voice].mute;
+        solo = p.tracks[(size_t) voice].solo;
+        others = p.anySolo();
+    });
+    const auto n = juce::String (voice + 1).paddedLeft ('0', 2);
+    if (down)
+        showToast (mute ? "SON " + n + " : MUTE" : "SON " + n + fr (" : RÉTABLI"), mute ? px::red : px::white);
+    else
+        showToast (solo ? "SON " + n + " : SOLO" : (others ? "SON " + n + " : FIN DU SOLO" : fr ("PLUS DE SOLO")), px::yellow);
+    addBurst (voices[(size_t) voice].getCentre(), down ? px::red : px::yellow);
+    repaint();
+}
+
 void SeqPage::showVoiceMenu (int voice)
 {
-    bool muted = false;
-    seq.read ([&] (const Pattern& p) { muted = p.tracks[(size_t) voice].mute; });
+    bool muted = false, solo = false;
+    seq.read ([&] (const Pattern& p) { muted = p.tracks[(size_t) voice].mute; solo = p.tracks[(size_t) voice].solo; });
     juce::PopupMenu m;
-    m.addItem (1, muted ? "Remettre le son" : "Couper (mute)");
+    m.addItem (1, muted ? fr ("Remettre le son   (glisse vers le bas)") : fr ("Couper (mute)   (glisse vers le bas)"));
+    m.addItem (7, solo ? fr ("Sortir du solo   (glisse vers le haut)") : fr ("Solo   (glisse vers le haut)"));
     m.addItem (2, "Renommer");
     m.addSeparator();
     m.addItem (3, "Copier la piste");
@@ -1984,7 +2053,8 @@ void SeqPage::showVoiceMenu (int voice)
         auto& s = self->seq;
         switch (r)
         {
-            case 1: s.edit ([&] (Pattern& p) { auto& mu = p.tracks[(size_t) voice].mute; mu = ! mu; }); break;
+            case 1: self->padGesture (voice, true); break;
+            case 7: self->padGesture (voice, false); break;
             case 2: self->rename (voice); break;
             case 3:
                 s.read ([&] (const Pattern& p) { self->clipboard = p.tracks[(size_t) voice]; });

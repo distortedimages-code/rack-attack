@@ -1064,10 +1064,12 @@ void LibraryPage::taskFinished (const juce::String& task, bool ok, const juce::S
         programs.updateContent();
         programs.repaint();
     }
-    juce::ignoreUnused (ok, message);
     if (task == "names" || task == "backup" || task == "sendKit" || task == "sendSound" || task == "kit")
     {
-        status.show ({});
+        if (! ok && (task == "names" || task == "backup"))
+            status.show (message, ui::bad);     // here too, not only at the bottom of the window
+        else
+            status.show ({});
         programs.updateContent();
         programs.repaint();
         if (task == "backup")

@@ -236,6 +236,32 @@ int main()
         }
     }
 
+    // FX Send Mix: a balance. At 0 dry only, in the middle dry and effect, at the top the effect only
+    // (a long predelay keeps the effect out of the first 300 ms, so what is heard there is the dry)
+    {
+        auto early = [] (int send)
+        {
+            Synth syn;
+            syn.prepare (sr);
+            syn.setGlobalChannel (1);
+            auto s = plainSound();
+            s[0x55] = 0; s[0x57] = (std::uint8_t) send; s[0x56] = 0;
+            syn.setSound (0, s.data());
+            std::array<std::uint8_t, fxBytes> fx {};
+            fx.fill (64);
+            fx[0] = 7; fx[1] = 1; fx[4] = 64; fx[5] = 127;
+            syn.setEffect (0, fx.data());
+            note (syn, 1, 36, 127);
+            auto x = run (syn, 0.3);
+            return rms (x, (size_t) (sr * 0.01), (size_t) (sr * 0.08));
+        };
+        const double none = early (0), half = early (64), most = early (96), all = early (127);
+        std::printf ("fx send: dry heard %.4f at 0, %.4f at 64, %.4f at 96, %.4f at 127\n", none, half, most, all);
+        CHECK (std::abs (half - none) < none * 0.05);
+        CHECK (most < none * 0.6 && most > none * 0.3);
+        CHECK (all < none * 0.02);
+    }
+
     // Reverb: Predelay (4th setting, byte 05) holds it back; Decay (3rd, byte 04) doesn't
     {
         auto wet = [] (int decay, int predelay)

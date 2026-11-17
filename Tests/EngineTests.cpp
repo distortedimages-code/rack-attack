@@ -138,10 +138,16 @@ int main()
 
     // 5b. A unit that ignores Program Change: said plainly, not 50 copies of the same kit
     fake.ignoresProgramChange = true;
+    const auto scanStart = juce::Time::getMillisecondCounterHiRes();
     engine.readProgramNames();
     CHECK (waitTask (out, "names", 60000));
+    const auto scanMs = juce::Time::getMillisecondCounterHiRes() - scanStart;
+    std::printf ("names with Program Change ignored: stopped after %.0f ms\n", scanMs);
     CHECK (! out.lastOk);
-    CHECK (out.lastMessage.contains ("Rx PrgChg"));
+    CHECK (out.lastMessage.contains ("Rx PrgChg") && out.lastMessage.contains ("PROG 11"));
+    CHECK (scanMs < 15000.0);                                  // three programs, not fifty
+    CHECK (engine.getProgramNames()[0].isEmpty() && engine.getProgramNames()[49].isEmpty());   // no fake names
+    CHECK (engine.getKit().name() == "PROG 11");
     fake.ignoresProgramChange = false;
 
     // 6. Backup of the 50 programs, then back to program 11
@@ -262,6 +268,12 @@ int main()
         CHECK ((order == std::vector<int> { 1, 2, 1, 3 }));
         if (order != std::vector<int> { 1, 2, 1, 3 })
             for (auto o : order) std::printf ("  order %d\n", o);
+        // the stop ends with All Notes Off on the unit's channel: it stops the unit's own sound patterns too
+        int stopsSent = 0;
+        for (auto& m : seqSent)
+            stopsSent += m.isAllNotesOff() && m.getChannel() == engine.channel.load() ? 1 : 0;
+        CHECK (stopsSent == 1);
+        CHECK (! seqSent.empty() && seqSent.back().isAllNotesOff());
 
         // Following the DAW (real time, blocks every 5 ms): a kick per beat, then the
         // DAW loops back to the start and the kick of beat 1 comes again.
@@ -300,6 +312,11 @@ int main()
             kicks += m.isNoteOn() && m.getNoteNumber() == 36 ? 1 : 0;
         std::printf ("following the DAW: %d kicks\n", kicks);
         CHECK (kicks == 4);
+        int allOff = 0;
+        for (auto& m : seqSent)
+            allOff += m.isAllNotesOff() && m.getChannel() == engine.channel.load() ? 1 : 0;   // (and one per tuned channel)
+        CHECK (allOff == 1);        // at the DAW's stop, not at its loop
+        if (allOff != 1) std::printf ("  all notes off: %d\n", allOff);
         engine.setTestOutput ([&fake] (const juce::MidiMessage& m) { fake.receive (m); });
     }
 

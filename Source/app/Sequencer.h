@@ -82,7 +82,10 @@ private:
     void kitChanged (const ra::Kit::Change&) override;
     void connectionChanged (Engine::Connection) override   { refreshFromKit(); }
     void tick (double nowMs);
-    void halt (double nowMs);
+    // stopped: a real stop (not a jump or a change of clock), so All Notes Off goes out too, on the
+    // unit's channel and each tuned one; it also stops the patterns of the unit's own sounds
+    // (a sound in Latch or Toggle mode keeps playing its pattern after our note otherwise)
+    void halt (double nowMs, bool stopped = true);
     void send (const std::vector<ra::seq::Event>&, double ppqNow, double nowMs, double bpm);
     void keyboardNote (const juce::MidiMessage&, bool forward);
     void addHit (int track, double ms, bool keyboard);

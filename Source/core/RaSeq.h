@@ -80,6 +80,7 @@ struct Track
     std::uint8_t length = 16;                 // steps mode and notes mode: 1..maxSteps
     Division division = Division::sixteenth;
     bool mute = false;
+    bool solo = false;                        // when any track is solo, only the solo ones play
     std::string name;                         // given by the user, UTF-8, empty = "SON 01"...
     Euclid euclid;
     std::array<Step, maxSteps> steps {};
@@ -100,7 +101,15 @@ struct Pattern
 
     std::vector<std::uint8_t> save() const;
     bool load (const std::vector<std::uint8_t>& data);   // false (and unchanged) if not a pattern
+
+    bool anySolo() const;
+    bool audible (int track) const;           // not muted, and solo when another track is
 };
+
+// The pad gestures: a drag down mutes (or brings the sound back), a drag up puts it solo (or out
+// of solo). Mute and solo exclude each other on one track.
+void toggleMute (Pattern&, int track);
+void toggleSolo (Pattern&, int track);
 
 // The sequencer's OPTIONS: whole-track and whole-pattern edits.
 void clearSteps (Track&);                     // no trig, no lock, every step back to its defaults

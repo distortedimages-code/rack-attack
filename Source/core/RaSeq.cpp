@@ -192,7 +192,7 @@ std::vector<std::uint8_t> Pattern::save() const
         u8 ((int) tr.mode);
         u8 (tr.length);
         u8 ((int) tr.division);
-        u8 (tr.mute ? 1 : 0);
+        u8 ((tr.mute ? 1 : 0) | (tr.solo ? 2 : 0));     // older versions read any non-zero as mute
         const auto nameBytes = std::min ((int) tr.name.size(), maxNameBytes);
         u8 (nameBytes);
         for (int i = 0; i < nameBytes; ++i)
@@ -230,6 +230,42 @@ std::vector<std::uint8_t> Pattern::save() const
     return out;
 }
 
+bool Pattern::anySolo() const
+{
+    for (auto& tr : tracks)
+        if (tr.solo)
+            return true;
+    return false;
+}
+
+bool Pattern::audible (int track) const
+{
+    if (track < 0 || track >= numTracks)
+        return false;
+    const auto& tr = tracks[(size_t) track];
+    return ! tr.mute && (tr.solo || ! anySolo());
+}
+
+void toggleMute (Pattern& p, int track)
+{
+    if (track < 0 || track >= numTracks)
+        return;
+    auto& tr = p.tracks[(size_t) track];
+    tr.mute = ! tr.mute;
+    if (tr.mute)
+        tr.solo = false;
+}
+
+void toggleSolo (Pattern& p, int track)
+{
+    if (track < 0 || track >= numTracks)
+        return;
+    auto& tr = p.tracks[(size_t) track];
+    tr.solo = ! tr.solo;
+    if (tr.solo)
+        tr.mute = false;
+}
+
 bool Pattern::load (const std::vector<std::uint8_t>& data)
 {
     if (data.size() < 5 || data[0] != 'R' || data[1] != 'A' || data[2] != 'S' || data[3] != 'Q' || data[4] > kVersion)
@@ -246,7 +282,9 @@ bool Pattern::load (const std::vector<std::uint8_t>& data)
         tr.mode = (Mode) std::min (2, r.u8());
         tr.length = clampTo<std::uint8_t> (r.u8(), 1, maxSteps);
         tr.division = (Division) std::min (numDivisions - 1, r.u8());
-        tr.mute = r.u8() != 0;
+        const int flags = r.u8();
+        tr.mute = (flags & 1) != 0;
+        tr.solo = (flags & 2) != 0 && ! tr.mute;
         const int nameBytes = r.u8();
         for (int i = 0; i < nameBytes && r.ok; ++i)
             tr.name.push_back ((char) r.u8());
@@ -371,6 +409,7 @@ void Player::renderTrack (int t, const Pattern& p, const Context& ctx, double un
                           std::vector<Event>& out)
 {
     const auto& tr = p.tracks[(size_t) t];
+    const bool audible = p.audible (t);
     const double spb = stepsPerBeat (tr.division);
     const double stepPpq = 1.0 / spb;
     const int length = tr.activeLength();
@@ -397,7 +436,7 @@ void Player::renderTrack (int t, const Pattern& p, const Context& ctx, double un
         const auto index = (int) positiveMod (n, length);
         const auto loop = floorDiv (n, length);
         const auto& s = tr.steps[(size_t) index];
-        const bool on = trigs[(size_t) index] && ! tr.mute;
+        const bool on = trigs[(size_t) index] && audible;
 
         double when = (double) n * stepPpq + s.micro * stepPpq / microSteps;
         if (positiveMod (n, 2) == 1)

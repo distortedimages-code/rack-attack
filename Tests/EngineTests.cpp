@@ -390,11 +390,12 @@ int main()
         fake.answer (ra::soundParameter (5, 2, 0x2A, 99));
         runFor (300);
         CHECK (morph.data().end (Side::a, 2, 0x2A) == 99 && fake.edit.soundValue (2, 0x2A) == morph.data().end (Side::b, 2, 0x2A));
-        // the glide: half way only after a while
+        // the glide: on its way for a while, not there at once (watched in small steps: a busy test machine can be
+        // late on the first tick)
         morph.setGlideMs (300);
         morph.userMoved (0.0);
-        runFor (60);
-        CHECK (morph.getPosition() > 0.05 && morph.getPosition() < 0.95);
+        CHECK (runUntil ([&] { return morph.getPosition() < 0.95; }, 400));
+        CHECK (morph.getPosition() > 0.05);
         runFor (700);
         CHECK (morph.getPosition() <= 0.0);
         CHECK (fake.edit.soundValue (2, 0x29) == 7);

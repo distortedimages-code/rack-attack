@@ -81,6 +81,30 @@ namespace
 
     float softClip (float x)   { return std::tanh (x); }
 
+    // -1..1, the same for the same x: the values of the random LFO shapes, cycle by cycle
+    float hashNoise (std::uint64_t x)
+    {
+        x ^= x >> 33; x *= 0xff51afd7ed558ccdull; x ^= x >> 33; x *= 0xc4ceb9fe1a85ec53ull; x ^= x >> 33;
+        return (float) ((double) (x >> 11) / (double) (1ull << 53)) * 2.0f - 1.0f;
+    }
+
+    std::uint64_t lfoSeed (int sound, bool first)   { return (std::uint64_t) (sound * 2 + (first ? 1 : 2)) * 0x9E3779B97F4A7C15ull; }
+
+    // the LFO waves (Key starts them at the top), the random ones between the values of their cycle
+    float lfoShape (int shape, double phase, float prev, float next, float held)
+    {
+        const float p = (float) phase;
+        switch (shape)
+        {
+            case 0: return std::cos (6.28318530718f * p);
+            case 1: return 4.0f * std::abs (p - 0.5f) - 1.0f;
+            case 2: return p < 0.5f ? 1.0f : -1.0f;
+            case 3: return 1.0f - 2.0f * p;
+            case 4: { const float t = p * p * (3.0f - 2.0f * p); return prev + (next - prev) * t; }
+            default: return held;
+        }
+    }
+
     //==========================================================================
     // Effects
 
@@ -468,6 +492,14 @@ struct Synth::Impl
         double phase = 0.0;
         float value = 0.0f, held = 0.0f, prev = 0.0f, next = 0.0f;
         bool done = false;
+        std::uint64_t seed = 0, cycle = 0;    // the random shapes' values: hashNoise (seed + cycle)
+
+        void values()
+        {
+            prev = hashNoise (seed + cycle - 1);
+            next = hashNoise (seed + cycle);
+            held = hashNoise (seed + cycle + 7777);
+        }
     };
 
     struct Osc
@@ -499,6 +531,7 @@ struct Synth::Impl
     };
 
     double sr = 44100.0, tempo = 120.0;
+    double lfoClock = 0.0;                    // seconds, for the free-running LFOs (setClock, render)
     Calibration cal = Calibration::defaults();
     std::array<std::array<std::uint8_t, soundBytes>, numSounds> snd {};
     std::array<Effect, numFx> fx;
@@ -659,31 +692,13 @@ struct Synth::Impl
         }
     }
 
-    float lfoWave (int shape, Lfo& l, double phase)
-    {
-        const float p = (float) phase;
-        switch (shape)
-        {
-            case 0: return std::cos (twoPi * p);
-            case 1: return 4.0f * std::abs (p - 0.5f) - 1.0f;
-            case 2: return p < 0.5f ? 1.0f : -1.0f;
-            case 3: return 1.0f - 2.0f * p;
-            case 4: { const float t = p * p * (3.0f - 2.0f * p); return l.prev + (l.next - l.prev) * t; }
-            default: return l.held;
-        }
-    }
+    float lfoWave (int shape, Lfo& l, double phase)   { return lfoShape (shape, phase, l.prev, l.next, l.held); }
 
     void lfoStep (Voice& v, Lfo& l, bool first)
     {
         const auto& s = snd[(size_t) v.sound];
-        const int speed = first ? s[l1Speed] : s[l2Speed];
         const int shape = std::min (5, (int) (first ? s[l1Shape] : s[l2Shape]));
-        const int sync = first ? s[l1Sync] : s[l2Sync];
-        double hz = cal.lfoHz[(size_t) speed];
-        if (sync >= 2)
-            hz = tempo / 60.0 / syncBeats (sync);
-        if (! first)
-            hz *= std::exp2 (bip (s[l2Mod]) * ctrlValue (v, s[l2ModSrc]) * 4.0f);
+        const double hz = lfoHz (v, first);
         const bool oneShot = first && s[l1OneShot] != 0;
         if (! l.done)
         {
@@ -694,9 +709,8 @@ struct Synth::Impl
                 else
                 {
                     l.phase -= std::floor (l.phase);
-                    l.prev = l.next;
-                    l.next = rng.next();
-                    l.held = rng.next();
+                    ++l.cycle;
+                    l.values();
                 }
             }
         }
@@ -708,9 +722,34 @@ struct Synth::Impl
         const auto& s = snd[(size_t) v.sound];
         const int sync = first ? s[l1Sync] : s[l2Sync];
         l.done = false;
-        l.prev = rng.next(); l.next = rng.next(); l.held = rng.next();
-        // Key: start at the top of the wave; otherwise free running (a random phase)
-        l.phase = sync == 1 || (first && s[l1OneShot] != 0) ? 0.0 : (double) (rng.next() * 0.5f + 0.5f);
+        if (sync == 1 || (first && s[l1OneShot] != 0))
+        {
+            // Key: start at the top of the wave, at each note (random shapes: new values each time)
+            l.phase = 0.0;
+            l.seed = (std::uint64_t) (rng.next() * 1.0e9f + 2.0e9f);
+            l.cycle = 0;
+            l.values();
+            return;
+        }
+        // free running: where the sound's LFO is on the LFO clock, the same for every note
+        const double cycles = lfoHz (v, first) * lfoClock;
+        l.phase = cycles - std::floor (cycles);
+        l.seed = lfoSeed (v.sound, first);
+        l.cycle = (std::uint64_t) std::max (0.0, std::floor (cycles));
+        l.values();
+    }
+
+    double lfoHz (const Voice& v, bool first) const
+    {
+        const auto& s = snd[(size_t) v.sound];
+        const int speed = first ? s[l1Speed] : s[l2Speed];
+        const int sync = first ? s[l1Sync] : s[l2Sync];
+        double hz = cal.lfoHz[(size_t) speed];
+        if (sync >= 2)
+            hz = tempo / 60.0 / syncBeats (sync);
+        if (! first)
+            hz *= std::exp2 (bip (s[l2Mod]) * ctrlValue (v, s[l2ModSrc]) * 4.0f);
+        return hz;
     }
 
     static double startPhase (int shape, int start, double previous)
@@ -1074,6 +1113,7 @@ struct Synth::Impl
 
     void render (float* L, float* R, int n)
     {
+        lfoClock += (double) n / sr;
         std::fill (L, L + n, 0.0f);
         std::fill (R, R + n, 0.0f);
         for (auto& f : fxIn)
@@ -1208,6 +1248,28 @@ void Synth::setEffect (int e, const std::uint8_t* data)
 void Synth::setGlobalChannel (int ch)    { impl->globalChannel = std::clamp (ch, 0, 16); }
 void Synth::setBaseNote (int note)       { impl->baseNote = std::clamp (note, 0, 127 - numSounds); }
 void Synth::setTempo (double bpm)        { impl->tempo = std::clamp (bpm, 20.0, 400.0); }
+void Synth::setClock (double seconds)
+{
+    // small differences are the blocks' own timing: only a real jump moves it
+    if (std::abs (seconds - impl->lfoClock) > 0.05)
+        impl->lfoClock = seconds;
+}
+double Synth::freeLfoPhase (double hz, double seconds)
+{
+    const double c = hz * seconds;
+    return c - std::floor (c);
+}
+
+float Synth::lfoValue (int sound, bool first, int shape, double phase, std::uint64_t cycle, bool free)
+{
+    Impl::Lfo l;
+    l.seed = free ? lfoSeed (sound, first) : 12345u;
+    l.cycle = cycle;
+    l.values();
+    return lfoShape (std::clamp (shape, 0, 5), phase, l.prev, l.next, l.held);
+}
+
+double Synth::lfoSyncBeats (int sync)   { return syncBeats (sync); }
 void Synth::handleMidi (const std::uint8_t* d, int size)   { impl->handleMidi (d, size); }
 void Synth::allNotesOff()                { impl->allNotesOff(); }
 void Synth::render (float* l, float* r, int n)             { impl->render (l, r, n); }

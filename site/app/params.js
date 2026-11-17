@@ -23,7 +23,7 @@ export const SECTIONS = [
   { title: 'Enveloppe 1', tab: 'Env 1', rows: [[[0x3F, 'Attack'], [0x40, 'Decay'], [0x41, 'Sustain'], [0x42, 'Release'], [0x43, 'Shape']]] },
   { title: 'Enveloppe 2', tab: 'Env 2', rows: [[[0x45, 'Attack'], [0x46, 'Decay'], [0x47, 'Sustain'], [0x48, 'Release'], [0x49, 'Shape']]] },
   { title: 'LFO 1', tab: 'LFO 1', rows: [[[0x4B, 'Speed'], [0x4C, 'Shape', 1], [0x4D, 'Sync', 1], [0x4E, 'One Shot', 1]]] },
-  { title: 'LFO 2', tab: 'LFO 2', rows: [[[0x4F, 'Speed'], [0x50, 'Shape', 1], [0x51, 'Sync', 1], [0x52, 'Mod'], [0x53, 'Mod Src']]] },
+  { title: 'LFO 2', tab: 'LFO 2', rows: [[[0x4F, 'Speed'], [0x50, 'Shape', 1], [0x51, 'Sync', 1], [0x52, 'Speed Mod'], [0x53, 'Speed Ctrl', 1]]] },
   { title: 'Sortie', tab: 'Sortie', rows: [
     [[0x55, 'Dry Out', 1], [0x56, 'FX', 1], [0x57, 'FX Send'], [0x5E, 'XOR', 1], [0x6C, 'Pattern int.', 1]],
     [[0x58, 'Tuned Chn', 1], [0x59, 'Transpose'], [0x5A, 'Low Key'], [0x5B, 'High Key']]] },
@@ -47,7 +47,7 @@ export const COLUMNS = [
   [{ title: 'Enveloppe 1', rows: [[[0x3F, 'ATTACK'], [0x40, 'DECAY'], [0x41, 'SUSTAIN'], [0x42, 'RELEASE'], [0x43, 'SHAPE']]] },
    { title: 'Enveloppe 2', rows: [[[0x45, 'ATTACK'], [0x46, 'DECAY'], [0x47, 'SUSTAIN'], [0x48, 'RELEASE'], [0x49, 'SHAPE']]] },
    { title: 'LFO 1', rows: [[[0x4B, 'SPEED'], [0x4C, 'SHAPE'], [0x4D, 'SYNC'], [0x4E, '1-SHOT']]] },
-   { title: 'LFO 2', rows: [[[0x4F, 'SPEED'], [0x50, 'SHAPE'], [0x51, 'SYNC'], [0x52, 'MOD'], [0x53, 'MOD SRC']]] }],
+   { title: 'LFO 2', rows: [[[0x4F, 'SPEED'], [0x50, 'SHAPE'], [0x51, 'SYNC'], [0x52, 'SPD MOD'], [0x53, 'SPD CTRL']]] }],
 ].map(col => col.map(card => ({ ...card, rows: card.rows.map(r => r.map(([a, label, src]) => ({ a, label, src: src ?? -1 }))) })));
 
 const BIPOLAR = new Set([0x05, 0x06, 0x0A, 0x0B, 0x14, 0x15, 0x1E, 0x1F, 0x2A, 0x2B, 0x2C, 0x2F, 0x30, 0x36, 0x37, 0x3B, 0x3C, 0x52, 0x3A, 0x59]);

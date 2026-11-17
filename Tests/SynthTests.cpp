@@ -236,6 +236,38 @@ int main()
         }
     }
 
+    // A free-running LFO (Sync Off) runs on its own: at Speed 0 (one cycle in about 200 s) the pitch it
+    // modulates stays almost the same from one note to the next, not a random value per note
+    {
+        Synth syn;
+        syn.prepare (sr);
+        syn.setGlobalChannel (1);
+        auto s = plainSound();
+        s[0x05] = 72; s[0x07] = 2;                       // Osc 1 pitch from LFO 1 (a few semitones)
+        s[0x4B] = 0; s[0x4C] = 0; s[0x4D] = 0;           // LFO 1: Speed 0, Sine, Sync Off
+        syn.setSound (0, s.data());
+        syn.setClock (37.0);
+        std::vector<double> f;
+        for (int k = 0; k < 6; ++k)
+        {
+            note (syn, 1, 36, 127);
+            auto x = run (syn, 0.25);
+            f.push_back (frequency (x, (int) (sr * 0.05)));
+        }
+        // a slow, smooth drift: every step the same way and about the same size, none bigger than 0.5 %
+        bool smooth = true;
+        const double first = f[1] - f[0];
+        for (size_t k = 1; k < f.size(); ++k)
+        {
+            const double step = f[k] - f[k - 1];
+            smooth = smooth && step * first > 0.0 && std::abs (step) < f[k] * 0.005
+                     && std::abs (step - first) < std::abs (first) * 0.5;
+        }
+        std::printf ("free LFO at speed 0: %.2f, %.2f ... %.2f Hz over six notes\n", f[0], f[1], f.back());
+        CHECK (smooth);
+        CHECK (std::abs (Synth::freeLfoPhase (0.5, 3.0) - 0.5) < 1e-9);
+    }
+
     // FX Select changed by a parameter message: the effect chosen is heard at once (no need to touch Dry Out)
     {
         Synth syn;

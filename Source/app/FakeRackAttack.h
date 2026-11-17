@@ -21,6 +21,7 @@ struct FakeRackAttack
     Engine* engine = nullptr;
     int id = 5, current = 3, channel = 3;   // channel: the unit's global channel
     bool silent = false, acceptsSoundDumps = true, ignoresProgramChange = false;
+    bool readsByNumber = false;   // PRGR PRGN 20 with PRGN 1..50: that stored program (a guess, from ra-editor)
     std::array<ra::Kit, 50> stored;
     ra::Kit edit;
     std::atomic<int> sysexIn { 0 }, soundParams { 0 }, notesOn { 0 };
@@ -107,7 +108,12 @@ struct FakeRackAttack
                 answer (ra::build (dev, g));
                 break;
             }
-            case ra::cmd::PRGR: answer (edit.programDump (dev)); break;
+            case ra::cmd::PRGR:
+                if (readsByNumber && pl.size() == 3 && pl[1] >= 1 && pl[1] <= 50)
+                    answer (stored[(size_t) (pl[1] - 1)].programDump (dev));
+                else
+                    answer (edit.programDump (dev));
+                break;
             case ra::cmd::SNDR: if (pl.size() == 3) answer (edit.soundDump (dev, pl[2])); break;
             case ra::cmd::EFXR: if (pl.size() == 3) answer (edit.effectDump (dev, pl[2])); break;
             case ra::cmd::PATR:

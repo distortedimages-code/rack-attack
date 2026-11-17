@@ -113,6 +113,7 @@ void SimDevice::render (juce::AudioBuffer<float>& buffer, int numSamples, double
     std::stable_sort (pending.begin(), pending.end(), [] (const Timed& a, const Timed& b) { return a.ms < b.ms; });
 
     synth.setTempo (tempo);
+    synth.setClock (now / 1000.0);      // the screen draws the free LFOs from the same clock
     if (buffer.getNumChannels() == 0)
         return;
     if ((int) monoRight.size() < numSamples)

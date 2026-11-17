@@ -148,6 +148,14 @@ int main()
     CHECK (scanMs < 15000.0);                                  // three programs, not fifty
     CHECK (engine.getProgramNames()[0].isEmpty() && engine.getProgramNames()[49].isEmpty());   // no fake names
     CHECK (engine.getKit().name() == "PROG 11");
+
+    // 5c. Program Change ignored, but the programs answer by their number: the names come from there
+    fake.readsByNumber = true;
+    engine.readProgramNames();
+    CHECK (waitTask (out, "names", 60000));
+    CHECK (out.lastOk);
+    CHECK (engine.getProgramNames()[0] == "PROG 01" && engine.getProgramNames()[49] == "PROG 50");
+    fake.readsByNumber = false;
     fake.ignoresProgramChange = false;
 
     // 6. Backup of the 50 programs, then back to program 11

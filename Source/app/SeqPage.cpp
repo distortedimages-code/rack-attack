@@ -800,8 +800,15 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
     g.reduceClipRegion (soundPanel.reduced (6));
     g.addTransform (juce::AffineTransform::translation ((float) slide, 0.0f));
 
+    viz::Live live;
+    {
+        bool keyboard = false;
+        live.sound = track;
+        live.lastHitMs = seq.lastHitMs (track, keyboard);
+        live.tempo = seq.getTempo();
+    }
     viz::draw (g, vizBox, section, [this] (int address) { return shownValues[(size_t) (address & 0x7F)]; },
-               anyLocked ? px::yellow : px::white, now);
+               anyLocked ? px::yellow : px::white, now, live);
 
     // which page the screen shows, in a white tag at its top right
     {
@@ -1683,7 +1690,7 @@ void SeqPage::mouseDown (const juce::MouseEvent& e)
                 titleStart = nowMs();
             }
             break;
-        case Zone::listen:     engine.playSound (track); break;
+        case Zone::listen:     engine.playSound (track); seq.heardNow (track); break;
         case Zone::tune:       if (right) showTuneMenu(); else toggleTuned(); break;
         case Zone::param:
             if (right)
@@ -2133,7 +2140,7 @@ void SeqPage::showVoiceMenu (int voice)
                 s.edit ([&] (Pattern& p) { auto name = p.tracks[(size_t) voice].name; p.tracks[(size_t) voice] = Track(); p.tracks[(size_t) voice].name = name; });
                 self->showToast (fr ("PISTE EFFACÉE"), px::red);
                 break;
-            case 6: self->engine.playSound (voice); break;
+            case 6: self->engine.playSound (voice); self->seq.heardNow (voice); break;
             default: break;
         }
         if (voice == self->track)

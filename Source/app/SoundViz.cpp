@@ -1,4 +1,5 @@
 #include "SoundViz.h"
+#include "../sim/RaSynth.h"
 #include "Pixel.h"
 #include "Text.h"
 #include "../core/RaSysex.h"
@@ -311,7 +312,14 @@ namespace
                 cv.dot (cx + x, mid + y, ink);
     }
 
-    void envelope (Canvas& cv, juce::Rectangle<int> area, int base, const Value& v, juce::Colour ink, double now)
+    const ra::synth::Calibration& calibration()
+    {
+        static const auto c = ra::synth::Calibration::defaults();     // measured on a RackAttack
+        return c;
+    }
+
+    void envelope (Canvas& cv, juce::Rectangle<int> area, int base, const Value& v, juce::Colour ink, double now,
+                   const Live& live)
     {
         const float a = 0.02f + v (base) / 127.0f * 0.3f;
         const float d = 0.02f + v (base + 1) / 127.0f * 0.3f;
@@ -319,7 +327,6 @@ namespace
         const float r = 0.02f + v (base + 3) / 127.0f * 0.3f;
         const float hold = 0.16f;
         const float k = std::pow (4.0f, (v (base + 4) / 127.0f - 0.5f) * 2.0f);   // curve of the slopes
-        const float total = a + d + hold + r;
         const float span = 1.2f;                                                   // the widest envelope fills the screen
         const int top = 4, bottom = cv.rows - 4;
 
@@ -347,46 +354,109 @@ namespace
             label (cv.g, cv.cells (cx + 1, bottom - 3, 4, 3), names[i], px::grey);
         }
 
-        // a dot running along it
-        const float t = frac ((float) now / 1800.0f) * (total + 0.2f);
-        if (t <= total)
+        // the dot: it starts at each note of the sound and runs at the envelope's real times (measured on
+        // a RackAttack); the note held about a sixteenth, then let go
+        const auto& cal = calibration();
+        auto at = [] (const std::array<float, 128>& table, float value) { return (double) table[(size_t) juce::jlimit (0, 127, juce::roundToInt (value))]; };
+        const double realA = at (cal.attackMs, v (base)), realD = at (cal.decayMs, v (base + 1)), realR = at (cal.releaseMs, v (base + 3));
+        const double gate = 60000.0 / juce::jmax (20.0, live.tempo) / 4.0;
+        const double elapsed = live.lastHitMs >= 0.0 ? now - live.lastHitMs : -1.0;
+        float t = -1.0f;                                   // where on the drawing, in its own time
+        if (elapsed >= 0.0)
         {
-            const int cx = 1 + juce::roundToInt (t / span * (float) (cv.cols - 3));
-            const int cy = bottom - juce::roundToInt (level (t) * (float) (bottom - top));
+            if (elapsed < realA)
+                t = (float) (elapsed / juce::jmax (1.0, realA)) * a;
+            else if (s <= 0.001f && elapsed < realA + realD)
+                t = a + (float) ((elapsed - realA) / juce::jmax (1.0, realD)) * d;   // no sustain: the decay ends it
+            else if (s > 0.001f && elapsed < juce::jmax (gate, realA + realD))
+            {
+                const double inDecay = elapsed - realA;
+                t = inDecay < realD ? a + (float) (inDecay / juce::jmax (1.0, realD)) * d
+                                    : a + d + (float) ((inDecay - realD) / juce::jmax (1.0, gate - realA - realD)) * hold * 0.9f;
+            }
+            else if (s > 0.001f)
+            {
+                const double inRelease = elapsed - juce::jmax (gate, realA + realD);
+                if (inRelease < realR)
+                    t = a + d + hold + (float) (inRelease / juce::jmax (1.0, realR)) * r;
+            }
+        }
+        const int size = t >= 0.0f ? 1 : 0;
+        if (t < 0.0f)
+            t = 0.0f;                                     // waiting at the start for the next note
+        const int cx = 1 + juce::roundToInt (t / span * (float) (cv.cols - 3));
+        const int cy = bottom - juce::roundToInt (level (t) * (float) (bottom - top));
+        for (int y = -size; y <= size; ++y)
+            for (int x = -size; x <= size; ++x)
+                cv.dot (cx + x, cy + y, size > 0 ? px::red : px::grey);
+        juce::ignoreUnused (area);
+    }
+
+    juce::String hzText (double hz)
+    {
+        if (hz >= 10.0)  return juce::String (hz, 0) + " Hz";
+        if (hz >= 1.0)   return juce::String (hz, 1).replace (".", ",") + " Hz";
+        const double period = 1.0 / juce::jmax (1.0e-6, hz);
+        if (period < 60.0) return juce::String (period, period < 10.0 ? 1 : 0).replace (".", ",") + " s le cycle";
+        return juce::String ((int) (period / 60.0)) + " min " + juce::String ((int) std::fmod (period, 60.0)).paddedLeft ('0', 2) + " le cycle";
+    }
+
+    void lfo (Canvas& cv, juce::Rectangle<int> area, int base, bool second, const Value& v, juce::Colour ink, double now,
+              const Live& live)
+    {
+        const int speed = juce::jlimit (0, 127, juce::roundToInt (v (base)));
+        const int shape = juce::jlimit (0, 5, juce::roundToInt (v (base + 1)));
+        const int sync = juce::roundToInt (v (base + 2));
+        const bool oneShot = ! second && juce::roundToInt (v (base + 3)) != 0;
+        const bool restarts = sync == 1 || oneShot;                     // Key: from the top at each note
+        double hz = (double) calibration().lfoHz[(size_t) speed];
+        if (sync >= 2)
+            hz = live.tempo / 60.0 / ra::synth::Synth::lfoSyncBeats (sync);
+
+        // where it is now: since the last note (Key), or on its own clock (free running, as the simulator)
+        double cycles = 0.0;
+        if (restarts)
+            cycles = live.lastHitMs >= 0.0 ? (now - live.lastHitMs) / 1000.0 * hz : 0.0;
+        else
+            cycles = hz * now / 1000.0;
+        if (oneShot)
+            cycles = juce::jmin (cycles, 0.99999);
+        const auto cycle = (std::uint64_t) juce::jmax (0.0, std::floor (cycles));
+        const double phase = cycles - std::floor (cycles);
+        auto value = [&] (double p) { return ra::synth::Synth::lfoValue (live.sound, ! second, shape, p, cycle, ! restarts); };
+
+        // one cycle across the screen (the one being played), the dot where the LFO is
+        const int top = 4, bottom = cv.rows - 3, mid = (top + bottom) / 2;
+        for (int x = 0; x < cv.cols; x += 2)
+            cv.dot (x, mid, px::frame);
+        cv.curve (0, cv.cols, top, bottom, [&] (float x) { return 0.5f + 0.42f * value (juce::jlimit (0.0, 0.99999, (double) x)); }, ink);
+        const bool fast = hz > 12.0;                                    // too quick for the eye: a blur on the wave
+        if (fast)
+        {
+            for (int x = 0; x < cv.cols; x += 3)
+                cv.dot (x, bottom - juce::roundToInt ((0.5f + 0.42f * value ((double) x / cv.cols)) * (float) (bottom - top)), px::red);
+        }
+        else
+        {
+            const int cx = juce::roundToInt (phase * (double) (cv.cols - 1));
+            const int cy = bottom - juce::roundToInt ((0.5f + 0.42f * value (phase)) * (float) (bottom - top));
             for (int y = -1; y <= 1; ++y)
                 for (int x = -1; x <= 1; ++x)
                     cv.dot (cx + x, cy + y, px::red);
         }
-        juce::ignoreUnused (area);
-    }
 
-    void lfo (Canvas& cv, juce::Rectangle<int> area, int base, bool second, const Value& v, juce::Colour ink, double now)
-    {
-        const float speed = v (base) / 127.0f;
-        const int shape = juce::roundToInt (v (base + 1));
-        const int sync = juce::roundToInt (v (base + 2));
-        const bool oneShot = ! second && juce::roundToInt (v (base + 3)) != 0;
-        const float mod = second ? v (base + 3) / 127.0f : 0.0f;
-        const Wave w = shape == 0 ? Wave::sine : shape == 1 ? Wave::triangle : shape == 2 ? Wave::square
-                     : shape == 3 ? Wave::saw : shape == 4 ? Wave::random : Wave::sampleHold;
-        const float cycles = 1.0f + speed * 7.0f;
-        const float scroll = oneShot ? 0.0f : (float) now / 1000.0f * (0.1f + speed * 1.2f);
-        const int top = 4, bottom = cv.rows - 3, mid = (top + bottom) / 2;
-        for (int x = 0; x < cv.cols; x += 2)
-            cv.dot (x, mid, px::frame);
-        cv.curve (0, cv.cols, top, bottom, [&] (float x)
-        {
-            const float ph = x * cycles + scroll;
-            if (oneShot && x * cycles > 1.0f)
-                return 0.5f;
-            const float depth = 1.0f - mod * 0.5f * (1.0f + std::sin (twoPi * (x * 0.7f + scroll * 0.3f)));
-            return 0.5f + 0.42f * depth * wave (w, ph);
-        }, ink);
-        juce::String text = choice (base + 1, (float) shape);
-        if (sync != 0)
+        juce::String text = choice (base + 1, (float) shape) + "  " + hzText (hz);
+        if (sync == 1)
+            text << "  KEY";
+        else if (sync >= 2)
             text << "  SYNC " << choice (base + 2, (float) sync);
+        else
+            text << juce::String::fromUTF8 ("  LIBRE");
         if (oneShot)
             text << "  ONE SHOT";
+        if (second && std::abs (v (base + 3) - 64.0f) > 0.5f)
+            text << juce::String::fromUTF8 ("  VITESSE ") << (v (base + 3) > 64.0f ? "+" : "")
+                 << juce::String (juce::roundToInt ((v (base + 3) - 64.0f) / 63.0f * 100.0f)) << "% PAR " << choice (base + 4, v (base + 4)).toUpperCase();
         label (cv.g, area.reduced (10, 8), text, px::grey);
     }
 
@@ -449,7 +519,7 @@ namespace
     }
 }
 
-void draw (juce::Graphics& g, juce::Rectangle<int> area, int section, const Value& v, juce::Colour ink, double now)
+void draw (juce::Graphics& g, juce::Rectangle<int> area, int section, const Value& v, juce::Colour ink, double now, const Live& live)
 {
     // the screen: black, a faint grid of dots, a frame
     g.setColour (px::black);
@@ -469,10 +539,10 @@ void draw (juce::Graphics& g, juce::Rectangle<int> area, int section, const Valu
         case 2:  mix (cv, area, v, ink, now); break;
         case 3:  filter (cv, area, v, ink, now); break;
         case 4:  amplifier (cv, area, v, ink, now); break;
-        case 5:  envelope (cv, area, 0x3F, v, ink, now); break;
-        case 6:  envelope (cv, area, 0x45, v, ink, now); break;
-        case 7:  lfo (cv, area, 0x4B, false, v, ink, now); break;
-        case 8:  lfo (cv, area, 0x4F, true, v, ink, now); break;
+        case 5:  envelope (cv, area, 0x3F, v, ink, now, live); break;
+        case 6:  envelope (cv, area, 0x45, v, ink, now, live); break;
+        case 7:  lfo (cv, area, 0x4B, false, v, ink, now, live); break;
+        case 8:  lfo (cv, area, 0x4F, true, v, ink, now, live); break;
         default: output (cv, area, v, ink); break;
     }
     px::frameRect (g, area, px::frame, 2);

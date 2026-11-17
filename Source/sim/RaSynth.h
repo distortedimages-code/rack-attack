@@ -93,6 +93,15 @@ public:
     void setGlobalChannel (int channel);                      // 0 = omni, 1..16
     void setBaseNote (int note);                              // note of sound 1
     void setTempo (double bpm);
+    // The clock of the free-running LFOs (Sync Off), in seconds: they run all the time, the same for every
+    // note of a sound, so a slow one barely moves from one note to the next. Kept by render(); set it from a
+    // shared clock (the screen draws the LFOs from the same one).
+    void setClock (double seconds);
+    static double freeLfoPhase (double hz, double seconds);   // 0..1, where a free LFO is at that time
+    // An LFO's value (-1..1) at a phase of its cycle number `cycle`, as the simulator makes it: the random
+    // shapes are the sound's own when free (Sync Off), any when restarted at each note.
+    static float lfoValue (int sound, bool first, int shape, double phase, std::uint64_t cycle, bool free);
+    static double lfoSyncBeats (int sync);                    // Sync 2..23: beats per cycle
 
     // A whole MIDI message: notes, controllers, aftertouch, pitch bend, and the
     // RackAttack's SysEx parameter changes and dumps for the edit buffer.

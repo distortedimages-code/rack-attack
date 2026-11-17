@@ -71,6 +71,7 @@ public:
     // For the screen: when a voice last played (ms counter, -1 = never) and whether
     // it came from a keyboard; the share of the MIDI cable used by the sequencer.
     double lastHitMs (int track, bool& fromKeyboard) const;
+    void heardNow (int track)   { addHit (track, juce::Time::getMillisecondCounterHiRes(), true); }   // a sound played from the screen
     int midiLoadPercent() const          { return loadPercent.load(); }
 
     // Tests: run the 2 ms work by hand, with a fake clock.

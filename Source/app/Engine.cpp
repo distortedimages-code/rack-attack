@@ -501,6 +501,23 @@ void Engine::queueKitRead (bool toCapture, std::function<void()> whenDone)
     }));
 }
 
+void Engine::initProgram()
+{
+    // the unit's own "init the program in use": its edit buffer only, what is stored stays (Shift + Recall)
+    Step s;
+    s.kind = Step::Kind::send;
+    s.sysex = ra::build ((std::uint8_t) deviceId.load(), { ra::cmd::MODR, 0x04, ra::kEditBuffer, 0x00 });
+    s.label = "init du programme en cours";
+    queue (s);
+    Step wait; wait.kind = Step::Kind::pause; wait.ms = 400; queue (wait);
+    queueKitRead (false, [this]
+    {
+        finishTask ("kit", kit.isComplete(),
+                    kit.isComplete() ? "Kit remis à zéro (« "_fr + juce::String (kit.name()) + " »). Le programme rangé n'a pas bougé : Shift + Recall pour y revenir."_fr
+                                     : "Kit lu en partie après la remise à zéro ("_fr + juce::String (kit.blocksRead()) + " / 29)."_fr);
+    });
+}
+
 void Engine::readKit()
 {
     queueKitRead (false, [this]
@@ -516,10 +533,11 @@ void Engine::readKit()
 
 void Engine::queueParameter (ra::Bytes withoutValue, int value)
 {
-    for (auto& p : pendingParams)
-        if (p.first == withoutValue)
+    // the latest one still waiting takes the new value (an effect's Output nudged twice ends on what was asked)
+    for (auto it = pendingParams.rbegin(); it != pendingParams.rend(); ++it)
+        if (it->first == withoutValue)
         {
-            p.second = value;
+            it->second = value;
             return;
         }
     pendingParams.emplace_back (std::move (withoutValue), value);
@@ -579,6 +597,13 @@ void Engine::setSoundParameter (int sound, int address, int value)
         return;
     kit.setSoundValue (sound, address, value);
     queueParameter ({ ra::cmd::SNDP, ra::kEditBuffer, (std::uint8_t) sound, (std::uint8_t) (address >> 7), (std::uint8_t) (address & 0x7F) }, value);
+    if (address == 0x56 && value >= 0 && value < ra::Kit::numEffects && kit.hasEffect (value))
+    {
+        // the unit feeds the newly chosen effect only once its Output is set again: after the choice, in that order
+        const ra::Bytes key { ra::cmd::EFXP, ra::kEditBuffer, (std::uint8_t) value, 0, 0x01 };
+        for (auto v : ra::fxOutputNudge (kit.effectValue (value, 0x01)))
+            pendingParams.emplace_back (key, v);
+    }
     ra::Kit::Change c { ra::Kit::Change::What::sound, sound, address };
     listeners.call ([&] (Listener& l) { l.kitChanged (c); });
 }
@@ -642,9 +667,15 @@ void Engine::readProgramNames()
         std::uint8_t dev = 0;
         ra::Bytes start;                      // the edit buffer before the scan (the program in use)
         std::vector<ra::Bytes> seen;          // what each program answered, in order
+        std::vector<ra::Bytes> direct;        // the same program asked by its number (PRGR PRGN 20, as ra-editor)
         juce::StringArray names;
         int found = 0;
-        bool stopped = false;
+        bool stopped = false, byNumber = false;
+
+        static ra::Bytes data (const ra::Bytes& payload)   // the 40 bytes, without the location
+        {
+            return payload.size() > 3 ? ra::Bytes (payload.begin() + 3, payload.end()) : ra::Bytes();
+        }
     };
     auto scan = std::make_shared<Scan>();
     scan->back = currentProgram;
@@ -700,21 +731,47 @@ void Engine::readProgramNames()
         v.push_back (pc);
         Step wait; wait.kind = Step::Kind::pause; wait.ms = 350; v.push_back (wait);
         v.push_back (request (ra::programRequest (scan->dev), ra::cmd::PRGD, "nom P" + twoDigits (p + 1), 1200,
+                              [scan] (const ra::Parsed* r)
+        {
+            scan->seen.push_back (r != nullptr ? r->payload : ra::Bytes());
+        }));
+        // the same program asked by its number: read only, and maybe the way when the unit doesn't take the
+        // Program Changes (ra-editor asks PRGR with the program's number after its Program Change)
+        v.push_back (request (ra::programRequest (scan->dev, (std::uint8_t) (p + 1)), ra::cmd::PRGD,
+                              "nom P" + twoDigits (p + 1) + " par son numéro"_fr, 1200,
                               [this, scan, p] (const ra::Parsed* r)
         {
-            if (r != nullptr)
+            scan->direct.push_back (r != nullptr ? r->payload : ra::Bytes());
+            const auto start = Scan::data (scan->start);
+            const auto edit = Scan::data (scan->seen.back());
+            const auto byNumber = Scan::data (scan->direct.back());
+            const bool editMoved = ! edit.empty() && edit != start;
+            bool numberMoved = ! byNumber.empty() && byNumber != start;
+            for (size_t k = 0; k + 1 < scan->direct.size(); ++k)
+                numberMoved = numberMoved || (! byNumber.empty() && Scan::data (scan->direct[k]) != byNumber);
+            if (! editMoved && numberMoved && ! scan->byNumber)
             {
-                scan->seen.push_back (r->payload);
-                const auto name = kitName (r->payload);
+                scan->byNumber = true;
+                log ("Le RackAttack ne change pas de programme, mais répond quand on lui demande un programme par son numéro : les noms viennent de là."_fr);
+            }
+            const auto& used = scan->byNumber ? scan->direct.back() : scan->seen.back();
+            if (! used.empty())
+            {
+                const auto name = kitName (used);
                 scan->names.add (name);
                 ++scan->found;
                 programNames.set (p, name);
                 listeners.call ([] (Listener& l) { l.programNamesChanged(); });
-                // the first three exactly the same as each other and as the program in use: the Program
-                // Changes don't reach the unit (or these programs really are the same)
-                if (scan->seen.size() == 3 && ! scan->start.empty()
-                    && scan->seen[0] == scan->start && scan->seen[1] == scan->start && scan->seen[2] == scan->start)
-                    scan->stopped = true;
+            }
+            // the first three exactly the same as each other and as the program in use, both ways: the
+            // Program Changes don't reach the unit (or these programs really are the same)
+            if (scan->seen.size() == 3 && ! scan->byNumber && ! start.empty())
+            {
+                bool same = true;
+                for (int k = 0; k < 3; ++k)
+                    same = same && Scan::data (scan->seen[(size_t) k]) == start
+                                && Scan::data (scan->direct[(size_t) k]) == Scan::data (scan->direct[0]);
+                scan->stopped = same;
             }
             progress (scan->stopped ? 50 : p + 1, 50, "Noms des programmes");
         }));

@@ -286,11 +286,12 @@ namespace ui
         void mouseUp (const juce::MouseEvent&) override       { dragging = false; repaint(); }
         void mouseEnter (const juce::MouseEvent&) override    { repaint(); }
         void mouseExit (const juce::MouseEvent&) override     { repaint(); }
+        int resetValue = 64;                  // a double-click puts this back (-1: nothing)
         void mouseDoubleClick (const juce::MouseEvent& e) override
         {
-            if (choices.isEmpty() && ! (hasSource && sourceBox.contains (e.getPosition())))
+            if (choices.isEmpty() && resetValue >= 0 && ! (hasSource && sourceBox.contains (e.getPosition())))
             {
-                value = 64;
+                value = resetValue;
                 if (onChange) onChange (value);
                 repaint();
             }

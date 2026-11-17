@@ -5,6 +5,7 @@
 #include "../Source/core/RaSysex.h"
 #include "../Source/sim/RaSynth.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -234,6 +235,76 @@ int main()
             CHECK (finite);
             CHECK (rms (x, 0, x.size()) > 0.001);
         }
+    }
+
+    // LFO Sync Key: from the top at each note, so a slow LFO gives every note the same pitch; Sync Off (free):
+    // each note picks it up anywhere, as on the unit
+    {
+        auto pitches = [] (int sync)
+        {
+            Synth syn;
+            syn.prepare (sr);
+            syn.setGlobalChannel (1);
+            auto s = plainSound();
+            s[0x05] = 72; s[0x07] = 2;                       // Osc 1 pitch from LFO 1 (a few semitones)
+            s[0x4B] = 0; s[0x4C] = 0; s[0x4D] = (std::uint8_t) sync;
+            syn.setSound (0, s.data());
+            std::vector<double> f;
+            for (int k = 0; k < 6; ++k)
+            {
+                note (syn, 1, 36, 127);
+                auto x = run (syn, 0.25);
+                f.push_back (frequency (x, (int) (sr * 0.05)));
+            }
+            return f;
+        };
+        auto spread = [] (const std::vector<double>& f)
+        {
+            return *std::max_element (f.begin(), f.end()) / *std::min_element (f.begin(), f.end());
+        };
+        const auto key = pitches (1), free = pitches (0);
+        std::printf ("slow LFO on pitch: Key %.4f, free %.4f (highest / lowest over six notes)\n", spread (key), spread (free));
+        CHECK (spread (key) < 1.002);
+        CHECK (spread (free) > 1.01);
+    }
+
+    // FX Select changed by a parameter message: the effect chosen is heard at once (no need to touch Dry Out)
+    {
+        Synth syn;
+        syn.prepare (sr);
+        syn.setGlobalChannel (1);
+        auto s = plainSound();
+        s[0x47] = 0; s[0x46] = 10;                          // a click
+        s[0x55] = 1; s[0x56] = 0; s[0x57] = 64;
+        syn.setSound (0, s.data());
+        std::array<std::uint8_t, fxBytes> none {}, delay {};
+        delay.fill (64);
+        delay[0] = 5; delay[1] = 1; delay[5] = 60; delay[6] = 70; delay[12] = 0;
+        syn.setEffect (0, none.data());
+        syn.setEffect (1, delay.data());
+        note (syn, 1, 36, 127);
+        auto before = run (syn, 1.0);
+        auto sx = ra::soundParameter (0, 0, 0x56, 1);
+        syn.handleMidi (sx.data(), (int) sx.size());
+        note (syn, 1, 36, 127);
+        auto after = run (syn, 1.0);
+        const double tailBefore = rms (before, (size_t) (sr * 0.2), before.size());
+        const double tailAfter = rms (after, (size_t) (sr * 0.2), after.size());
+        // the same sound with FX 2 from the start
+        Synth ref;
+        ref.prepare (sr);
+        ref.setGlobalChannel (1);
+        s[0x56] = 1;
+        ref.setSound (0, s.data());
+        ref.setEffect (0, none.data());
+        ref.setEffect (1, delay.data());
+        note (ref, 1, 36, 127);
+        auto direct = run (ref, 1.0);
+        const double tailDirect = rms (direct, (size_t) (sr * 0.2), direct.size());
+        std::printf ("fx select by message: echoes %.5f on FX1 (none), %.5f on FX2 (delay), %.5f set from the start\n",
+                     tailBefore, tailAfter, tailDirect);
+        CHECK (tailBefore < 1e-5);
+        CHECK (tailAfter > 1e-4 && std::abs (tailAfter - tailDirect) < tailDirect * 0.2);
     }
 
     // FX Send Mix: a balance. At 0 dry only, in the middle dry and effect, at the top the effect only

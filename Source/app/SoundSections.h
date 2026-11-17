@@ -38,7 +38,7 @@ inline const std::vector<SectionDef>& soundSections()
         { "Enveloppe 1", "Env 1",   { { { 0x3F, "Attack", false }, { 0x40, "Decay", false }, { 0x41, "Sustain", false }, { 0x42, "Release", false }, { 0x43, "Shape", false } } } },
         { "Enveloppe 2", "Env 2",   { { { 0x45, "Attack", false }, { 0x46, "Decay", false }, { 0x47, "Sustain", false }, { 0x48, "Release", false }, { 0x49, "Shape", false } } } },
         { "LFO 1", "LFO 1",         { { { 0x4B, "Speed", false }, { 0x4C, "Shape", true }, { 0x4D, "Sync", true }, { 0x4E, "One Shot", true } } } },
-        { "LFO 2", "LFO 2",         { { { 0x4F, "Speed", false }, { 0x50, "Shape", true }, { 0x51, "Sync", true }, { 0x52, "Mod", false }, { 0x53, "Mod Src", false } } } },
+        { "LFO 2", "LFO 2",         { { { 0x4F, "Speed", false }, { 0x50, "Shape", true }, { 0x51, "Sync", true }, { 0x52, "Speed Mod", false }, { 0x53, "Speed Ctrl", true } } } },
         { "Sortie", "Sortie",        { { { 0x55, "Dry Out", true }, { 0x56, "FX", true }, { 0x57, "FX Send", false }, { 0x5E, "XOR", true }, { 0x6C, "Pattern int.", true } },
                              { { 0x58, "Tuned Chn", true }, { 0x59, "Transpose", false }, { 0x5A, "Low Key", false }, { 0x5B, "High Key", false } } } },
     };

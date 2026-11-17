@@ -394,6 +394,13 @@ RA_EXPORT (ra_sound_edit) int raSoundEdit (int s, int a, int v)
     }
     else
         out = ra::soundParameter (model->device, s, a, v);
+    const int chosen = model->kit.soundValue (s, a);
+    if (a == 0x56 && ! out.empty() && chosen >= 0 && chosen < ra::Kit::numEffects)
+        for (auto value : ra::fxOutputNudge (model->kit.effectValue (chosen, 0x01)))   // see fxOutputNudge
+        {
+            const auto m = ra::effectParameter (model->device, chosen, 0x01, value);
+            out.insert (out.end(), m.begin(), m.end());
+        }
     refreshContext();
     return toScratch (out);
 }

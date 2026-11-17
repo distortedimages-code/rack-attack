@@ -57,6 +57,11 @@ Bytes soundParameter (std::uint8_t device, int sound, int address, int value, st
     return build (device, { cmd::SNDP, b7 (buffer), b7 (sound), b7 (address >> 7), b7 (address), b7 (value) });
 }
 
+Bytes effectParameter (std::uint8_t device, int effect, int address, int value, std::uint8_t buffer)
+{
+    return build (device, { cmd::EFXP, b7 (buffer), b7 (effect), b7 (address >> 7), b7 (address), b7 (value) });
+}
+
 //==============================================================================
 Parsed parse (const Bytes& m)
 {
@@ -234,7 +239,7 @@ namespace
         { 0x4D, "LFO1 Sync", V (kLfoSync) },           { 0x4E, "LFO1 OneShot", V (kOffOn) },
         { 0x4F, "LFO2 Speed", N },                     { 0x50, "LFO2 Shape", V (kLfoShapes) },
         { 0x51, "LFO2 Sync", V (kLfoSync) },           { 0x52, "LFO2 Mod", N },
-        { 0x53, "LFO2 Mod Src", N },                   // MOD or CTRL list: to check
+        { 0x53, "LFO2 Mod Src", V (kCtrlSrc) },        // manual p. 61: speed of LFO 2 from a control source
         { 0x55, "Dry Out", V (kDryOut) },              { 0x56, "FX Select", V (kFxSelect) },
         { 0x57, "FX Send Mix", N },                    { 0x58, "Tuned Channel", V (kTunedChannel) },
         { 0x59, "Transpose", N },                      { 0x5A, "Low Key", N },

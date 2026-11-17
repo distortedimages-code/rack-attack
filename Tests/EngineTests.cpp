@@ -148,6 +148,14 @@ int main()
     CHECK (scanMs < 15000.0);                                  // three programs, not fifty
     CHECK (engine.getProgramNames()[0].isEmpty() && engine.getProgramNames()[49].isEmpty());   // no fake names
     CHECK (engine.getKit().name() == "PROG 11");
+
+    // 5c. Program Change ignored, but the programs answer by their number: the names come from there
+    fake.readsByNumber = true;
+    engine.readProgramNames();
+    CHECK (waitTask (out, "names", 60000));
+    CHECK (out.lastOk);
+    CHECK (engine.getProgramNames()[0] == "PROG 01" && engine.getProgramNames()[49] == "PROG 50");
+    fake.readsByNumber = false;
     fake.ignoresProgramChange = false;
 
     // 6. Backup of the 50 programs, then back to program 11
@@ -223,6 +231,40 @@ int main()
     std::printf ("burst: %d parameter changes, %d notes in one second\n", params, notes);
     CHECK (params >= 120 && params <= 260);   // wide margins: build machines can be slow
     CHECK (notes >= 5 && notes <= 11);
+
+    // 9b. Everything back to zero: the unit empties the program in use (MODR 04 20 00), the kit is read again
+    {
+        engine.initProgram();
+        CHECK (waitTask (out, "kit", 20000));
+        CHECK (engine.getKit().name() == "Init Program");
+        CHECK (engine.getKit().soundValue (7, 0x05) == 64 && engine.getKit().soundValue (7, 0x35) == 100);
+        engine.selectProgram (10);                      // as before, for what follows
+        CHECK (waitTask (out, "kit", 10000));
+        CHECK (engine.getKit().name() == "PROG 11");
+    }
+
+    // 10a. FX Select: the chosen effect's Output follows, set to another output and back (the unit feeds
+    //      the effect only then)
+    {
+        std::vector<juce::MidiMessage> sent;
+        engine.setTestOutput ([&] (const juce::MidiMessage& m) { sent.push_back (m); fake.receive (m); });
+        const int out = engine.getKit().effectValue (2, 0x01);
+        engine.setSoundParameter (4, 0x56, 2);
+        runFor (200);
+        std::vector<std::string> order;
+        for (auto& m : sent)
+        {
+            if (! m.isSysEx() || m.getSysExDataSize() < 9) continue;
+            auto* d = m.getSysExData();        // 3E 11 ID CMD BUFN IDX PAH PAL VAL
+            if (d[3] == ra::cmd::SNDP && d[5] == 4 && d[7] == 0x56) order.push_back ("select " + std::to_string (d[8]));
+            if (d[3] == ra::cmd::EFXP && d[5] == 2 && d[7] == 0x01) order.push_back ("out " + std::to_string (d[8]));
+        }
+        const std::vector<std::string> want { "select 2", "out " + std::to_string (out == 1 ? 0 : 1), "out " + std::to_string (out) };
+        CHECK (order == want);
+        if (order != want) for (auto& o : order) std::printf ("  %s\n", o.c_str());
+        CHECK (engine.getKit().effectValue (2, 0x01) == out);
+        engine.setTestOutput ([&fake] (const juce::MidiMessage& m) { fake.receive (m); });
+    }
 
     // 10b. The sequencer: a kick on each beat and a lock on step 5, sent just before its
     //      note and put back when the clock stops.

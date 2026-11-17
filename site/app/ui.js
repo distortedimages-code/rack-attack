@@ -20,6 +20,16 @@ function el (tag, cls, parent, text) {
 const place = (e, x, y, w, hgt) => { e.style.left = x + 'px'; e.style.top = y + 'px'; if (w != null) e.style.width = w + 'px'; if (hgt != null) e.style.height = hgt + 'px'; return e; };
 const two = n => String(n).padStart(2, '0');
 const upper = s => s.toUpperCase();
+// a double-click: 0 % for the bipolar settings, open for level, cutoff and the key range, 0 for the rest;
+// null for the choices and the pitches (as the plug-in)
+function neutralValue (a) {
+  if (E.valueNames(a).length) return null;
+  if (isBipolar(a)) return 64;
+  if (a === 0x02 || a === 0x11) return null;
+  if (a === 0x1A || a === 0x27 || a === 0x5B) return 127;
+  if (a === 0x35) return 100;
+  return 0;
+}
 
 function fit () {
   const k = Math.min(innerWidth / 1360, innerHeight / 848);
@@ -574,7 +584,7 @@ function slotDrag (c, getDefNow) {
     get: () => slotValue(getDef()).lv,
     set: v => setSlot(getDef(), v, c),
     min: 0, max: () => E.paramMax(getDef().a), sens: 160,
-    reset: () => (isBipolar(getDef().a) ? 64 : slotValue(getDef()).lv),
+    reset: () => neutralValue(getDef().a) ?? slotValue(getDef()).lv,
     tap: () => {
       const d = getDef();
       const names = E.valueNames(d.a);
@@ -862,7 +872,7 @@ for (const col of COLUMNS) {
         }
         dragValue(cell, {
           get: () => E.sound(S.track, p.a), set: v => { E.setSound(S.track, p.a, v); renderSon(); },
-          min: 0, max: () => E.paramMax(p.a), sens: 160, reset: () => (isBipolar(p.a) ? 64 : E.sound(S.track, p.a)),
+          min: 0, max: () => E.paramMax(p.a), sens: 160, reset: () => neutralValue(p.a) ?? E.sound(S.track, p.a),
           tap: async () => {
             const names = E.valueNames(p.a);
             if (!names.length) return;

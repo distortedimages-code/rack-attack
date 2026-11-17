@@ -98,6 +98,7 @@ private:
     int quickFrom = 0;
     juce::Rectangle<int> quickRow, quickHeader, tuneBox;
     void toggleTuned();
+    void resetEverything();                   // OPTIONS: the unit's kit and the sequence emptied (asked first)
     void showTuneMenu();                      // right click: which channel the sound's notes come on
     int paramMax (int address) const;
     int shownValue (const ra::seq::Track&, int slot) const;   // the lock of the selected steps, else the sound's

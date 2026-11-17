@@ -44,7 +44,7 @@ void SimDevice::receive (const juce::MidiMessage& m, double atMs)
             if (command == ra::cmd::SNDP || command == ra::cmd::EFXP)
                 toSynth = true;                            // one value: at its time (locks)
             else if (command == ra::cmd::SNDD || command == ra::cmd::EFXD || command == ra::cmd::PRGD
-                     || command == ra::cmd::PRGP)
+                     || command == ra::cmd::PRGP || command == ra::cmd::MODR)
                 wholeKit = true;
         }
         else if (m.isProgramChange())

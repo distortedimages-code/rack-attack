@@ -61,6 +61,7 @@ public:
     // The kit being played on the unit (edit buffer), kept in step.
     const ra::Kit& getKit() const       { return kit; }
     void readKit();                                         // task "kit"
+    void initProgram();                                     // the unit empties the program in use (MODR 04 20 00, as ra-editor), then task "kit"
 
     // The kit the pages show and edit: the one heard, or the end of the morph that is armed (A or B, as the
     // Octatrack's scenes). The morph takes the edits then (editHook returns true: nothing sent from here).

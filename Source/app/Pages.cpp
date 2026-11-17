@@ -76,7 +76,7 @@ namespace
             { { "Enveloppe 1",   { { { 0x3F, "ATTACK", -1 }, { 0x40, "DECAY", -1 }, { 0x41, "SUSTAIN", -1 }, { 0x42, "RELEASE", -1 }, { 0x43, "SHAPE", -1 } } } },
               { "Enveloppe 2",   { { { 0x45, "ATTACK", -1 }, { 0x46, "DECAY", -1 }, { 0x47, "SUSTAIN", -1 }, { 0x48, "RELEASE", -1 }, { 0x49, "SHAPE", -1 } } } },
               { "LFO 1",         { { { 0x4B, "SPEED", -1 }, { 0x4C, "SHAPE", -1 }, { 0x4D, "SYNC", -1 }, { 0x4E, "1-SHOT", -1 } } } },
-              { "LFO 2",         { { { 0x4F, "SPEED", -1 }, { 0x50, "SHAPE", -1 }, { 0x51, "SYNC", -1 }, { 0x52, "MOD", -1 }, { 0x53, "MOD SRC", -1 } } } } },
+              { "LFO 2",         { { { 0x4F, "SPEED", -1 }, { 0x50, "SHAPE", -1 }, { 0x51, "SYNC", -1 }, { 0x52, "SPD MOD", -1 }, { 0x53, "SPD CTRL", -1 } } } } },
         };
         return columns;
     }
@@ -223,6 +223,7 @@ SoundPage::SoundPage (Engine& e, Library& l) : engine (e), library (l)
                     cell->onChange = [this, a = spot.address] (int v) { engine.setSoundParameter (sound, a, v); };
                     cell->format = [a = spot.address] (int v) { return ui::valueText (a, v); };
                     cell->centred = ui::isBipolar (spot.address);
+                    cell->resetValue = ui::neutralValue (spot.address);
                     if (spot.source >= 0)
                     {
                         cell->addSource (sources (spot.source));

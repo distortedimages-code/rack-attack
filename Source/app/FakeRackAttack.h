@@ -10,6 +10,7 @@
 
 #include "Engine.h"
 #include "../core/RaFactory.h"
+#include "ParamText.h"
 
 namespace fake_detail
 {
@@ -21,6 +22,7 @@ struct FakeRackAttack
     Engine* engine = nullptr;
     int id = 5, current = 3, channel = 3;   // channel: the unit's global channel
     bool silent = false, acceptsSoundDumps = true, ignoresProgramChange = false;
+    bool readsByNumber = false;   // PRGR PRGN 20 with PRGN 1..50: that stored program (a guess, from ra-editor)
     std::array<ra::Kit, 50> stored;
     ra::Kit edit;
     std::atomic<int> sysexIn { 0 }, soundParams { 0 }, notesOn { 0 };
@@ -73,6 +75,29 @@ struct FakeRackAttack
         edit = stored[(size_t) current];
     }
 
+    // What "init the program in use" leaves: 24 plain sounds (a short sine), no effect
+    static ra::Kit initKit()
+    {
+        ra::Kit k;
+        k.setName ("Init Program");
+        for (int a = 0; a < ra::kProgramDataSize; ++a)
+            if (a < 0x01 || a > 0x10)
+                k.setProgramValue (a, 0);
+        for (int s = 0; s < ra::Kit::numSounds; ++s)
+        {
+            ra::Bytes d ((size_t) ra::kSoundDataSize, 0);
+            for (int a = 1; a < ra::kSoundDataSize; ++a)
+                d[(size_t) a] = (std::uint8_t) juce::jmax (0, ui::neutralValue (a));
+            d[0x01] = 1; d[0x02] = 64; d[0x11] = 64;              // Osc 1 sine, the pitches in the middle
+            d[0x46] = 50; d[0x55] = 1;                            // Env 2 (the amp): a short decay; Stereo 1/2
+            k.setSoundData (s, d);
+        }
+        for (int e = 0; e < ra::Kit::numEffects; ++e)
+            for (int a = 0; a < ra::kEffectDataSize; ++a)
+                k.setEffectValue (e, a, a == 1 ? 1 : 0);
+        return k;
+    }
+
     static juce::MidiMessage sysex (const ra::Bytes& m)
     {
         return juce::MidiMessage::createSysExMessage (m.data() + 1, (int) m.size() - 2);
@@ -97,6 +122,10 @@ struct FakeRackAttack
         auto dev = (std::uint8_t) id;
         switch (p.command)
         {
+            case ra::cmd::MODR:
+                if (pl.size() >= 4 && pl[1] == 0x04 && pl[2] == ra::kEditBuffer)
+                    edit = initKit();                              // "init the program in use"
+                break;
             case ra::cmd::GLBR:
             {
                 ra::Bytes g { ra::cmd::GLBD, 0x00 };
@@ -107,7 +136,12 @@ struct FakeRackAttack
                 answer (ra::build (dev, g));
                 break;
             }
-            case ra::cmd::PRGR: answer (edit.programDump (dev)); break;
+            case ra::cmd::PRGR:
+                if (readsByNumber && pl.size() == 3 && pl[1] >= 1 && pl[1] <= 50)
+                    answer (stored[(size_t) (pl[1] - 1)].programDump (dev));
+                else
+                    answer (edit.programDump (dev));
+                break;
             case ra::cmd::SNDR: if (pl.size() == 3) answer (edit.soundDump (dev, pl[2])); break;
             case ra::cmd::EFXR: if (pl.size() == 3) answer (edit.effectDump (dev, pl[2])); break;
             case ra::cmd::PATR:

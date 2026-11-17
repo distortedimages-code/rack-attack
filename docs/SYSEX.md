@@ -168,8 +168,8 @@ Formes d'oscillateur `SHAPE` : `0` Triangle · `1` Sine · `2` Square · `3` Saw
 | `4F` | LFO2 Speed | | ⚠️ |
 | `50` | LFO2 Shape | comme LFO1 | ⚠️ |
 | `51` | LFO2 Sync | comme LFO1 | ⚠️ |
-| `52` | LFO2 Mod | bipolaire | ⚠️ |
-| `53` | LFO2 Mod Src | ra-editor dit MOD, le manuel dit CTRL — **à vérifier** | ⚠️ |
+| `52` | LFO2 Mod | bipolaire : agit sur la **vitesse** du LFO 2, dosée par la source ci-dessous (manuel p. 61) | ⚠️ |
+| `53` | LFO2 Mod Src | une source de contrôle : `0` Velocity · `1` Modwheel · `2` Pressure · `3` Breath · `4` Foot · `5` Keytrack (manuel p. 61) | ⚠️ |
 | `54` | ❓ | | |
 | **Tuned / Out / FX** ||||
 | `55` | Dry Out | `0` Mono 1 · `1` Stereo 1/2 · `2` Mono 2 · `3` Mono 3 · `4` Stereo 3/4 · `5` Mono 4 · `6` Mono 5 · `7` Stereo 5/6 · `8` Mono 6 | ⚠️ |

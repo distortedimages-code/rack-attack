@@ -800,8 +800,15 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
     g.reduceClipRegion (soundPanel.reduced (6));
     g.addTransform (juce::AffineTransform::translation ((float) slide, 0.0f));
 
+    viz::Live live;
+    {
+        bool keyboard = false;
+        live.sound = track;
+        live.lastHitMs = seq.lastHitMs (track, keyboard);
+        live.tempo = seq.getTempo();
+    }
     viz::draw (g, vizBox, section, [this] (int address) { return shownValues[(size_t) (address & 0x7F)]; },
-               anyLocked ? px::yellow : px::white, now);
+               anyLocked ? px::yellow : px::white, now, live);
 
     // which page the screen shows, in a white tag at its top right
     {
@@ -1683,7 +1690,7 @@ void SeqPage::mouseDown (const juce::MouseEvent& e)
                 titleStart = nowMs();
             }
             break;
-        case Zone::listen:     engine.playSound (track); break;
+        case Zone::listen:     engine.playSound (track); seq.heardNow (track); break;
         case Zone::tune:       if (right) showTuneMenu(); else toggleTuned(); break;
         case Zone::param:
             if (right)
@@ -2004,6 +2011,17 @@ void SeqPage::mouseDoubleClick (const juce::MouseEvent& e)
         rename (track);
     else if (h.zone == Zone::param && ! selection.empty())
         clearParamLocks (h.index);
+    else if (h.zone == Zone::param && h.index >= 0 && h.index < (int) slots.size())
+    {
+        // back to the neutral value (0 % for the bipolar ones)
+        const auto& def = slots[(size_t) h.index];
+        const int v = ui::neutralValue (def.address);
+        if (v >= 0 && ! def.choice)
+        {
+            setParam (h.index, v);
+            showToast (upper (fr (def.label)) + " : " + ui::valueText (def.address, v));
+        }
+    }
 }
 
 void SeqPage::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
@@ -2133,7 +2151,7 @@ void SeqPage::showVoiceMenu (int voice)
                 s.edit ([&] (Pattern& p) { auto name = p.tracks[(size_t) voice].name; p.tracks[(size_t) voice] = Track(); p.tracks[(size_t) voice].name = name; });
                 self->showToast (fr ("PISTE EFFACÉE"), px::red);
                 break;
-            case 6: self->engine.playSound (voice); break;
+            case 6: self->engine.playSound (voice); self->seq.heardNow (voice); break;
             default: break;
         }
         if (voice == self->track)
@@ -2253,6 +2271,40 @@ void SeqPage::initTracks (bool all)
     repaint();
 }
 
+void SeqPage::resetEverything()
+{
+    const auto message = fr ("Le kit en cours sur la machine est vidé (24 sons simples, sans effet) et la séquence aussi, "
+                             "noms des pistes compris.\n\nCe qui est rangé dans la machine ne bouge pas : Shift + Recall pour "
+                             "revenir au programme. La séquence revient avec OPTIONS › Annuler.");
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                      .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                      .withTitle (fr ("Tout remettre à zéro ?"))
+                                      .withMessage (message)
+                                      .withButton (fr ("Tout remettre à zéro"))
+                                      .withButton ("Annuler")
+                                      .withAssociatedComponent (this),
+                                  [safe = juce::Component::SafePointer<SeqPage> (this)] (int r)
+    {
+        auto* self = safe.getComponent();
+        if (self == nullptr || r != 1)
+            return;
+        self->keepForUndo (fr ("tout remettre à zéro"));
+        self->seq.edit ([] (Pattern& p)
+        {
+            for (auto& t : p.tracks)
+            {
+                ra::seq::resetTrack (t);
+                t.name.clear();
+            }
+        });
+        self->selection.clear();
+        self->engine.initProgram();
+        self->showToast (fr ("TOUT À ZÉRO"), px::red);
+        self->startWipe();
+        self->repaint();
+    });
+}
+
 void SeqPage::showOptions()
 {
     juce::String name;
@@ -2275,6 +2327,8 @@ void SeqPage::showOptions()
     m.addItem (20, fr ("Effacer tous les pas"));
     m.addItem (21, fr ("Effacer tous les verrous"));
     m.addItem (22, fr ("Init séquence : tout vide, 16 pas, 1/16 (le tempo reste)"));
+    m.addSeparator();
+    m.addItem (23, fr ("TOUT REMETTRE À ZÉRO : les 24 sons, les effets et la séquence…"));
     m.addSectionHeader (fr ("PATTERNS INTERNES DE LA MACHINE"));
     const int kitPatterns = engine.getKit().patternsRead();
     m.addItem (40, kitPatterns == 24 ? fr ("Patterns internes du kit → séquence") : fr ("Lire les patterns internes → séquence"));
@@ -2329,6 +2383,7 @@ void SeqPage::showOptions()
                      self->showToast (fr ("TOUT EFFACÉ"), px::red); break;
             case 21: onAll (fr ("effacer tous les verrous"), [] (Track& tr) { ra::seq::clearLocks (tr); });
                      self->showToast (fr ("TOUS LES VERROUS EFFACÉS"), px::yellow); break;
+            case 23: self->resetEverything(); break;
             case 22: self->initTracks (true); break;
             case 40:
                 if (self->engine.getKit().patternsRead() == 24)

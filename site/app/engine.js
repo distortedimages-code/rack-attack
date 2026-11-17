@@ -65,7 +65,7 @@ export class Engine {
     v = Math.max(0, Math.min(this.paramMax(a), Math.round(v)));
     if (this.sound(s, a) === v) return;
     const n = this.x.ra_sound_edit(s, a, v);
-    if (n > 0) this.send(this.scratch(n));
+    if (n > 0) this.sendAll(this.scratch(n));        // FX Select comes with its effect's Output (see fxOutputNudge)
     this.save();
     this.emit('kit'); this.emit('morph');
   }

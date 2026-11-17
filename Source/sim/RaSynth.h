@@ -93,6 +93,10 @@ public:
     void setGlobalChannel (int channel);                      // 0 = omni, 1..16
     void setBaseNote (int note);                              // note of sound 1
     void setTempo (double bpm);
+    // An LFO's value (-1..1) at a phase of its cycle number `cycle`, as the simulator makes it (the random
+    // shapes: some values, as each note draws its own).
+    static float lfoValue (int sound, bool first, int shape, double phase, std::uint64_t cycle, bool free);
+    static double lfoSyncBeats (int sync);                    // Sync 2..23: beats per cycle
 
     // A whole MIDI message: notes, controllers, aftertouch, pitch bend, and the
     // RackAttack's SysEx parameter changes and dumps for the edit buffer.

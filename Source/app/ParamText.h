@@ -25,6 +25,23 @@ namespace ui
         }
     }
 
+    // A sound setting's neutral value, for a double-click: 0 % for the bipolar ones, open for level, cutoff
+    // and the key range, 0 for the rest. -1: none (the choices, and the pitches, which have no zero)
+    inline int neutralValue (int address)
+    {
+        if (! ra::valueNames (ra::Object::sound, address).empty())
+            return -1;
+        if (isBipolar (address))
+            return 64;
+        switch (address)
+        {
+            case 0x02: case 0x11:                         return -1;
+            case 0x1A: case 0x27: case 0x5B:              return 127;
+            case 0x35:                                    return 100;
+            default:                                      return 0;
+        }
+    }
+
     inline juce::String valueText (int address, int v)
     {
         const auto names = ra::valueNames (ra::Object::sound, address);

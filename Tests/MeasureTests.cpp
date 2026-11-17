@@ -51,6 +51,7 @@ Calibration truth()
         c.sustainLevel[(size_t) v] = std::pow (t, 1.3f);
     }
     c.velocityToAmp = true;
+    c.fallCurves.clear();                  // the manual's shapes: the unit's fall to half in a few ms at low values
     c.selfOscillation = 110.0f;
     for (int v = 0; v < 128; ++v)
         c.resonanceK[(size_t) v] = 2.0f * (1.0f - (float) v / c.selfOscillation);

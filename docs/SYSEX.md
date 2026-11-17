@@ -144,8 +144,8 @@ Formes d'oscillateur `SHAPE` : `0` Triangle · `1` Sine · `2` Square · `3` Saw
 | `33`–`34` | ❓ | | |
 | **Ampli** ||||
 | `35` | Volume | | ⚠️ |
-| `36` | Volume Mod | bipolaire. Les sons d'usine : presque tous à `0` (−100 %) depuis l'enveloppe 2. Le simulateur (hypothèse) : négatif, le volume suit sa source ; positif, rien (la mesure 0.5.4 : +100 % depuis le LFO 1 ne fait pas varier le volume) | ⚠️ |
-| `37` | Volume Ctrl | bipolaire. Les sons d'usine : `127` (+100 %) avec la vélocité, ou `64`. Le simulateur (hypothèse) : positif, le volume suit le contrôle (sensibilité à la vélocité) | ⚠️ |
+| `36` | Volume Mod | bipolaire. Mesuré : la profondeur est Vol Mod + Vol Ctrl × son contrôle ; elle déplace la valeur de Volume elle-même (127 × profondeur × source), bornée à 0 et 127. Les sons d'usine : `0` (−100 %) depuis l'enveloppe 2 avec Vol Ctrl +100 % vélocité, une attaque sensible à la vélocité | ✅ |
+| `37` | Volume Ctrl | bipolaire. Mesuré : il ne règle pas le volume tout seul, il ajoute à la profondeur de Vol Mod (× la vélocité, etc.) | ✅ |
 | `38` | Volume Mod Src | MOD | ⚠️ |
 | `39` | Volume Ctrl Src | CTRL | ⚠️ |
 | `3A` | Pan | centre ❓ | ⚠️ |
@@ -153,7 +153,7 @@ Formes d'oscillateur `SHAPE` : `0` Triangle · `1` Sine · `2` Square · `3` Saw
 | `3C` | Pan Ctrl | bipolaire | ⚠️ |
 | `3D` | Pan Mod Src | MOD | ⚠️ |
 | `3E` | Pan Ctrl Src | CTRL | ⚠️ |
-| **Enveloppes** (ADSR) — **l'enveloppe 2 règle le volume** : sur la machine mesurée (nov. 2026), l'enveloppe 1 à zéro ne coupe pas le son ; les sons d'usine de Waldorf gardent l'enveloppe 1 pour les clics et la hauteur (programme Init : enveloppe 1 toute à 0, enveloppe 2 Decay 80), et le manuel dit de la grosse caisse 909 : « Envelope 2 Decay controls its length ». Câblée sur l'ampli ou passant par Vol Mod : à trancher avec la mesure 0.5.9 ||||
+| **Enveloppes** (ADSR) — **l'enveloppe 2 règle le volume, câblée sur l'ampli** (mesuré, nov. 2026 : l'enveloppe 2 à zéro coupe le son, l'enveloppe 1 non ; Vol Mod à 0 %). Temps mesurés : attaque deux fois plus longue tous les 8 pas (30 ms à 64, 8,7 s à 127), chute et relâchement en exponentielle raide (mi-hauteur en 13 ms à 64, 0,5 s à 127), sustain linéaire ; les 9 formes (Shape) mesurées ||||
 | `3F`–`42` | Env1 Attack, Decay, Sustain, Release | 0–127 (Release à 0 : pas de release) | ⚠️ |
 | `43` | Env1 Shape | façade : Exp → Linear → In → Co (s'applique à Decay et Release) | ⚠️ |
 | `44` | ❓ | | |

@@ -1467,7 +1467,8 @@ void Bench::speeds (Result& r)
             if (! lfo.empty())
                 break;
             lfoMod = mod;
-            reset ({ { aVolMod, mod }, { aVolModSrc, 2 } });
+            // from Volume 64, so that the swing (half of 127 each way, as measured) stays between 0 and 127
+            reset ({ { aVolMod, mod }, { aVolModSrc, 2 }, { aVolume, 64 } });
             double expected = 0.0, last = 0.0;
             for (int v = 127; v >= 0; v -= 8)
             {
@@ -1481,6 +1482,10 @@ void Bench::speeds (Result& r)
                 const double minHz = 2.5 / (count / 1000.0);
                 if (f < minHz || f > 150.0)
                     f = 0.0;
+                // slower than the speed before it, and not far from where the ones before point: else what was heard
+                // isn't the LFO (0.5.9 found about 2 Hz at every slow speed, on the unit as in the simulator)
+                if (f > 0.0 && last > 0.0 && (f > last * 0.9 || f < expected / 2.5 || f > expected * 2.5))
+                    break;
                 if (f > 0.0)
                 {
                     lfo.push_back ({ v, f });
@@ -1991,14 +1996,17 @@ bool load (const juce::File& file, Calibration& c, juce::String& error)
         return false;
     }
     if (auto* curves = json["fallCurves"].getArray(); curves != nullptr && curves->size() >= 2)
+    {
+        std::vector<std::array<float, 64>> read;
         for (auto& v : *curves)
         {
             std::array<float, 64> curve {};
             if (readTable (v, curve))
-                out.fallCurves.push_back (curve);
+                read.push_back (curve);
         }
-    if (out.fallCurves.size() < 2)
-        out.fallCurves.clear();
+        if (read.size() >= 2)
+            out.fallCurves = read;
+    }
 
     auto number = [&json] (const char* name, float fallback) { return json.hasProperty (name) ? (float) (double) json[name] : fallback; };
     out.pitchModSemitones = number ("pitchModSemitones", out.pitchModSemitones);
@@ -2024,6 +2032,26 @@ bool load (const juce::File& file, Calibration& c, juce::String& error)
         out.ampEnvelope = 1;
     out.velocityToAmp = json.hasProperty ("velocityToAmp") ? (bool) json["velocityToAmp"] : out.velocityToAmp;
     out.source = json["source"].toString().toStdString();
+
+    // What the measurement couldn't measure was written with the numbers of its day: today's (measured on a
+    // unit since) stay instead. The report says what was heard.
+    if (report.isObject())
+    {
+        const auto measured = [&report] (const char* name) { const auto* a = report[name].getArray(); return a != nullptr && ! a->isEmpty(); };
+        const auto now = Calibration::defaults();
+        if (! measured ("attack"))
+        {
+            out.attackMs = now.attackMs;
+            out.decayMs = now.decayMs;
+            out.releaseMs = now.releaseMs;
+            out.sustainLevel = now.sustainLevel;
+            out.fallCurves = now.fallCurves;
+        }
+        if (! measured ("lfo"))
+            out.lfoHz = now.lfoHz;
+        if (! report.hasProperty ("cutoffModSemitones") || (double) report["cutoffModSemitones"] < 2.0)
+            out.cutoffModSemitones = now.cutoffModSemitones;
+    }
 
     if (auto* samples = json["samples"].getArray(); samples != nullptr)
         for (int i = 0; i < std::min (3, samples->size()); ++i)

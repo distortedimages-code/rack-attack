@@ -384,6 +384,8 @@ namespace
 //==============================================================================
 namespace
 {
+    #include "RaMeasured.inc"
+
     // a measured curve, (value, physical value) by increasing value: read between its points on a log scale, and
     // past its ends with the slope given (in octaves per step)
     float logCurve (const std::vector<std::pair<float, float>>& pts, float v, float octavesPerStep)
@@ -404,9 +406,9 @@ namespace
 }
 
 // Where the manual has numbers, they stay; what was measured on a real RackAttack (November 2026, the guided
-// measurement) replaces the rest: the cutoff, the volume, the resonance, how far a pitch modulation goes, and
-// which envelope shapes the level (Envelope 2: Envelope 1 left the level alone on the unit, and Waldorf's factory
-// sounds keep it for clicks and pitch, e.g. Envelope 1 all at 0 in their init program and many kits).
+// measurement) replaces the rest: the cutoff, the volume, the resonance, the envelopes and their shapes, the LFO
+// speeds, how far a pitch or cutoff modulation goes, and which envelope shapes the level (Envelope 2: Envelope 1
+// left the level alone on the unit, and Waldorf's factory sounds keep it for clicks and pitch).
 Calibration Calibration::defaults()
 {
     // cutoff: one semitone a step, 64 = 495 Hz (about B4, two semitones above the manual's 440 Hz); bent at the bottom
@@ -434,17 +436,19 @@ Calibration Calibration::defaults()
         c.pitchHz[(size_t) v] = v >= 68 ? logCurve (pitch, (float) v, 0.0f)
                                         : 0.0079f * std::pow (18700.0f / 0.0079f, t) * (pitch.front().second / manual68);
         c.cutoffHz[(size_t) v] = logCurve (cutoff, (float) v, 1.0f / 12.0f);
-        c.attackMs[(size_t) v] = v == 0 ? 0.0f : 0.5f * std::exp2 (t * 14.0f);
-        c.decayMs[(size_t) v] = 1.0f * std::exp2 (t * 14.0f);
-        c.releaseMs[(size_t) v] = 1.0f * std::exp2 (t * 14.0f);
-        c.lfoHz[(size_t) v] = 0.02f * std::exp2 (t * 11.0f);
+        c.attackMs[(size_t) v] = measuredAttackMs[(size_t) v];     // twice as long every 8 steps (30 ms at 64)
+        c.decayMs[(size_t) v] = measuredDecayMs[(size_t) v];
+        c.releaseMs[(size_t) v] = measuredReleaseMs[(size_t) v];
+        c.lfoHz[(size_t) v] = measuredLfoHz[(size_t) v];           // 1.7 Hz at 64, 127 Hz at 111, 550 Hz at 127
         c.crackHz[(size_t) v] = std::pow (5000.0f, t);                             // manual: 1 Hz .. 5 kHz (measured: the same)
         c.volumeGain[(size_t) v] = t;                                              // measured: straight
         c.velocityGain[(size_t) v] = t * t;
         c.sustainLevel[(size_t) v] = t;
         c.resonanceK[(size_t) v] = logCurve (damping, (float) v, -0.0880f);      // past 112: -0.7 dB of damping a step
     }
-    c.pitchModSemitones = 31.8f;                                                   // measured (manual: unknown)
+    c.fallCurves.assign (measuredFallCurves.begin(), measuredFallCurves.end());   // Shape 0, 16 .. 127, measured
+    c.pitchModSemitones = measuredPitchModSemitones;                               // 31.8 (manual: unknown)
+    c.cutoffModSemitones = measuredCutoffModSemitones;                             // 53.7
     c.detuneSemitones = 2.0f;                                                      // measured 1.98 (manual: 200 cents)
     return c;
 }
@@ -568,14 +572,6 @@ struct Synth::Impl
         return a <= 2.0f ? y : std::copysign (2.0f + 2.0f * std::tanh ((a - 2.0f) * 0.5f), y);
     }
 
-    static float ampModulation (float mod, float source, float ctrl, float controller)
-    {
-        float g = 1.0f;
-        if (mod < 0.0f) g -= -mod * (1.0f - source);
-        if (ctrl > 0.0f) g -= ctrl * (1.0f - controller);
-        else if (ctrl < 0.0f) g -= -ctrl * controller;
-        return std::clamp (g, 0.0f, 1.0f);
-    }
     const Env& ampEnv (const Voice& v) const   { return cal.ampEnvelope == 1 ? v.e1 : v.e2; }
 
     void envStart (Env& e, const std::uint8_t* p)
@@ -855,11 +851,15 @@ struct Synth::Impl
         v.a2 = v.g * v.a1;
         v.a3 = v.g * v.a2;
 
-        // level (the amp's envelope is applied every sample) and place. As the factory sounds use them: a negative
-        // Vol Mod makes the level follow its source (-100 %: all the way), a positive Vol Ctrl makes it follow its
-        // controller (+100 % velocity: velocity sensitive). The other signs can't make it louder than Volume.
-        v.level = cal.volumeGain[s[aVolume]] * (cal.velocityToAmp ? cal.velocityGain[(size_t) juce_clampVel (v.velocity)] : 1.0f)
-                * ampModulation (bip (s[aVolMod]), modValue (v, s[aVolModSrc]), bip (s[aVolCtrl]), ctrlValue (v, s[aVolCtrlSrc]));
+        // level (the amp's envelope, Envelope 2, is applied every sample) and place. Measured on the unit: Vol Ctrl
+        // scales how much of the Mod Src goes in (the depth is Vol Mod + Vol Ctrl x its controller), and that moves
+        // the Volume value itself, which stops at 0 and 127 (so from Volume 100, +100 % lifts it by 2 dB at most).
+        // Waldorf's sounds: Vol Mod -100 % from Envelope 2 and Vol Ctrl +100 % velocity, a velocity-sensitive attack.
+        const float depth = bip (s[aVolMod]) + bip (s[aVolCtrl]) * ctrlValue (v, s[aVolCtrlSrc]);
+        const float volume = std::clamp ((float) s[aVolume] + 127.0f * depth * modValue (v, s[aVolModSrc]), 0.0f, 127.0f);
+        const int vi = std::min (126, (int) volume);
+        const float gain = cal.volumeGain[(size_t) vi] + (cal.volumeGain[(size_t) vi + 1] - cal.volumeGain[(size_t) vi]) * (volume - (float) vi);
+        v.level = gain * (cal.velocityToAmp ? cal.velocityGain[(size_t) juce_clampVel (v.velocity)] : 1.0f);
         float pan = bip (s[aPan]) + bip (s[aPanMod]) * modValue (v, s[aPanModSrc]) + bip (s[aPanCtrl]) * ctrlValue (v, s[aPanCtrlSrc]);
         pan = std::clamp (pan, -1.0f, 1.0f);
         const int out = s[dryOut];

@@ -192,6 +192,9 @@ MainComponent::MainComponent (AppContext& c)
     if (juce::SystemStats::getEnvironmentVariable ("RA_MENU", {}) == "1")       // screenshots of a menu
         juce::Timer::callAfterDelay (900, [safe = juce::Component::SafePointer<SeqPage> (&seqPage)]
                                      { if (safe != nullptr) safe->demoOptions(); });
+    if (juce::SystemStats::getEnvironmentVariable ("RA_MENU", {}) == "programs")
+        juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer<KitPage> (&kitPage)]
+                                     { if (safe != nullptr) safe->demoPrograms(); });
     startTimer (250);
 
     ctx.start();   // the first time a window opens: ports of last time, then find the unit

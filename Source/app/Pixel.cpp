@@ -521,7 +521,10 @@ void Look::getIdealPopupMenuItemSize (const juce::String& itemText, bool isSepar
 
 void Look::drawPopupMenuUpDownArrow (juce::Graphics& g, int width, int height, bool isScrollUpArrow)
 {
-    g.fillAll (black);
+    // only its band: JUCE moves the origin here without clipping, and filling it all blacked out a long menu (the
+    // 50 programs) but for its arrow
+    g.setColour (black);
+    g.fillRect (0, 0, width, height);
     pixelArrow (g, { width / 2 - 1, isScrollUpArrow ? height / 2 - 4 : height / 2 + 4 }, 0, isScrollUpArrow ? -1 : 1, white);
 }
 

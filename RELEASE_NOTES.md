@@ -1,9 +1,7 @@
-**RackAttack Editor 0.5.12** : le simulateur a maintenant les enveloppes, les LFO et l'ampli d'un vrai RackAttack.
+**RackAttack Editor 0.5.13** : la liste des programmes se voit à nouveau, et sortir de la simulation reconnecte la machine du premier coup.
 
-- **Les enveloppes mesurées sur la machine** : l'attaque double tous les 8 pas (30 ms à 64, près de 9 s à 127), les chutes et relâchements ont la courbe raide de la machine, et les 9 formes (Shape) sont celles mesurées. Les kits d'usine retrouvent leurs longueurs.
-- **Les LFO à la vitesse de la machine** : environ 1,7 Hz à 64, et jusqu'à 550 Hz tout en haut (vitesse audio).
-- **L'ampli comme sur la machine** : Vol Ctrl ajoute à la profondeur de Vol Mod, et la modulation déplace le volume lui-même, sans dépasser 127. Avec les réglages de Waldorf (Vol Mod −100 % depuis l'enveloppe 2, Vol Ctrl +100 % vélocité), l'attaque suit la vélocité.
-- **La modulation du filtre** va jusqu'à 54 demi-tons à 100 %.
-- **La mesure guidée** lit mieux les LFO lents, et un fichier de mesures d'avant garde les enveloppes et LFO d'aujourd'hui quand il n'avait pas pu les mesurer.
+- **La liste des programmes de la page Kit s'affiche** : elle était toute noire (mais on pouvait choisir dedans) dès qu'elle devait défiler, comme tout menu trop long pour l'écran.
+- **Sortir du mode simulation** rouvre les ports MIDI à neuf et laisse un instant à la machine avant de la chercher, comme quand on rechoisissait les ports à la main.
+- Tout ce qu'apportait la 0.5.12 reste : le simulateur a les enveloppes, les LFO et l'ampli d'un vrai RackAttack.
 
 Pour garder un kit sur la machine, toujours **Shift + Store**.

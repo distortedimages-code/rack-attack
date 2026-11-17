@@ -90,7 +90,8 @@ void AppContext::start()
 
     auto connectLater = [weak = juce::WeakReference<AppContext> (this)]
     {
-        juce::MessageManager::callAsync ([weak] { if (auto* c = weak.get()) c->engine.connect(); });
+        // a moment for the ports just opened to settle
+        juce::Timer::callAfterDelay (400, [weak] { if (auto* c = weak.get()) c->engine.connect(); });
     };
 
     demoFromEnvironment = juce::SystemStats::getEnvironmentVariable ("RA_DEMO", {}) == "1";
@@ -147,13 +148,19 @@ void AppContext::enterSimulation()
 void AppContext::leaveSimulation()
 {
     simActive = false;
+    engine.cancel();                       // what the simulator was being asked stops here
     engine.setTimedOutput (nullptr);
     engine.pauseScale = 1.0;
     // the real unit's settings (the simulation never saves its own)
     auto& s = settings();
+    inId = s.getValue ("in", inId);
+    outId = s.getValue ("out", outId);
     engine.deviceId = s.getIntValue ("id", 0);
     engine.channel = s.getIntValue ("channel", 1);
     engine.baseNote = s.getIntValue ("baseNote", 36);
+    // the ports opened afresh, as choosing them again does (0.5.12 needed that by hand the first time)
+    engine.openInput ({});
+    engine.openOutput ({});
     for (auto& d : juce::MidiInput::getAvailableDevices())
         if (d.identifier == inId) engine.openInput (inId);
     for (auto& d : juce::MidiOutput::getAvailableDevices())
@@ -173,8 +180,17 @@ void AppContext::setSimulation (bool on)
         settings().setValue ("simulation", on);
         settings().saveIfNeeded();
     }
-    if (on || settingsFile->getBoolValue ("setupDone", false))
+    if (on)
         engine.connect();
+    else if (settingsFile->getBoolValue ("setupDone", false))
+    {
+        // the unit is looked for once the ports just opened have settled: right away, its first answer can be lost
+        juce::Timer::callAfterDelay (700, [weak = juce::WeakReference<AppContext> (this)]
+        {
+            if (auto* c = weak.get(); c != nullptr && ! c->isSimulation())
+                c->engine.connect();
+        });
+    }
 }
 
 AppContext::~AppContext()

@@ -10,6 +10,13 @@ namespace ui
 struct ParamDef { int address; const char* label; bool choice; };
 struct SectionDef { const char* title; const char* tab; std::vector<std::vector<ParamDef>> rows; };
 
+// A setting that does nothing as the sound is set, drawn greyed (still editable, to prepare it): the filter's
+// while its Type is Bypass. Drive stays: it saturates before the filter, which the simulator does in Bypass too.
+inline bool isIdle (int address, int filterType)
+{
+    return filterType == 0 && address >= 0x27 && address <= 0x32 && address != 0x29;
+}
+
 // The sound, section by section as on the front panel (addresses: docs/SYSEX.md)
 inline const std::vector<SectionDef>& soundSections()
 {

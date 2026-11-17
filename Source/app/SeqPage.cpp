@@ -770,6 +770,7 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
         const bool locked = locking && lockedCount > 0;
         const bool hot = hover.zone == Zone::param && hover.index == i;
         const bool dragging = drag.hit.zone == Zone::param && drag.hit.index == i;
+        const bool idle = known && ui::isIdle (def.address, kit.soundValue (track, 0x26));   // the filter, bypassed
 
         if (! quick)
         {
@@ -795,8 +796,9 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
         else
         {
             text = valueText (def.address, base);
-            colour = locking ? px::dim : px::white;
+            colour = locking || idle ? px::dim : px::white;
         }
+        const auto nameColour = locked ? px::yellow : idle ? (hot || dragging ? px::dim : px::faint) : (hot || dragging ? px::white : px::grey);
 
         if (quick)
         {
@@ -811,13 +813,12 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
                 auto knobArea = in.removeFromLeft (k).withSizeKeepingCentre (k, k);
                 const float marker = locked && known ? (float) base / (float) juce::jmax (1, maxV) : -1.0f;
                 px::knob (g, knobArea, (float) shown / (float) juce::jmax (1, maxV),
-                          locked ? px::yellow : (locking ? px::faint : (hot || dragging ? px::white : juce::Colour (0xffe0e0e0))),
+                          locked ? px::yellow : (locking || idle ? px::faint : (hot || dragging ? px::white : juce::Colour (0xffe0e0e0))),
                           2, marker, {}, ui::isBipolar (def.address));
                 in.removeFromLeft (8);
             }
             auto nameRow = in.removeFromTop (16);
-            px::drawText (g, upper (fr (def.label)), nameRow, juce::Justification::centredLeft, px::text (19.0f),
-                          locked ? px::yellow : (hot || dragging ? px::white : px::grey));
+            px::drawText (g, upper (fr (def.label)), nameRow, juce::Justification::centredLeft, px::text (19.0f), nameColour);
             if ((size_t) i < slotWhy.size() && slotWhy[(size_t) i].isNotEmpty())
             {
                 // why it is offered for this sound: a small tag sitting on the cell's top edge
@@ -855,7 +856,7 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
             px::drawText (g, slotWhy[(size_t) i], tag, juce::Justification::centred, f, px::grey);
         }
         px::drawText (g, upper (fr (def.label)), nameRow, roomy ? juce::Justification::centredLeft : juce::Justification::topLeft,
-                      px::label (9.5f), locked ? px::yellow : (hot || dragging ? px::white : px::grey));
+                      px::label (9.5f), nameColour);
         px::drawText (g, text, in, roomy ? juce::Justification::centredRight : juce::Justification::bottomRight, px::text (30.0f), colour);
         if (def.choice)
         {
@@ -869,7 +870,7 @@ void SeqPage::paintSound (juce::Graphics& g, const Track& tr)
         {
             const int filled = juce::roundToInt (16.0 * shown / juce::jmax (1, maxV));
             const int marker = locked && known ? juce::jlimit (0, 15, juce::roundToInt (16.0 * base / juce::jmax (1, maxV))) : -1;
-            const auto barColour = locked ? px::yellow : (locking ? px::faint : px::white);
+            const auto barColour = locked ? px::yellow : (locking || idle ? px::faint : px::white);
             if (ui::isBipolar (def.address))
                 px::barCentred (g, bottom, 16, (float) shown / 127.0f, barColour, marker);
             else

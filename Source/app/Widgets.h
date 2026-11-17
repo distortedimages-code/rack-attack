@@ -215,6 +215,7 @@ namespace ui
 
         void setValue (int v)       { if (v != value) { value = v; repaint(); } }
         void setSource (int v)      { if (v != source) { source = v; repaint(); } }
+        void setIdle (bool i)       { if (i != idle) { idle = i; repaint(); } }   // greyed: it does nothing now
         void setLabel (const juce::String& n)   { name = n; repaint(); }
 
         std::function<void (int)> onChange, onSource;
@@ -227,7 +228,7 @@ namespace ui
             const bool hot = isMouseOver (true) || dragging;
             const auto nameFont = px::text (20.0f);
             px::drawText (g, fitName (upper (name), nameFont, r.getWidth()), r.removeFromTop (18), juce::Justification::centred,
-                          nameFont, hot ? px::white : px::grey);
+                          nameFont, idle ? (hot ? px::dim : px::faint) : hot ? px::white : px::grey);
             r.removeFromTop (4);
             if (hasSource)
             {
@@ -245,8 +246,10 @@ namespace ui
             auto valueRow = r.removeFromBottom (20);
             const int k = juce::jmin (36, r.getWidth() - 8, r.getHeight() - 4);
             auto knobArea = r.withSizeKeepingCentre (k, k);
-            px::knob (g, knobArea, (float) value / 127.0f, hot ? px::white : juce::Colour (0xffe0e0e0), 3, -1.0f, {}, centred);
-            px::drawText (g, format ? format (value) : juce::String (value), valueRow, juce::Justification::centred, valueFont, px::white);
+            px::knob (g, knobArea, (float) value / 127.0f, idle ? (hot ? px::dim : px::faint) : hot ? px::white : juce::Colour (0xffe0e0e0),
+                      3, -1.0f, {}, centred);
+            px::drawText (g, format ? format (value) : juce::String (value), valueRow, juce::Justification::centred, valueFont,
+                          idle ? px::dim : px::white);
         }
 
         void mouseDown (const juce::MouseEvent& e) override
@@ -308,6 +311,8 @@ namespace ui
         juce::String name;
 
     private:
+        bool idle = false;
+
         void drawBox (juce::Graphics& g, juce::Rectangle<int> b, const juce::String& shown, bool small)
         {
             g.setColour (px::cell);
@@ -319,7 +324,7 @@ namespace ui
             g.fillRect (t.getRight() - 6, t.getCentreY() - 1, 6, 2);
             g.fillRect (t.getRight() - 4, t.getCentreY() + 1, 2, 2);
             t.removeFromRight (7);
-            px::drawText (g, fitName (shown, f, t.getWidth()), t, juce::Justification::centredLeft, f, px::white);
+            px::drawText (g, fitName (shown, f, t.getWidth()), t, juce::Justification::centredLeft, f, idle ? px::dim : px::white);
         }
 
         void showMenu (const juce::StringArray& items, int current, juce::Rectangle<int> b, std::function<void (int)> then)

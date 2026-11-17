@@ -289,3 +289,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .kitsempty h3 { margin: 0 0 14px; font: 700 18px var(--silk); letter-spacing: 2px; }
 .kitsempty p { margin: 0 0 12px; font-size: 26px; color: var(--grey); line-height: 1.15; }
 .kitsempty .key.big { margin-top: 18px; }
+
+/* a setting that does nothing as the sound is set (the filter, bypassed): greyed, still editable */
+.idle .lab, .idle .val, .idle .src { color: var(--faint) !important; }
+.idle .val { color: var(--dim) !important; }
+.idle .ring-fill { stroke: var(--faint); } .idle .ring-dot { fill: var(--faint); }
+.idle .bar i { background: var(--faint) !important; }
+.idle:hover .lab { color: var(--dim) !important; }

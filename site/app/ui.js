@@ -1,6 +1,6 @@
 // The web version's screens: the Séquenceur and Son pages of the plug-in, drawn the same way, on the same engine.
 import { Engine, PATTERNS_SET } from './engine.js';
-import { SECTIONS, COLUMNS, isBipolar, valueText, noteName, DIVISIONS, CONDITIONS, quickFor, TRIGS, fit as fitText } from './params.js';
+import { SECTIONS, COLUMNS, isBipolar, isIdle, valueText, noteName, DIVISIONS, CONDITIONS, quickFor, TRIGS, fit as fitText } from './params.js';
 
 const E = new Engine();
 window.raEngine = E;   // for the console, and tests
@@ -836,8 +836,10 @@ for (const col of COLUMNS) {
 
 function renderSon () {
   sonTitle.innerHTML = `<span class="dim">SON ${two(S.track + 1)}</span>  ${upper(E.trackName(S.track))}`;
+  const ftype = E.sound(S.track, 0x26);
   for (const o of sonCells) {
     const a = o.def.a, v = E.sound(S.track, a), names = E.valueNames(a), max = names.length ? Math.max(1, names.length - 1) : 127;
+    o.el.classList.toggle('idle', isIdle(a, ftype));
     setRing(o.ring, v / max, isBipolar(a));
     o.val.textContent = fitText(valueText(a, v, names), 6);
     o.el.classList.toggle('choice', names.length > 0);
@@ -1116,6 +1118,7 @@ function renderSound () {
     q.val.textContent = fitText(valueText(def.a, sv.lv, E.valueNames(def.a)), 7);
     q.why.textContent = def.why; q.why.style.display = def.why ? '' : 'none';
     q.el.classList.toggle('lk', sv.locked);
+    q.el.classList.toggle('idle', isIdle(def.a, v(0x26)));
   });
   const ch = v(0x58);
   tuneKey.classList.toggle('on', ch !== 0);
@@ -1144,6 +1147,7 @@ function renderSound () {
     if (isBipolar(o.def.a)) { i.style.left = Math.min(f, 0.5) * 100 + '%'; i.style.width = Math.max(2, Math.abs(f - 0.5) * 100) + '%'; }
     else { i.style.left = '0'; i.style.width = f * 100 + '%'; }
     o.el.classList.toggle('lk', sv.locked);
+    o.el.classList.toggle('idle', isIdle(o.def.a, E.sound(S.track, 0x26)));
   }
   vtag.textContent = upper(sec.tab);
   drawViz();

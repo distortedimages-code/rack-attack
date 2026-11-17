@@ -80,6 +80,10 @@ export const STEPS_PER_BEAT = [8, 4, 2, 1, 6, 3];
 export const CONDITIONS = (() => { const c = [[0, 0]]; for (let b = 2; b <= 8; ++b) for (let a = 1; a <= b; ++a) c.push([a, b]); return c; })();
 
 // the quick access row for sound s (v: its value at an address)
+// a setting that does nothing as the sound is set, greyed (still editable): the filter's while it is bypassed,
+// Drive apart (it saturates before the filter) — as the plug-in
+export function isIdle (a, filterType) { return filterType === 0 && a >= 0x27 && a <= 0x32 && a !== 0x29; }
+
 export function quickFor (v) {
   const q = (a, label, choice = false, why = '') => ({ a, label, choice, why });
   const list = [q(0x02, 'Pitch 1'), q(0x11, 'Pitch 2'), q(0x27, 'Cutoff'), q(0x28, 'Reso'), q(0x3F, 'Attack'), q(0x40, 'Decay'), q(0x42, 'Release'), q(0x35, 'Volume')];

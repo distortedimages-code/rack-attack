@@ -531,7 +531,6 @@ struct Synth::Impl
     };
 
     double sr = 44100.0, tempo = 120.0;
-    double lfoClock = 0.0;                    // seconds, for the free-running LFOs (setClock, render)
     Calibration cal = Calibration::defaults();
     std::array<std::array<std::uint8_t, soundBytes>, numSounds> snd {};
     std::array<Effect, numFx> fx;
@@ -722,21 +721,13 @@ struct Synth::Impl
         const auto& s = snd[(size_t) v.sound];
         const int sync = first ? s[l1Sync] : s[l2Sync];
         l.done = false;
-        if (sync == 1 || (first && s[l1OneShot] != 0))
-        {
-            // Key: start at the top of the wave, at each note (random shapes: new values each time)
-            l.phase = 0.0;
-            l.seed = (std::uint64_t) (rng.next() * 1.0e9f + 2.0e9f);
-            l.cycle = 0;
-            l.values();
-            return;
-        }
-        // free running: where the sound's LFO is on the LFO clock, the same for every note
-        const double cycles = lfoHz (v, first) * lfoClock;
-        l.phase = cycles - std::floor (cycles);
-        l.seed = lfoSeed (v.sound, first);
-        l.cycle = (std::uint64_t) std::max (0.0, std::floor (cycles));
+        // random values for the random shapes, new at each note (S&H at Speed 0: a new value per note, manual)
+        l.seed = (std::uint64_t) (rng.next() * 1.0e9f + 2.0e9f);
+        l.cycle = 0;
         l.values();
+        // Key: start at the top of the wave; Off: free running, each note picks it up anywhere (seen on the
+        // unit: a slow sine gives every note a different pitch)
+        l.phase = sync == 1 || (first && s[l1OneShot] != 0) ? 0.0 : (double) (rng.next() * 0.5f + 0.5f);
     }
 
     double lfoHz (const Voice& v, bool first) const
@@ -1113,7 +1104,6 @@ struct Synth::Impl
 
     void render (float* L, float* R, int n)
     {
-        lfoClock += (double) n / sr;
         std::fill (L, L + n, 0.0f);
         std::fill (R, R + n, 0.0f);
         for (auto& f : fxIn)
@@ -1248,18 +1238,6 @@ void Synth::setEffect (int e, const std::uint8_t* data)
 void Synth::setGlobalChannel (int ch)    { impl->globalChannel = std::clamp (ch, 0, 16); }
 void Synth::setBaseNote (int note)       { impl->baseNote = std::clamp (note, 0, 127 - numSounds); }
 void Synth::setTempo (double bpm)        { impl->tempo = std::clamp (bpm, 20.0, 400.0); }
-void Synth::setClock (double seconds)
-{
-    // small differences are the blocks' own timing: only a real jump moves it
-    if (std::abs (seconds - impl->lfoClock) > 0.05)
-        impl->lfoClock = seconds;
-}
-double Synth::freeLfoPhase (double hz, double seconds)
-{
-    const double c = hz * seconds;
-    return c - std::floor (c);
-}
-
 float Synth::lfoValue (int sound, bool first, int shape, double phase, std::uint64_t cycle, bool free)
 {
     Impl::Lfo l;

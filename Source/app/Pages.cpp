@@ -223,6 +223,7 @@ SoundPage::SoundPage (Engine& e, Library& l) : engine (e), library (l)
                     cell->onChange = [this, a = spot.address] (int v) { engine.setSoundParameter (sound, a, v); };
                     cell->format = [a = spot.address] (int v) { return ui::valueText (a, v); };
                     cell->centred = ui::isBipolar (spot.address);
+                    cell->resetValue = ui::neutralValue (spot.address);
                     if (spot.source >= 0)
                     {
                         cell->addSource (sources (spot.source));

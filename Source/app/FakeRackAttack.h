@@ -10,6 +10,7 @@
 
 #include "Engine.h"
 #include "../core/RaFactory.h"
+#include "ParamText.h"
 
 namespace fake_detail
 {
@@ -74,6 +75,29 @@ struct FakeRackAttack
         edit = stored[(size_t) current];
     }
 
+    // What "init the program in use" leaves: 24 plain sounds (a short sine), no effect
+    static ra::Kit initKit()
+    {
+        ra::Kit k;
+        k.setName ("Init Program");
+        for (int a = 0; a < ra::kProgramDataSize; ++a)
+            if (a < 0x01 || a > 0x10)
+                k.setProgramValue (a, 0);
+        for (int s = 0; s < ra::Kit::numSounds; ++s)
+        {
+            ra::Bytes d ((size_t) ra::kSoundDataSize, 0);
+            for (int a = 1; a < ra::kSoundDataSize; ++a)
+                d[(size_t) a] = (std::uint8_t) juce::jmax (0, ui::neutralValue (a));
+            d[0x01] = 1; d[0x02] = 64; d[0x11] = 64;              // Osc 1 sine, the pitches in the middle
+            d[0x46] = 50; d[0x55] = 1;                            // Env 2 (the amp): a short decay; Stereo 1/2
+            k.setSoundData (s, d);
+        }
+        for (int e = 0; e < ra::Kit::numEffects; ++e)
+            for (int a = 0; a < ra::kEffectDataSize; ++a)
+                k.setEffectValue (e, a, a == 1 ? 1 : 0);
+        return k;
+    }
+
     static juce::MidiMessage sysex (const ra::Bytes& m)
     {
         return juce::MidiMessage::createSysExMessage (m.data() + 1, (int) m.size() - 2);
@@ -98,6 +122,10 @@ struct FakeRackAttack
         auto dev = (std::uint8_t) id;
         switch (p.command)
         {
+            case ra::cmd::MODR:
+                if (pl.size() >= 4 && pl[1] == 0x04 && pl[2] == ra::kEditBuffer)
+                    edit = initKit();                              // "init the program in use"
+                break;
             case ra::cmd::GLBR:
             {
                 ra::Bytes g { ra::cmd::GLBD, 0x00 };

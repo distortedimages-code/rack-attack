@@ -501,6 +501,23 @@ void Engine::queueKitRead (bool toCapture, std::function<void()> whenDone)
     }));
 }
 
+void Engine::initProgram()
+{
+    // the unit's own "init the program in use": its edit buffer only, what is stored stays (Shift + Recall)
+    Step s;
+    s.kind = Step::Kind::send;
+    s.sysex = ra::build ((std::uint8_t) deviceId.load(), { ra::cmd::MODR, 0x04, ra::kEditBuffer, 0x00 });
+    s.label = "init du programme en cours";
+    queue (s);
+    Step wait; wait.kind = Step::Kind::pause; wait.ms = 400; queue (wait);
+    queueKitRead (false, [this]
+    {
+        finishTask ("kit", kit.isComplete(),
+                    kit.isComplete() ? "Kit remis à zéro (« "_fr + juce::String (kit.name()) + " »). Le programme rangé n'a pas bougé : Shift + Recall pour y revenir."_fr
+                                     : "Kit lu en partie après la remise à zéro ("_fr + juce::String (kit.blocksRead()) + " / 29)."_fr);
+    });
+}
+
 void Engine::readKit()
 {
     queueKitRead (false, [this]

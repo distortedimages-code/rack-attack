@@ -232,6 +232,17 @@ int main()
     CHECK (params >= 120 && params <= 260);   // wide margins: build machines can be slow
     CHECK (notes >= 5 && notes <= 11);
 
+    // 9b. Everything back to zero: the unit empties the program in use (MODR 04 20 00), the kit is read again
+    {
+        engine.initProgram();
+        CHECK (waitTask (out, "kit", 20000));
+        CHECK (engine.getKit().name() == "Init Program");
+        CHECK (engine.getKit().soundValue (7, 0x05) == 64 && engine.getKit().soundValue (7, 0x35) == 100);
+        engine.selectProgram (10);                      // as before, for what follows
+        CHECK (waitTask (out, "kit", 10000));
+        CHECK (engine.getKit().name() == "PROG 11");
+    }
+
     // 10a. FX Select: the chosen effect's Output follows, set to another output and back (the unit feeds
     //      the effect only then)
     {

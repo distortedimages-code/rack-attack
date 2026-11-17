@@ -413,17 +413,16 @@ namespace
         if (sync >= 2)
             hz = live.tempo / 60.0 / ra::synth::Synth::lfoSyncBeats (sync);
 
-        // where it is now: since the last note (Key), or on its own clock (free running, as the simulator)
+        // where it is now: since the last note (Key). Free running, each note picks it up anywhere (on the
+        // unit too): no telling where, so no dot
         double cycles = 0.0;
         if (restarts)
             cycles = live.lastHitMs >= 0.0 ? (now - live.lastHitMs) / 1000.0 * hz : 0.0;
-        else
-            cycles = hz * now / 1000.0;
         if (oneShot)
             cycles = juce::jmin (cycles, 0.99999);
         const auto cycle = (std::uint64_t) juce::jmax (0.0, std::floor (cycles));
         const double phase = cycles - std::floor (cycles);
-        auto value = [&] (double p) { return ra::synth::Synth::lfoValue (live.sound, ! second, shape, p, cycle, ! restarts); };
+        auto value = [&] (double p) { return ra::synth::Synth::lfoValue (live.sound, ! second, shape, p, cycle, false); };
 
         // one cycle across the screen (the one being played), the dot where the LFO is
         const int top = 4, bottom = cv.rows - 3, mid = (top + bottom) / 2;
@@ -431,7 +430,9 @@ namespace
             cv.dot (x, mid, px::frame);
         cv.curve (0, cv.cols, top, bottom, [&] (float x) { return 0.5f + 0.42f * value (juce::jlimit (0.0, 0.99999, (double) x)); }, ink);
         const bool fast = hz > 12.0;                                    // too quick for the eye: a blur on the wave
-        if (fast)
+        if (! restarts)
+            ;
+        else if (fast)
         {
             for (int x = 0; x < cv.cols; x += 3)
                 cv.dot (x, bottom - juce::roundToInt ((0.5f + 0.42f * value ((double) x / cv.cols)) * (float) (bottom - top)), px::red);
@@ -451,7 +452,7 @@ namespace
         else if (sync >= 2)
             text << "  SYNC " << choice (base + 2, (float) sync);
         else
-            text << juce::String::fromUTF8 ("  LIBRE");
+            text << juce::String::fromUTF8 ("  LIBRE : CHAQUE NOTE AU HASARD");
         if (oneShot)
             text << "  ONE SHOT";
         if (second && std::abs (v (base + 3) - 64.0f) > 0.5f)

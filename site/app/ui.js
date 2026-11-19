@@ -286,12 +286,32 @@ for (const [b, side] of [[morphA, 0], [morphB, 1]]) {
 const GLIDES = [0, 50, 150, 300, 600, 1000, 2000];
 const glideText = ms => ms <= 0 ? 'Sans glide' : ms < 1000 ? `Glide ${ms} ms` : `Glide ${String(ms / 1000).replace('.', ',')} s`;
 function pickFile (accept) {
+  return pickNamedFile(accept).then(f => (f ? f.bytes : null));
+}
+// { bytes, name } (the name without its extension), or null
+function pickNamedFile (accept) {
   return new Promise(resolve => {
     const input = document.createElement('input');
-    input.type = 'file'; input.accept = accept;
-    input.addEventListener('change', async () => resolve(input.files[0] ? new Uint8Array(await input.files[0].arrayBuffer()) : null));
+    input.type = 'file';
+    if (!/iPad|iPhone|iPod/.test(navigator.userAgent)) input.accept = accept;   // iOS greys out the kinds it doesn't know
+    input.addEventListener('change', async () => {
+      const f = input.files[0];
+      resolve(f ? { bytes: new Uint8Array(await f.arrayBuffer()), name: f.name.replace(/\.[^.]*$/, '') } : null);
+    });
     input.click();
   });
+}
+// a file to the computer's downloads (or the share sheet on iPad / iPhone)
+function downloadFile (bytes, name) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+  const a = el('a', '', document.body);
+  a.href = url; a.download = name.replace(/[\\/:*?"<>|]+/g, '-');
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+}
+function soundFileName (i) {
+  const n = E.trackName(i).trim();
+  return (n && !n.startsWith('SON ') ? n : `${E.kitName().trim() || 'Kit'} son ${two(i + 1)}`) + '.syx';
 }
 async function morphMenu () {
   const box = boxOf(morphEl), x = box.x, y = box.y + box.h, armed = E.morphArmed(), differs = E.morphDiffers();
@@ -482,13 +502,26 @@ async function voiceMenu (i, b) {
   const id = await menu([{ header: `Son ${two(i + 1)}  ${upper(E.trackName(i))}` }, { id: 1, label: 'Renommer…' },
     { id: 2, label: muted ? 'Rétablir le son  (glisse vers le bas)' : 'Couper (mute)  (glisse vers le bas)' },
     { id: 6, label: solo ? 'Sortir du solo  (glisse vers le haut)' : 'Solo  (glisse vers le haut)' },
-    { id: 3, label: 'Copier la piste' }, { id: 4, label: 'Coller la piste', disabled: !S.clip }, { id: 5, label: 'Init piste : vide, 16 pas, 1/16' }], box.x, box.y + box.h);
+    { id: 3, label: 'Copier la piste' }, { id: 4, label: 'Coller la piste', disabled: !S.clip }, { id: 5, label: 'Init piste : vide, 16 pas, 1/16' },
+    { sep: 1 }, { id: 7, label: 'Enregistrer ce son (fichier .syx)' }, { id: 8, label: 'Charger un son ici (.syx, .mid)…' }], box.x, box.y + box.h);
   if (id === 1) rename(i);
   if (id === 2) padGesture(i, true);
   if (id === 6) padGesture(i, false);
   if (id === 3) { S.clip = readTrack(i); toast('Piste copiée'); }
   if (id === 4 && S.clip) { keepForUndo('coller'); const n = E.trackName(i); writeTrack(i, S.clip); E.setTrackName(i, n.startsWith('SON ') ? '' : n); toast('Piste collée'); }
   if (id === 5) initTracks(false, i);
+  if (id === 7) {
+    const b = E.soundBytes(i);
+    if (b) { downloadFile(b, soundFileName(i)); toast(`Son ${two(i + 1)} enregistré : ${soundFileName(i)}`); }
+    else toast('Ce son n’est pas encore lu', 'red');
+  }
+  if (id === 8) {
+    const f = await pickNamedFile('.syx,.mid,.midi');
+    if (f) {
+      if (E.takeSound(i, f.bytes)) { E.setTrackName(i, f.name.slice(0, 16)); toast(`${f.name} → son ${two(i + 1)}`); }
+      else toast('Pas de son RackAttack dans ce fichier', 'red');
+    }
+  }
   render();
 }
 
@@ -659,6 +692,7 @@ async function options () {
     { id: 6, label: 'Copier la piste' }, { id: 7, label: 'Coller la piste', disabled: !S.clip },
     { header: 'Séquence' },
     { id: 20, label: 'Effacer tous les pas' }, { id: 21, label: 'Effacer tous les verrous' }, { id: 22, label: 'Init séquence : tout vide, 16 pas, 1/16 (le tempo reste)' },
+    { id: 50, label: 'Enregistrer le son de la piste (fichier .syx)' }, { id: 51, label: 'Enregistrer le kit entier (fichier .syx)' },
     { header: 'Patterns internes de la machine' },
     { id: 40, label: E.kitPatternsRead() < 24 && con ? 'Lire les patterns internes → séquence' : 'Patterns internes du kit → séquence', disabled: !con && E.kitPatterns() === 0 },
     { id: 41, label: 'Cette piste → pattern interne du son' + (con ? '' : ' (branche la machine)'), disabled: !con },
@@ -669,6 +703,13 @@ async function options () {
   const onTrack = (what, op, arg = 0) => { keepForUndo(what); E.trackOp(t, op, arg); };
   const onAll = (what, op) => { keepForUndo(what); for (let i = 0; i < 24; ++i) E.x.ra_track_op(i, op, 0); E.edited(); };
   switch (id) {
+    case 50: {
+      const bytes = E.soundBytes(t);
+      if (bytes) { downloadFile(bytes, soundFileName(t)); toast(`Son ${two(t + 1)} enregistré : ${soundFileName(t)}`); }
+      else toast('Ce son n’est pas encore lu', 'red');
+      break;
+    }
+    case 51: { const n = (E.kitName().trim() || 'Kit') + '.syx'; downloadFile(E.kitBytes(), n); toast(`Kit enregistré : ${n}`); break; }
     case 1: onTrack('effacer les pas', 0); toast('Pas effacés', 'red'); break;
     case 2: onTrack('effacer les verrous', 1); toast('Verrous effacés', 'yellow'); break;
     case 3: initTracks(false); break;

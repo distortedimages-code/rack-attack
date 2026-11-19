@@ -205,6 +205,19 @@ export class Engine {
 
   // a kit (a .syx) -> the kit heard, in the simulator and in the unit's edit buffer when it is connected (nothing is
   // stored on the unit: Shift + Store there keeps it). The morph starts again from it.
+  // a sound as a file (.syx), and back: a .syx or a Waldorf .mid (a kit file gives its first sound)
+  soundBytes (s) { const n = this.x.ra_sound_save(s); return n > 0 ? this.scratch(n) : null; }
+  kitBytes () { return this.scratch(this.x.ra_kit_save()); }
+  takeSound (s, bytes) {
+    const n = this.withBytes(bytes, (p, len) => this.x.ra_sound_take(s, p, len));
+    if (n < 0) return false;
+    this.sendPaced(this.scratch(n));
+    this.morphTarget = this.morphPosition();
+    this.sendKitToSynth();
+    this.save(); this.saveMorphSoon();
+    this.emit('kit'); this.emit('morph');
+    return true;
+  }
   takeKit (syx) {
     const n = this.withBytes(syx, (p, len) => this.x.ra_kit_take(p, len));
     if (n < 0) return false;

@@ -612,6 +612,38 @@ RA_EXPORT (ra_pattern_load) int raPatternLoad (const std::uint8_t* data, int siz
     return model->pattern.load (std::vector<std::uint8_t> (data, data + size)) ? 1 : 0;
 }
 RA_EXPORT (ra_kit_save) int raKitSave()                             { return toScratch (model->kit.toSyx()); }
+
+// One sound as a file: its dump (to the edit buffer, sound s), what the plug-in's library keeps too
+RA_EXPORT (ra_sound_save) int raSoundSave (int s)
+{
+    if (s < 0 || s >= ra::Kit::numSounds || ! model->kit.hasSound (s)) return 0;
+    return toScratch (model->kit.soundDump (model->device, s));
+}
+
+// A sound from a file (.syx, or a Waldorf .mid; a kit file gives its first sound) becomes sound `target`.
+// Out: its dump for the unit, or -1 when the file holds no sound.
+RA_EXPORT (ra_sound_take) int raSoundTake (int target, const std::uint8_t* data, int size)
+{
+    if (target < 0 || target >= ra::Kit::numSounds) return -1;
+    ra::Bytes file (data, data + size), raw;
+    if (ra::isSmf (file))
+        for (auto& m : ra::smfSysex (file))
+            raw.insert (raw.end(), m.begin(), m.end());
+    else
+        raw = std::move (file);
+    auto k = ra::Kit::fromSyx (raw);
+    if (! k) return -1;
+    for (int i = 0; i < ra::Kit::numSounds; ++i)
+        if (k->hasSound (i))
+        {
+            model->kit.setSoundData (target, k->soundData (i));
+            model->morph.reset (model->kit);
+            model->armed = -1;
+            refreshContext();
+            return toScratch (model->kit.soundDump (model->device, target));
+        }
+    return -1;
+}
 // a kit kept by this browser before 0.5.9: its demo sounds to Envelope 2 for the level (the morph's ends upgrade
 // themselves when restored)
 RA_EXPORT (ra_kit_upgrade_demo) int raKitUpgradeDemo()

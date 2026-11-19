@@ -35,6 +35,17 @@ check(m.ra_track_get(2, 1) === 64, 'snare length 64');
   check(t.ra_track_get(2, 10) === 1 && t.ra_track_get(2, 11) === 1 && t.ra_track_get(0, 11) === 0, 'solo silences the others');
   t.ra_track_set(2, 3, 1);
   check(t.ra_track_get(2, 3) === 1 && t.ra_track_get(2, 10) === 0 && t.ra_track_get(0, 11) === 1, 'a muted sound leaves the solo');
+  // a sound as a file and back, into another slot
+  {
+    const n = t.ra_sound_save(1), file = t.bytes(n).slice();
+    check(n > 100 && file[0] === 0xf0 && file[4] === 0x10, 'sound file is one sound dump');
+    const p = t.ra_alloc(file.length); new Uint8Array(t.memory.buffer, p, file.length).set(file);
+    const out = t.ra_sound_take(4, p, file.length);
+    let same = true;
+    for (const a of [0x01, 0x05, 0x27, 0x35, 0x46]) same = same && t.ra_sound_get(4, a) === t.ra_sound_get(1, a);
+    check(out > 100 && same, 'a sound file loads into another sound');
+    check(t.ra_sound_take(4, p, 3) === -1, 'not a sound: refused');
+  }
   // FX Select: the message, then the chosen effect's Output to another value and back
   const n = t.ra_sound_edit(0, 0x56, 1), b = t.bytes(n);
   const ends = [...b].filter(x => x === 0xf7).length;

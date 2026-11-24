@@ -1,9 +1,7 @@
-**RackAttack Editor 0.5.15** : le plug-in lit enfin le programme en cours de la machine, donc les noms des programmes et le nom d'un kit envoyé reviennent justes.
+**RackAttack Editor 0.5.16** : l'appli et le plug-in ont leur icône, la mascotte du séquenceur.
 
-- **Le programme en cours bien demandé** : le plug-in demandait « 00 20 » (comme ra-editor), que la machine comprend comme « le programme rangé n° 33 ». Il demande maintenant « 20 00 », dans l'ordre de toutes les autres commandes. Si la machine ne répondait pas, il redemande une fois à l'ancienne.
-- **Lire les noms** : les vrais noms des 50 programmes, au lieu de trois « Init » puis un message d'erreur. Le plug-in essaie aussi de lire chaque programme rangé directement, sans rien changer sur la machine, et s'en passe si elle ne répond pas.
-- **Le nom d'un kit envoyé** revient à la relecture, avec le reste du kit.
-- **Les fichiers de kit** écrits par le plug-in visent toujours le programme en cours, jamais un programme rangé.
-- Tout ce qu'apportait la 0.5.14 reste : double-clic pour remettre un réglage à zéro, « tout remettre à zéro », écrans d'enveloppe et de LFO qui suivent les notes, son envoyé sur un autre effet entendu tout de suite.
+- **Nouvelle icône** : la mascotte, blanche avec sa bouche rouge, sur un carré noir aux proportions des icônes du Mac. Dans le Dock, le Finder et la liste des plug-ins.
+- **Version web** : la mascotte dans l'onglet du navigateur, et sur l'écran d'accueil de l'iPad (« Ajouter à l'écran d'accueil »). Un son ou le kit entier s'enregistrent en fichier `.syx`, et « Charger un son ici » reprend un `.syx` ou un `.mid` de Waldorf dans un pad (clic droit ou appui long sur le pad).
+- Tout ce qu'apportait la 0.5.15 reste : le programme en cours bien lu, les vrais noms des programmes, le nom d'un kit envoyé qui revient.
 
-Si la mise à jour depuis le plug-in dit que GitHub ne répond pas, télécharge la version sur la page du site et installe-la à la main. Pour garder un kit sur la machine, toujours **Shift + Store**.
+Si la mise à jour depuis le plug-in dit que GitHub ne répond pas, télécharge la version sur la page du site et installe-la à la main.

@@ -37,6 +37,7 @@ juce_add_plugin(RackAttackEditor
     COMPANY_NAME "distortedimages"
     PRODUCT_NAME "RackAttack Editor"
     BUNDLE_ID com.distortedimages.rackattackeditor
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon/RackAttack-1024.png"   # tools/make_icons.py
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
